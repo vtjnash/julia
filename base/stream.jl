@@ -16,17 +16,22 @@ abstract AsyncStream <: Stream
 typealias StreamOrNot Union(Bool,AsyncStream)
 
 abstract AbstractCmd
+
 type Cmd <: AbstractCmd
     exec::Executable
-    pipeline::Union(Bool,AbstractCmd)
-    Cmd(exec::Executable) = new(exec,false)
+    Cmd(exec::Executable) = new(exec)
 end
 
-type Cmds <: AbstractCmd
-    siblings::Set{AbstractCmd}
-    pipeline::Union(Bool,AbstractCmd)
-    Cmds() = new(Set{AbstractCmd}(),false)
-    Cmds(c::AbstractCmd) = new(Set{AbstractCmd}(c),false)
+type OrCmds <: AbstractCmd
+    a::AbstractCmd
+    b::AbstractCmd
+    OrCmds(a::AbstractCmd, b::AbstractCmd) = new(a,b)
+end
+
+type AndCmds <: AbstractCmd
+    a::AbstractCmd
+    b::AbstractCmd
+    AndCmds(a::AbstractCmd, b::AbstractCmd) = new(a,b)
 end
 
 typealias StreamHandle Union(PtrSize,AsyncStream)
@@ -40,34 +45,37 @@ type Process <: AbstractProcess
     err::StreamOrNot
     exit_code::Int32
     term_signal::Int32
-    pipeline::Union(Bool,AbstractProcess)
     breakEventLoop::Bool
     Process(handle::Ptr{Void},in::StreamOrNot,out::StreamOrNot,err::StreamOrNot)=new(handle,in,out,err,-2,-2,false,false)
     Process(handle::Ptr{Void},in::StreamOrNot,out::StreamOrNot)=Process(handle,in,out,0,false,false)
 end
 
-type Processes <: AbstractProcess
-    siblings::Set{AbstractProcess}
-    in::StreamHandle
-    out::StreamHandle
-    pipeline::Union(Bool,AbstractProcess)
-    breakEventLoop::Bool
-    Processes()=new(Set{AbstractProcess}(),0,0,false,false)
+type OrProcesses <: AbstractProcess
+    a::AbstractCmd
+    b::AbstractCmd
+    OrProcesses()=new(null,null)
 end
 
+type AndProcesses <: AbstractProcess
+    a::AbstractCmd
+    b::AbstractCmd
+    breakEventLoop::Bool
+    AndProcesses()=new(null,null,false)
+end
 
-#typealias CmdsOrNot Union(Bool,Cmds)
 typealias BufOrNot Union(Bool,IOStream)
 
 type NamedPipe <: AsyncStream
-    handle::Ptr{Void}
+    ihandle::Ptr{Void}
+    ohandle::Ptr{Void}
     buf::BufOrNot
     closed::Bool
-    NamedPipe(handle::Ptr{Void},buf::IOStream) = new(handle,buf,false)
-    NamedPipe(handle::Ptr{Void}) = new(handle,false,false)
+    NamedPipe(ihandle::Ptr{Void},ohandle::Ptr{Void},buf::IOStream) = new(ihandle,ohandle,buf,false)
+    NamedPipe(ihandle::Ptr{Void},ohandle::Ptr{Void}) = new(ihandle,ohandle,false,false)
 end
 
 type TTY <: AsyncStream
+    handle::Ptr{Void}
     handle::Ptr{Void}
     buf::BufOrNot
     closed::Bool
@@ -241,7 +249,7 @@ process_events() = process_events(localEventLoop())
 ##pipe functions
 
 function make_pipe()
-    NamedPipe(ccall(:jl_make_pipe,Ptr{Void},())) #make the pipe and unbuffered stream for now
+    NamedPipe(ccall(:jl_make_pipe,Ptr{Void},()),ccall(:jl_make_pipe,Ptr{Void},())) #make the pipe and unbuffered stream for now
 end
 
 function close(stream::AsyncStream)
@@ -284,25 +292,25 @@ function end_process(p::Process,h::Ptr{Void},e::Int32, t::Int32)
     p.term_signal=t
 end
 
-#I really hate to do this
-_jl_spawn(cmd::Ptr{Uint8}, argv::Ptr{Ptr{Uint8}}, loop::Ptr{Void},in::Ptr{Void},out::Ptr{Void},exitcb::Function,closecb::Function) =
-    ccall(:jl_spawn, PtrSize, (Ptr{Uint8}, Ptr{Ptr{Uint8}}, Ptr{Void},Ptr{Void}, Ptr{Void},Function,Function),cmd,argv,loop,in,out,exitcb,closecb)
-_jl_spawn(cmd::Ptr{Uint8}, argv::Ptr{Ptr{Uint8}}, loop::Ptr{Void},in::Ptr{Void},out::Ptr{Void},exitcb::Bool,closecb::Function) =
-    ccall(:jl_spawn, PtrSize, (Ptr{Uint8}, Ptr{Ptr{Uint8}}, Ptr{Void},Ptr{Void}, Ptr{Void},PtrSize,Function),cmd,argv,loop,in,out,0,closecb)
-_jl_spawn(cmd::Ptr{Uint8}, argv::Ptr{Ptr{Uint8}}, loop::Ptr{Void},in::Ptr{Void},out::Ptr{Void},exitcb::Function,closecb::Bool) =
-    ccall(:jl_spawn, PtrSize, (Ptr{Uint8}, Ptr{Ptr{Uint8}}, Ptr{Void},Ptr{Void}, Ptr{Void},Function,PtrSize),cmd,argv,loop,in,out,exitcb,0)
-_jl_spawn(cmd::Ptr{Uint8}, argv::Ptr{Ptr{Uint8}}, loop::Ptr{Void},in::Ptr{Void},out::Ptr{Void},exitcb::Bool,closecb::Bool) =
-    ccall(:jl_spawn, PtrSize, (Ptr{Uint8}, Ptr{Ptr{Uint8}}, Ptr{Void},Ptr{Void}, Ptr{Void},PtrSize,PtrSize),cmd,argv,loop,in,out,0,0)
+_jl_spawn(cmd::Ptr{Uint8}, argv::Ptr{Ptr{Uint8}}, loop::Ptr{Void}, iin::Ptr{Void}, oin::Ptr{Void}, iout::Ptr{Void}, oout::Ptr{Void}, exitcb::Callback, closecb::Callback) =
+    ccall(:jl_spawn, PtrSize,
+        (Ptr{Uint8}, Ptr{Ptr{Uint8}}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Union(Function, Ptr{Void}),  Union(Function, Ptr{Void})),
+         cmd,        argv,            loop,      iin,       oin,       iout,      oout,      exitcb==false?C_NULL:exitcb, closecb==false?C_NULL:closecb)
 
 function spawn(cmd::Cmd,in::StreamOrNot,out::StreamOrNot,exitcb::Callback,closecb::Callback,pp::Process)
     loop = localEventLoop()
-    if cmd.pipeline != false then
-        n = make_pipe()
-        pp.pipeline = spawn(cmd.pipeline, n, out, exitcb, closecb)
-        exitcb = false
-        closecb = false
+    if isa(in, NamedPipe)
+        iin = in.ihandle
+        oin = in.ohandle
     else
-        n = out
+        iin = C_NULL
+    end
+    if isa(out, NamedPipe)
+        iout = out.ihandle
+        oout = out.ohandle
+    else
+        iout = C_NULL
+        oout = C_NULL
     end
     ptrs = _jl_pre_exec(cmd.exec)
     if exitcb == false
@@ -311,9 +319,9 @@ function spawn(cmd::Cmd,in::StreamOrNot,out::StreamOrNot,exitcb::Callback,closec
     if closecb == false
         closecb = make_callback((args...)->process_closed_chain(pp))
     end
-    pp.handle=_jl_spawn(ptrs[1],convert(Ptr{Ptr{Uint8}},ptrs),loop,isa(in,NamedPipe) ? in.handle : C_NULL, isa(n,NamedPipe) ? n.handle : C_NULL,exitcb,closecb)
+    pp.handle=_jl_spawn(ptrs[1],convert(Ptr{Ptr{Uint8}},ptrs),loop,iin,oin,iout,oout,exitcb,closecb)
     pp.in=in
-    pp.out=n
+    pp.out=out
     pp
 end
 spawn(cmd::Cmd,in::StreamOrNot,out::StreamOrNot,exitcb::Callback,closecb::Callback) = spawn(cmd,in,out,exitcb,closecb,Process(C_NULL,false,false,false))
@@ -328,6 +336,7 @@ function spawn_nostdin(cmd::Cmd,out::StreamOrNot)
     proc
 end
 
+#TODO: fix these exit chains
 function process_exited_chain(p::Process,h::Ptr,e::Int32,t::Int32)
     p.exit_code=e
     p.term_signal=t
@@ -373,30 +382,28 @@ function process_closed_chain(procs::Processes)
     done
 end
 
-function spawn(cmds::Cmds,in::StreamOrNot,out::StreamOrNot,exitcb::Callback,closecb::Callback)
-    procs = Processes()
-    if cmds.pipeline != false
-        n=make_pipe()
-        procs.pipeline=spawn(cmds.pipeline,n,out)
-    else
-        n=out
-    end
-    for c in cmds.siblings
-        exitcb2 = make_callback((args...)->(done=process_exited_chain(procs,args...); if (done && exitcb != false) exitcb(args...) end))
-        closecb2 = make_callback((args...)->(done=process_closed_chain(procs); if (done && closecb != false) closecb(args...) end))
-        add(procs.siblings, spawn(c, in, n, exitcb2, closecb2))
-    end
-    #if(isa(n,AsyncStream))
-        #start_reading(n)
-    #end
-    procs.out=isa(n,AsyncStream)?n:0
-    procs.in=isa(in,NamedPipe)?in:0
+function spawn(cmds::OrCmds,in::StreamOrNot,out::StreamOrNot,exitcb::Callback,closecb::Callback)
+    procs = OrProcesses()
+    n = make_pipe()
+    procs.a=spawn(cmds.pipeline,in,n)
+    procs.b=spawn(cmds.pipeline,n,out,exitcb,closecb)
     return procs
-
 end
-spawn(cmds::Cmds)=spawn(cmds,false,false)
-spawn(cmds::Cmds,in::StreamOrNot)=spawn(cmds,in,false)
-spawn(cmds::Cmds,in::StreamOrNot,out::StreamOrNot)=spawn(cmds,in,out,false,false)
+spawn(cmds::OrCmd)=spawn(cmds,false,false)
+spawn(cmds::OrCmd,in::StreamOrNot)=spawn(cmds,in,false)
+spawn(cmds::OrCmd,in::StreamOrNot,out::StreamOrNot)=spawn(cmds,in,out,false,false)
+
+function spawn(cmds::AndCmds,in::StreamOrNot,out::StreamOrNot,exitcb::Callback,closecb::Callback)
+    procs = AndProcesses()
+    exitcb2 = make_callback((args...)->(done=process_exited_chain(procs,args...); if (done && exitcb != false) exitcb(args...) end))
+    closecb2 = make_callback((args...)->(done=process_closed_chain(procs); if (done && closecb != false) closecb(args...) end))
+    procs.a = spawn(cmd.a, in, out, exitcb2, closecb2)
+    procs.b = spawn(cmd.b, in, out, exitcb2, closecb2)
+    return procs
+end
+spawn(cmds::AndCmd)=spawn(cmds,false,false)
+spawn(cmds::AndCmd,in::StreamOrNot)=spawn(cmds,in,false)
+spawn(cmds::AndCmd,in::StreamOrNot,out::StreamOrNot)=spawn(cmds,in,out,false,false)
 
 #returns a pipe to read from the last command in the pipelines
 read_from(cmds::AbstractCmd)=read_from(cmds,true)
@@ -410,7 +417,7 @@ function read_from(cmds::AbstractCmd,passStdin::Bool)
         processes=spawn(cmds,dummy,out)
         close(dummy)
     end
-    ccall(:jl_start_reading,Bool,(Ptr{Void},Ptr{Void},Ptr{Void}),out.handle,out.buf.ios,C_NULL)
+    ccall(:jl_start_reading,Bool,(Ptr{Void},Ptr{Void},Ptr{Void}),out.ihandle,out.buf.ios,C_NULL)
     (out,processes)
 end
 
@@ -427,7 +434,8 @@ end
 _jl_kill(p::Process,signum::Int32) = ccall(:uv_process_kill,Int32,(Ptr{Void},Int32),p.handle,signum)
 _jl_kill(p::Process)=_jl_kill(p,int32(9))
 kill(p::Process) = _jl_kill(p)
-function kill(ps::Processes)
+function kill(ps::AbstractProcess)
+    #TODO: kill stuff
     ps.breakEventLoop=false
     for p in ps.siblings
         if p.pipeline != false then
@@ -444,8 +452,8 @@ end
 
 function readall(cmds::AbstractCmd)
     (out,ps)=read_from(cmds)
-    while ps.pipeline != false
-        ps=ps.pipeline
+    while isa(ps.b, OrProcess)
+        ps=ps.b
     end
     ps.breakEventLoop=true
     try
@@ -485,17 +493,31 @@ function success(cmd::Cmd)
     run_event_loop()
     return (proc.exit_code==0)
 end
-function success(cmds::Cmds)
+function success(cmds::AbstractCmd)
     procs = spawn(cmds)
     run_event_loop()
-    for p in procs.siblings
-        #TODO: check recursively on all processess launched?
-        if (p.exit_code!=0)
-            return false
-        end
+    #TODO: check recursively on all processess launched?
+    if (p.exit_code!=0)
+        return false
     end
     return true
 end
+function run(args...)
+    ps=spawn(args...)
+    #TODO: ?
+    while ps.pipeline != false
+        ps=ps.pipeline
+    end
+    ps.breakEventLoop=true
+    try
+        run_event_loop(localEventLoop())
+    catch e
+        ps.breakEventLoop=false
+        kill(ps)
+        throw(e)
+    end
+end
+
 
 function exec(thunk::Function)
     try
@@ -586,92 +608,62 @@ function _write(s::AsyncStream, p::Ptr{Void}, nb::Integer)
     ccall(:jl_write, Uint,(Ptr{Void}, Ptr{Void}, Uint),s.handle,p,uint(nb))
 end
 
-(&)(left::Cmds,right::Cmd)  = (add(left.siblings,right);left)
-(&)(left::Cmd,right::Cmds)  = right&left
-function (&)(left::Cmds,right::Cmds)
-    top = Cmds(left)
-    add(top.siblings,right)
-    top
-end
-(&)(left::Cmd,right::Cmd)   = Cmds(left)&right
-
-function (|)(src::AbstractCmd,dest::AbstractCmd)
-    n = src
-    while n.pipeline != false
-        n = n.pipeline
-    end
-    n.pipeline=dest
-    return src
-end
+(&)(left::AbstractCmd,right::AbstractCmd) = AndCmd(left,right)
+(|)(src::AbstractCmd,dest::AbstractCmd) = OrCmd(src,dest)
 
 show(io,cmd::AbstractCmd) = show(io, cmd, false)
-function show(io, cmd::Cmd, embedded::Bool)
-    if cmd.pipeline != false && embedded
-        print(io,'(')
-    end
-    if isa(cmd.exec,Vector{ByteString})
-        esc = shell_escape(cmd.exec...)
-        print(io,'`')
-        for c in esc
-            if c == '`'
-                print(io,'\\')
-            end
-            print(io,c)
-        end
-        print(io,'`')
-    else
-        print(io, cmd.exec)
-    end
-    if cmd.pipeline != false
-        print(io," | ")
-        show(io,cmd.pipeline, isa(cmd,Cmds))
-        if embedded
-            print(io,')')
-        end
-    end
-end
-function show(io,cmds::Cmds, embedded::Bool)
-    if cmds.pipeline != false && embedded
-        print(io,'(')
-    end
-    if length(cmds.siblings) > 1 || (embedded || cmds.pipeline != false)
-        print(io,'(')
-    end
-    first = true
-    for cmd = cmds.siblings
-        if !first
-            print(io," & ")
-        end
-        show(io, cmd, true)
-        first = false
-    end
-    if length(cmds.siblings) > 1 || (embedded || cmds.pipeline != false)
-        print(io,')')
-    end
-    if cmds.pipeline != false
-        print(io, " | ")
-        show(io, cmds.pipeline, false)
-        if embedded
-            print(io, ')')
-        end
-    end
-end
-
-
-function run(args...)
-    ps=spawn(args...)
-    while ps.pipeline != false
-        ps=ps.pipeline
-    end
-    ps.breakEventLoop=true
-    try
-        run_event_loop(localEventLoop())
-    catch e
-        ps.breakEventLoop=false
-        kill(ps)
-        throw(e)
-    end
-end
+#TODO: rewrite show
+#function show(io, cmd::Cmd, embedded::Bool)
+#    if cmd.pipeline != false && embedded
+#        print(io,'(')
+#    end
+#    if isa(cmd.exec,Vector{ByteString})
+#        esc = shell_escape(cmd.exec...)
+#        print(io,'`')
+#        for c in esc
+#            if c == '`'
+#                print(io,'\\')
+#            end
+#            print(io,c)
+#        end
+#        print(io,'`')
+#    else
+#        print(io, cmd.exec)
+#    end
+#    if cmd.pipeline != false
+#        print(io," | ")
+#        show(io,cmd.pipeline, isa(cmd,Cmds))
+#        if embedded
+#            print(io,')')
+#        end
+#    end
+#end
+#function show(io,cmds::Cmds, embedded::Bool)
+#    if cmds.pipeline != false && embedded
+#        print(io,'(')
+#    end
+#    if length(cmds.siblings) > 1 || (embedded || cmds.pipeline != false)
+#        print(io,'(')
+#    end
+#    first = true
+#    for cmd = cmds.siblings
+#        if !first
+#            print(io," & ")
+#        end
+#        show(io, cmd, true)
+#        first = false
+#    end
+#    if length(cmds.siblings) > 1 || (embedded || cmds.pipeline != false)
+#        print(io,')')
+#    end
+#    if cmds.pipeline != false
+#        print(io, " | ")
+#        show(io, cmds.pipeline, false)
+#        if embedded
+#            print(io, ')')
+#        end
+#    end
+#end
 
 _jl_connect_raw(sock::TcpSocket,sockaddr::Ptr{Void},cb::Function) = ccall(:jl_connect_raw,Int32,(Ptr{Void},Ptr{Void},Function),sock.handle,sockaddr,cb)
 _jl_getaddrinfo(loop::Ptr,host::ByteString,service::Ptr,cb::Function) = ccall(:jl_getaddrinfo,Int32,(Ptr{Void},Ptr{Uint8},Ptr{Uint8},Function),loop,host,service,cb)
