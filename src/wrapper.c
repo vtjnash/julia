@@ -74,6 +74,7 @@ void closeHandle(uv_handle_t* handle)
             if(opts->closecb) {
                 jl_callback_call(opts->closecb,1,CB_PTR,handle);
             }
+            free(opts->stdio);
             free(opts);
             //pipes have to be closed where they are created to support reusing them
         } break;
@@ -182,7 +183,6 @@ DLLEXPORT int16_t jl_stop_reading(uv_stream_t *handle)
         return -2;
     int err = uv_read_stop(handle);
     return err;
-
 }
 
 DLLEXPORT void jl_connectioncb(uv_stream_t *stream, int status)
@@ -207,20 +207,36 @@ DLLEXPORT int jl_listen(uv_stream_t* stream, int backlog, jl_function_t *cb)
     return uv_listen(stream,backlog,&jl_connectioncb);
 }
 
-DLLEXPORT uv_process_t *jl_spawn(char *name, char **argv, uv_loop_t *loop, uv_pipe_t *stdin_pipe, uv_pipe_t *stdout_pipe, void *exitcb, void *closecb)
+DLLEXPORT uv_process_t *jl_spawn(char *name, char **argv, uv_loop_t *loop,
+  uv_pipe_t *istdin_pipe, uv_pipe_t *ostdin_pipe, uv_pipe_t *istdout_pipe, uv_pipe_t *ostdout_pipe,
+  void *exitcb, void *closecb)
 {
     jl_proc_opts_t *jlopts=malloc(sizeof(jl_proc_opts_t));
     uv_process_t *proc = malloc(sizeof(uv_process_t));
+    uv_stdio_container_t *stdio = malloc(3*sizeof(uv_stdio_container_t));
     uv_process_options_t opts;
     int error;
     opts.file = name;
     opts.env = NULL;
     opts.cwd = NULL;
     opts.args = argv;
-	opts.flags = 0;
-    opts.stdin_stream = jlopts->in = stdin_pipe;
-    opts.stdout_stream = jlopts->out = stdout_pipe;
-    opts.stderr_stream = NULL;
+    opts.flags = 0;
+    opts.stdio = stdio;
+    stdio[0].flags = UV_BASIC_PIPE;
+    stdio[1].flags = UV_BASIC_PIPE;
+    stdio[2].flags = UV_BASIC_PIPE;
+    stdio[0].data.streams.istream = jlopts->istdin = istdin_pipe;
+    stdio[0].data.streams.istream_initialized = 0;
+    stdio[0].data.streams.ostream = jlopts->ostdin = ostdin_pipe;
+    stdio[0].data.streams.ostream_initialized = 0;
+    stdio[1].data.streams.istream = jlopts->istdout = istdout_pipe;
+    stdio[1].data.streams.istream_initialized = 0;
+    stdio[1].data.streams.ostream = jlopts->ostdout = ostdout_pipe;
+    stdio[1].data.streams.ostream_initialized = 0;
+    stdio[2].data.streams.istream = opts.stderr_stream = NULL;
+    stdio[2].data.streams.istream_initialized = 0;
+    stdio[2].data.streams.ostream = opts.stderr_stream = NULL;
+    stdio[2].data.streams.ostream_initialized = 0;
     //opts.detached = 0; #This has been removed upstream to be uncommented once it is possible again
     opts.exit_cb = &jl_return_spawn;
     jlopts->exitcb=exitcb;
