@@ -32,8 +32,11 @@ typedef struct {
 typedef struct {
     jl_function_t *exitcb;
     jl_function_t *closecb;
-    uv_pipe_t* in;
-    uv_pipe_t* out;
+    uv_pipe_t* istdin;
+    uv_pipe_t* ostdin;
+    uv_pipe_t* istdout;
+    uv_pipe_t* ostdout;
+	uv_stdio_container_t* stdio;
 } jl_proc_opts_t;
 
 typedef struct {
@@ -222,25 +225,27 @@ DLLEXPORT uv_process_t *jl_spawn(char *name, char **argv, uv_loop_t *loop,
     opts.args = argv;
     opts.flags = 0;
     opts.stdio = stdio;
+	opts.stdio_count = 2;
     stdio[0].flags = UV_BASIC_PIPE;
-    stdio[1].flags = UV_BASIC_PIPE;
-    stdio[2].flags = UV_BASIC_PIPE;
-    stdio[0].data.streams.istream = jlopts->istdin = istdin_pipe;
+	stdio[0].data.streams.istream = (uv_stream_t*)(jlopts->istdin = istdin_pipe);
     stdio[0].data.streams.istream_initialized = 0;
-    stdio[0].data.streams.ostream = jlopts->ostdin = ostdin_pipe;
+    stdio[0].data.streams.ostream = (uv_stream_t*)(jlopts->ostdin = ostdin_pipe);
     stdio[0].data.streams.ostream_initialized = 0;
-    stdio[1].data.streams.istream = jlopts->istdout = istdout_pipe;
+    stdio[1].flags = UV_BASIC_PIPE;
+    stdio[1].data.streams.istream = (uv_stream_t*)(jlopts->istdout = istdout_pipe);
     stdio[1].data.streams.istream_initialized = 0;
-    stdio[1].data.streams.ostream = jlopts->ostdout = ostdout_pipe;
+    stdio[1].data.streams.ostream = (uv_stream_t*)(jlopts->ostdout = ostdout_pipe);
     stdio[1].data.streams.ostream_initialized = 0;
-    stdio[2].data.streams.istream = opts.stderr_stream = NULL;
+	stdio[2].flags = UV_BASIC_PIPE;
+    stdio[2].data.streams.istream = NULL;
     stdio[2].data.streams.istream_initialized = 0;
-    stdio[2].data.streams.ostream = opts.stderr_stream = NULL;
+    stdio[2].data.streams.ostream = NULL;
     stdio[2].data.streams.ostream_initialized = 0;
     //opts.detached = 0; #This has been removed upstream to be uncommented once it is possible again
     opts.exit_cb = &jl_return_spawn;
     jlopts->exitcb=exitcb;
     jlopts->closecb=closecb;
+	jlopts->stdio=stdio;
     error = uv_spawn(loop,proc,opts);
     if(error)
         jl_errorf("Failed to create process %s: %d",name,error);
