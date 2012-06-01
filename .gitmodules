@@ -1,6 +1,6 @@
 [submodule "deps/libuv"]
 	path = deps/libuv
-	url = https://github.com/JuliaLang/libuv.git
+	url = https://github.com/vtjnash/libuv.git
 [submodule "deps/openlibm"]
 	path = deps/openlibm
 	url = https://github.com/JuliaLang/openlibm.git
