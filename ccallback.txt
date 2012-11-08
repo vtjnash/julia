@@ -1,0 +1,25 @@
+
+#if 0
+ccallback(f::Function,t::Type,a::Tuple) = ccall(:ccallback, Ptr{Void}, (Function,Type,Tuple,Ptr{Void}), f, t, a, C_NULL)
+
+f64 = ccall(:ccallback, Ptr{Void}, (Function,Type,Tuple,Nothing), float64, Float64, (Int,), nothing)
+ccall(f64, Float64, (Int,), 1)
+
+sh = ccall(:ccallback, Ptr{Void}, (Function,Type,Tuple,Nothing), show, Any, (Int,), nothing)
+ccall(sh, Nothing, (Int,), 1)
+
+add_one = ccall(:ccallback, Ptr{Void}, (Function,Type,Tuple,Nothing), square, Uint, (Uint,), nothing)
+x = ccall(:add_one, Uint, (Ptr{Void},), add_one)
+
+
+sorti(a,b) = (ai = arrayref(a,1); bi = arrayref(b,1); println("$a $ai ? $b $bi"); bi- ai)
+sorti(a,b) = (b[] - a[])
+qsort{T}(a::Vector{T}, f::Function) = ccall(:qsort, Void, (Ptr{T}, Int, Int, Ptr{Void}), a, length(a), sizeof(T), ccallback(f, Int32, (Ptr{T},Ptr{T})))
+x = [3,12,5,25,2]
+qsort(x,sorti)
+#endif
+
+extern "C" DLLEXPORT long add_one(long (*x)(long)) {
+    return x(-2)+1;
+}
+

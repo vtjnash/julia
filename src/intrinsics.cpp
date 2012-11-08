@@ -40,13 +40,14 @@ namespace JL_I {
         checked_smul, checked_umul,
         checked_fptoui32, checked_fptosi32, checked_fptoui64, checked_fptosi64,
         // c interface
-        ccall,
+        ccall, ccallback
     };
 };
 
 using namespace JL_I;
 
 #include "ccall.cpp"
+#include "ccallback.cpp"
 
 /*
   low-level intrinsics design:
@@ -423,6 +424,7 @@ static Value *emit_intrinsic(intrinsic f, jl_value_t **args, size_t nargs,
                              jl_codectx_t *ctx)
 {
     if (f == ccall) return emit_ccall(args, nargs, ctx);
+    if (f == ccallback) return emit_ccallback(args, nargs, ctx);
     if (f == box) {
         if (nargs!=2)
             jl_error("box: wrong number of arguments");
@@ -1055,5 +1057,5 @@ extern "C" void jl_init_intrinsic_functions(void)
     ADD_I(checked_smul); ADD_I(checked_umul);
     ADD_I(checked_fptosi32); ADD_I(checked_fptoui32);
     ADD_I(checked_fptosi64); ADD_I(checked_fptoui64);
-    ADD_I(ccall);
+    ADD_I(ccall); ADD_I(ccallback);
 }
