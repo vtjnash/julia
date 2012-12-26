@@ -82,6 +82,24 @@ static Type *julia_type_to_llvm(jl_value_t *jt)
         else          return Type::getIntNTy(getGlobalContext(), nb);
     }
     if (jt == (jl_value_t*)jl_bottom_type) return T_void;
+    if (jl_is_tag_type(jt) && ((jl_tag_type_t*)jt)->name ==
+            jl_jstruct_type->name) {
+        jl_value_t *jeltype = jl_tparam0(jt);
+        if (jl_is_struct_type(jeltype)) {
+            jl_struct_type_t *jet = (jl_struct_type_t*)jeltype;
+            if (jet->struct_decl == NULL) {
+                size_t ntypes = jl_tuple_len(jet->types);
+                std::vector<Type *> latypes(0);
+                size_t i;
+                for(i = 0; i < ntypes; i++) {
+                    jl_value_t *ty = jl_tupleref(jet->types, i);
+                    latypes.push_back(julia_type_to_llvm(ty));
+                }
+                jet->struct_decl = (void*)StructType::create(latypes, jet->name->name->name);
+            }
+            return (Type*)jet->struct_decl;
+        }
+    }
     return jl_pvalue_llvmt;
 }
 

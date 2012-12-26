@@ -247,6 +247,18 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
                                        ConstantInt::get(T_int32, (int)addressOf));
         assert(ty->isPointerTy());
         return builder.CreateBitCast(p, ty);
+    } else if (jl_is_tag_type(jt) && ((jl_tag_type_t*)jt)->name ==
+            jl_jstruct_type->name && vt == jl_pvalue_llvmt) {
+        jl_value_t *jeltype = jl_tparam0(jt);
+        if (jl_is_struct_type(jeltype)) {
+            jl_struct_type_t *jet = (jl_struct_type_t*)jeltype;
+            if ((Type*)jet->struct_decl == ty) {
+                Value *pjv = builder.CreatePointerCast(
+                            builder.CreateAdd(jv, ConstantInt::get(T_size, sizeof(void*))),
+                            PointerType::get(ty,0));
+                return builder.CreateLoad(pjv, false);
+            }
+        }
     }
     // TODO: error for & with non-pointer argument type
     assert(jl_is_bits_type(jt));

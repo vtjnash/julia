@@ -241,6 +241,7 @@ typedef struct {
     uint32_t uid;
     uint32_t size;
     uint32_t alignment;  // strictest alignment over all fields
+    void *struct_decl; //llvm::Value*
     jl_fielddesc_t fields[1];
 } jl_struct_type_t;
 
@@ -407,6 +408,7 @@ extern jl_bits_type_t *jl_float32_type;
 extern jl_bits_type_t *jl_float64_type;
 extern jl_bits_type_t *jl_voidpointer_type;
 extern jl_bits_type_t *jl_pointer_type;
+extern jl_tag_type_t *jl_jstruct_type;
 
 extern jl_type_t *jl_array_uint8_type;
 extern jl_type_t *jl_array_any_type;

@@ -439,6 +439,7 @@ static jl_value_t *jl_deserialize_tag_type(ios_t *s, jl_struct_type_t *kind, int
         st->env = jl_deserialize_value(s);
         st->linfo = (jl_lambda_info_t*)jl_deserialize_value(s);
         st->fptr = jl_deserialize_fptr(s);
+        st->struct_decl = NULL;
         if (st->name == jl_array_type->name) {
             // builtin types are not serialized, so their caches aren't
             // explicitly saved. so we reconstruct the caches of builtin
@@ -487,7 +488,8 @@ static jl_value_t *jl_deserialize_tag_type(ios_t *s, jl_struct_type_t *kind, int
         tt->env = NULL;
         tt->linfo = NULL;
         if (tt->name == jl_type_type->name || tt->name == jl_seq_type->name ||
-            tt->name == jl_abstractarray_type->name) {
+            tt->name == jl_abstractarray_type->name ||
+            tt->name == jl_jstruct_type->name) {
             jl_cell_1d_push(tagtype_list, (jl_value_t*)tt);
         }
         return (jl_value_t*)tt;
@@ -940,9 +942,6 @@ void jl_init_serializer(void)
                      jl_symbol("d"), jl_symbol("e"), jl_symbol("f"),
                      jl_symbol("g"), jl_symbol("h"), jl_symbol("i"),
                      jl_symbol("j"), jl_symbol("k"), jl_symbol("l"),
-                     jl_symbol("m"), jl_symbol("n"), jl_symbol("o"),
-                     jl_symbol("p"), jl_symbol("q"), jl_symbol("r"),
-                     jl_symbol("s"), jl_symbol("t"), jl_symbol("u"),
                      jl_symbol("v"), jl_symbol("w"), jl_symbol("x"),
                      jl_symbol("y"), jl_symbol("z"),
                      jl_symbol("A"), jl_symbol("B"), jl_symbol("C"),
@@ -1013,7 +1012,7 @@ void jl_init_serializer(void)
 #endif
                      jl_labelnode_type, jl_linenumbernode_type,
                      jl_gotonode_type, jl_quotenode_type, jl_topnode_type,
-                     jl_type_type, jl_bottom_type, jl_pointer_type,
+                     jl_type_type, jl_bottom_type, jl_pointer_type, jl_jstruct_type,
                      jl_seq_type, jl_ntuple_type, jl_abstractarray_type,
                      jl_box_type, jl_typector_type, jl_undef_type, jl_top_type,
                      jl_typename_type, jl_task_type, jl_union_kind,
@@ -1022,7 +1021,7 @@ void jl_init_serializer(void)
                      jl_methtable_type, jl_voidpointer_type,
                      jl_array_symbol_type, jl_tupleref(jl_tuple_type,0),
 
-                     jl_symbol_type->name, jl_pointer_type->name,
+                     jl_symbol_type->name, jl_pointer_type->name, jl_jstruct_type->name,
                      jl_tag_kind->name, jl_union_kind->name, jl_bits_kind->name, jl_struct_kind->name,
                      jl_array_type->name, jl_expr_type->name,
                      jl_typename_type->name, jl_type_type->name, jl_methtable_type->name,

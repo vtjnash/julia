@@ -946,6 +946,7 @@ void jl_init_primitives(void)
     add_builtin("Function", (jl_value_t*)jl_function_type);
     add_builtin("LambdaStaticData", (jl_value_t*)jl_lambda_info_type);
     add_builtin("Ptr", (jl_value_t*)jl_pointer_type);
+    add_builtin("Struct", (jl_value_t*)jl_jstruct_type);
     add_builtin("Box", (jl_value_t*)jl_box_type);
     add_builtin("Task", (jl_value_t*)jl_task_type);
 

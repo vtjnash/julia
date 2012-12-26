@@ -77,6 +77,7 @@
 #end
 
 #bitstype {32|64} Ptr{T}
+#abstract Struct{T}
 
 # types for the front end
 
@@ -128,8 +129,8 @@ export
     Module, Nothing, Symbol, Task, Array,
     # numeric types
     Bool, FloatingPoint, Float32, Float64, Number, Integer, Int, Int8, Int16,
-    Int32, Int64, Int128, Ptr, Real, Signed, Uint, Uint8, Uint16, Uint32,
-    Uint64, Uint128, Unsigned,
+    Int32, Int64, Int128, Ptr, Real, Signed, Struct, Uint, Uint8,
+    Uint16, Uint32, Uint64, Uint128, Unsigned,
     # string types
     Char, ASCIIString, ByteString, DirectIndexString, String, UTF8String,
     # errors
