@@ -217,7 +217,6 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
                 Value *slot = builder.CreateAlloca(vt);
                 builder.CreateStore(jv, slot);
                 return builder.CreateBitCast(slot, ty);
-                //todo: this might need to be CreatePointerCast?
             }
         }
         else if ((vt->isIntegerTy() && ty->isIntegerTy()) ||
@@ -226,7 +225,6 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
             if (vt->getPrimitiveSizeInBits() ==
                 ty->getPrimitiveSizeInBits()) {
                 return builder.CreateBitCast(jv, ty);
-                //todo: this might be invalid for a pointer cast?
             }
         }
         // error. box for error handling.
@@ -254,7 +252,7 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
         if (jl_is_struct_type(jeltype)) {
             assert(vt == jl_pvalue_llvmt);
             assert((Type*)((jl_struct_type_t*)(jl_tparam0(jt)))->struct_decl == ty);
-            Value *pjv = builder.CreatePointerCast(
+            Value *pjv = builder.CreateBitCast(
                 builder.CreateAdd(jv, ConstantInt::get(T_size, sizeof(void*))),
                 PointerType::get(ty,0));
             return builder.CreateLoad(pjv, false);
