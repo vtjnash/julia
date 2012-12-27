@@ -939,9 +939,12 @@ void jl_init_serializer(void)
                      null_sym, goto_ifnot_sym, assign_sym,
 
                      jl_symbol("a"), jl_symbol("b"), jl_symbol("c"),
-                     jl_symbol("d"), jl_symbol("e"), jl_symbol("f"),
+                     jl_symbol("d"), jl_symbol("e"), 
                      jl_symbol("g"), jl_symbol("h"), jl_symbol("i"),
                      jl_symbol("j"), jl_symbol("k"), jl_symbol("l"),
+                     jl_symbol("m"), jl_symbol("n"), 
+                     jl_symbol("p"), jl_symbol("q"), jl_symbol("r"),
+                     jl_symbol("s"), jl_symbol("t"), jl_symbol("u"),
                      jl_symbol("v"), jl_symbol("w"), jl_symbol("x"),
                      jl_symbol("y"), jl_symbol("z"),
                      jl_symbol("A"), jl_symbol("B"), jl_symbol("C"),

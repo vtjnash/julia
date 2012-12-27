@@ -77,7 +77,7 @@
 #end
 
 #bitstype {32|64} Ptr{T}
-#abstract Struct{T}
+#bitstype {32|64} Struct{T}
 
 # types for the front end
 
@@ -129,7 +129,7 @@ export
     Module, Nothing, Symbol, Task, Array,
     # numeric types
     Bool, FloatingPoint, Float32, Float64, Number, Integer, Int, Int8, Int16,
-    Int32, Int64, Int128, Ptr, Real, Signed, Struct, Uint, Uint8,
+    Int32, Int64, Int128, Ptr, Real, Signed, Struct, StructPtr, Uint, Uint8,
     Uint16, Uint32, Uint64, Uint128, Unsigned,
     # string types
     Char, ASCIIString, ByteString, DirectIndexString, String, UTF8String,
@@ -203,6 +203,8 @@ if is(Int,Int64)
 else
     typealias Uint Uint32
 end
+
+typealias StructPtr{T} Struct{Ptr{T}}
 
 abstract Exception
 

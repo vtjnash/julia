@@ -16,9 +16,11 @@ convert{T<:Ptr,R<:Ptr}(::Type{Struct{T}}, s::Struct{R}) = box(Struct{T}, unbox(S
 # object to pointer
 convert{T<:Ptr}(::Type{Struct{T}},x::Array) = error("cannot convert "*string(typeof(x))*" to a struct pointer")
 convert{T<:Ptr}(::Type{Struct{T}}, x) =
-    (isa(typeof(x),CompositeKind) ?
-    box(Struct{T}, unbox(Ptr{Any},x)) + 8 :
-    error("only CompositeKind's can be converted to Ptr{Struct} types"))
+    if isa(typeof(x),CompositeKind)
+        ccall(:jl_value_ptr, Struct{T}, (Any,), x) + sizeof(Ptr)
+    else
+        error("only CompositeKind's can be converted to Ptr{Struct} types")
+    end
 
 struct{T}(::Type{T}, x::Uint) = convert(Struct{T}, x)
 struct{T}(x::T) = convert(Struct{Ptr{T}}, x)
