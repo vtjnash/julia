@@ -1320,6 +1320,7 @@ export
     cfunction,
     setenv,
     strerror,
+    struct,
     unsafe_ref,
     unsafe_assign,
     unsetenv,

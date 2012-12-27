@@ -2651,8 +2651,9 @@ void jl_init_types(void)
                          sizeof(void*)*8);
 
     tv = jl_tuple1(tvar("T"));
-    jl_jstruct_type = jl_new_tagtype((jl_value_t*)jl_symbol("Struct"),
-                                           jl_any_type, tv);
+    jl_jstruct_type =
+        jl_new_bits_type((jl_value_t*)jl_symbol("Struct"), jl_any_type, tv,
+                         sizeof(void*)*8);
 
     // Type{T}
     jl_typetype_tvar = jl_new_typevar(jl_symbol("T"),

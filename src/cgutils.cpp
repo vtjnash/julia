@@ -74,18 +74,21 @@ static Type *julia_type_to_llvm(jl_value_t *jt)
         return PointerType::get(lt, 0);
     }
     if (jl_is_bits_type(jt)) {
-        int nb = jl_bitstype_nbits(jt);
-        if (nb == 8)  return T_int8;
-        if (nb == 16) return T_int16;
-        if (nb == 32) return T_int32;
-        if (nb == 64) return T_int64;
-        else          return Type::getIntNTy(getGlobalContext(), nb);
-    }
-    if (jt == (jl_value_t*)jl_bottom_type) return T_void;
-    if (jl_is_tag_type(jt) && ((jl_tag_type_t*)jt)->name ==
-            jl_jstruct_type->name) {
-        jl_value_t *jeltype = jl_tparam0(jt);
-        if (jl_is_struct_type(jeltype)) {
+        if (!jl_is_jstruct_type(jt)) {
+            int nb = jl_bitstype_nbits(jt);
+            if (nb == 8)  return T_int8;
+            if (nb == 16) return T_int16;
+            if (nb == 32) return T_int32;
+            if (nb == 64) return T_int64;
+            else          return Type::getIntNTy(getGlobalContext(), nb);
+        } else {
+            jl_value_t *jeltype = jl_tparam0(jt);
+            int isptr = 0;
+            if (jl_is_cpointer_type(jeltype)) {
+                jeltype = jl_tparam0(jeltype);
+                isptr = 1;
+            }
+            assert(jl_is_struct_type(jeltype));
             jl_struct_type_t *jet = (jl_struct_type_t*)jeltype;
             if (jet->struct_decl == NULL) {
                 size_t ntypes = jl_tuple_len(jet->types);
@@ -93,13 +96,20 @@ static Type *julia_type_to_llvm(jl_value_t *jt)
                 size_t i;
                 for(i = 0; i < ntypes; i++) {
                     jl_value_t *ty = jl_tupleref(jet->types, i);
-                    latypes.push_back(julia_type_to_llvm(ty));
+                    Type *lty = julia_type_to_llvm(ty);
+                    if (isa<StructType>(lty))
+                        jl_error("Structs cannot contain other Structs directly");
+                    latypes.push_back(lty);
                 }
                 jet->struct_decl = (void*)StructType::create(latypes, jet->name->name->name);
             }
-            return (Type*)jet->struct_decl;
+            Type *t = (Type*)jet->struct_decl;
+            if (isptr)
+                t = PointerType::get(t,0);
+            return t;
         }
     }
+    if (jt == (jl_value_t*)jl_bottom_type) return T_void;
     return jl_pvalue_llvmt;
 }
 

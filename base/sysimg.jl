@@ -57,6 +57,7 @@ include("int.jl")
 include("promotion.jl")
 include("operators.jl")
 include("pointer.jl")
+include("struct.jl")
 
 include("float.jl")
 include("reduce.jl")

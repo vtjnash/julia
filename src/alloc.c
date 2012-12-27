@@ -51,7 +51,7 @@ jl_struct_type_t *jl_methoderror_type;
 jl_struct_type_t *jl_loaderror_type;
 jl_bits_type_t *jl_pointer_type;
 jl_bits_type_t *jl_voidpointer_type;
-jl_tag_type_t *jl_jstruct_type;
+jl_bits_type_t *jl_jstruct_type;
 jl_value_t *jl_an_empty_cell=NULL;
 jl_value_t *jl_stackovf_exception;
 jl_value_t *jl_divbyzero_exception;

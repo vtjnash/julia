@@ -408,7 +408,7 @@ extern jl_bits_type_t *jl_float32_type;
 extern jl_bits_type_t *jl_float64_type;
 extern jl_bits_type_t *jl_voidpointer_type;
 extern jl_bits_type_t *jl_pointer_type;
-extern jl_tag_type_t *jl_jstruct_type;
+extern jl_bits_type_t *jl_jstruct_type;
 
 extern jl_type_t *jl_array_uint8_type;
 extern jl_type_t *jl_array_any_type;
@@ -617,6 +617,12 @@ static inline int jl_is_type_type(jl_value_t *v)
 {
     return (jl_is_tag_type(v) &&
             ((jl_tag_type_t*)(v))->name == jl_type_type->name);
+}
+
+static inline int jl_is_jstruct_type(void *v)
+{
+    return (jl_is_bits_type(v) &&
+            ((jl_bits_type_t*)(v))->name == jl_jstruct_type->name);
 }
 
 // type info accessors

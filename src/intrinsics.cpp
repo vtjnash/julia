@@ -165,8 +165,11 @@ static Value *emit_unbox(Type *to, Type *pto, Value *x)
             return builder.CreateZExt(x, T_int8);
         if (x->getType()->isPointerTy() && !to->isPointerTy())
             return builder.CreatePtrToInt(x, to);
-        assert(x->getType() == to);
+        if (x->getType() != to) jl_error("unbox: T != typeof(x)");
         return x;
+    }
+    if (to == jl_ppvalue_llvmt) { // unbox(Ptr{T},x)) --> &x
+        return builder.CreateBitCast(x, to);
     }
     Value *p = bitstype_pointer(x);
     if (to == T_int1) {

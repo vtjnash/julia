@@ -217,6 +217,7 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
                 Value *slot = builder.CreateAlloca(vt);
                 builder.CreateStore(jv, slot);
                 return builder.CreateBitCast(slot, ty);
+                //todo: this might need to be CreatePointerCast?
             }
         }
         else if ((vt->isIntegerTy() && ty->isIntegerTy()) ||
@@ -225,6 +226,7 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
             if (vt->getPrimitiveSizeInBits() ==
                 ty->getPrimitiveSizeInBits()) {
                 return builder.CreateBitCast(jv, ty);
+                //todo: this might be invalid for a pointer cast?
             }
         }
         // error. box for error handling.
@@ -247,18 +249,24 @@ static Value *julia_to_native(Type *ty, jl_value_t *jt, Value *jv,
                                        ConstantInt::get(T_int32, (int)addressOf));
         assert(ty->isPointerTy());
         return builder.CreateBitCast(p, ty);
-    } else if (jl_is_tag_type(jt) && ((jl_tag_type_t*)jt)->name ==
-            jl_jstruct_type->name && vt == jl_pvalue_llvmt) {
+    } else if (jl_is_jstruct_type(jt)) { // Struct{T}
         jl_value_t *jeltype = jl_tparam0(jt);
         if (jl_is_struct_type(jeltype)) {
-            jl_struct_type_t *jet = (jl_struct_type_t*)jeltype;
-            if ((Type*)jet->struct_decl == ty) {
-                Value *pjv = builder.CreatePointerCast(
-                            builder.CreateAdd(jv, ConstantInt::get(T_size, sizeof(void*))),
-                            PointerType::get(ty,0));
-                return builder.CreateLoad(pjv, false);
-            }
+            assert(vt == jl_pvalue_llvmt);
+            assert((Type*)((jl_struct_type_t*)(jl_tparam0(jt)))->struct_decl == ty);
+            Value *pjv = builder.CreatePointerCast(
+                builder.CreateAdd(jv, ConstantInt::get(T_size, sizeof(void*))),
+                PointerType::get(ty,0));
+            return builder.CreateLoad(pjv, false);
         }
+        //else if (jl_is_cpointer_type(jeltype)) {
+        //    // This case is handled above since (vt != jl_pvalue_llvmt) == true
+        //    assert(vt->isPointerTy());
+        //    if (!addressOf) {
+        //        assert(ty->isPointerTy() && ty->getContainedType(0) == T_void);
+        //        return builder.CreatePointerCast(jv, ty);
+        //    }
+        //}
     }
     // TODO: error for & with non-pointer argument type
     assert(jl_is_bits_type(jt));
@@ -528,7 +536,14 @@ static Value *emit_ccall(jl_value_t **args, size_t nargs, jl_codectx_t *ctx)
             arg = emit_unboxed(argi, ctx);
             if (jl_is_bits_type(expr_type(argi, ctx))) {
                 if (addressOf)
-                    arg = emit_unbox(largty->getContainedType(0), largty, arg);
+                    if (jl_is_jstruct_type(jargty))
+                        arg = builder.CreateLoad(
+                                builder.CreateBitCast(
+                                    emit_unbox(jl_pvalue_llvmt, jl_ppvalue_llvmt, arg),
+                                    largty),
+                                false);
+                    else
+                        arg = emit_unbox(largty->getContainedType(0), largty, arg);
                 else
                     arg = emit_unbox(largty, PointerType::get(largty,0), arg);
             }
