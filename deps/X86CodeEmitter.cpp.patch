@@ -1,0 +1,16 @@
+435c435,437
+<   if (RelocOp->isGlobal()) {
+---
+>   if (RelocOp->isMBB()) {
+>     emitPCRelativeBlockAddress(RelocOp->getMBB());
+>   } else if (RelocOp->isGlobal()) {
+464c466,468
+<   if (Op3.isGlobal()) {
+---
+>   if (Op3.isMBB()) {
+>     DispForReloc = &Op3;
+>   } else if (Op3.isGlobal()) {
+1179a1184
+>     case X86::EH_SjLj_Setup: //727
+1182d1186
+< 

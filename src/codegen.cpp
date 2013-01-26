@@ -148,6 +148,7 @@ static Function *box8_func;
 static Function *box16_func;
 static Function *box32_func;
 static Function *box64_func;
+static Function *sjljF;
 
 /*
   stuff to fix up:
@@ -1733,15 +1734,14 @@ static Value *emit_expr(jl_value_t *expr, jl_codectx_t *ctx, bool isboxed,
         Value *FrameAddr = builder.CreateCall(
                 Intrinsic::getDeclaration(jl_Module, Intrinsic::frameaddress),
                 ConstantInt::get(T_int32, 0));
-        builder.CreateStore(FrameAddr, jbuf);
+        builder.CreateStore(FrameAddr, jbuf, /*isVolatile=*/true);
         // Store the stack pointer to the setjmp buffer.
         Value *StackAddr = builder.CreateCall(
                 Intrinsic::getDeclaration(jl_Module, Intrinsic::stacksave));
         Value *StackSaveSlot = builder.CreateGEP(
                 jbuf, ConstantInt::get(T_int32, 2));
-        builder.CreateStore(StackAddr, StackSaveSlot);
+        builder.CreateStore(StackAddr, StackSaveSlot, /*isVolatile=*/true);
         // Call LLVM's EH setjmp, which is lightweight.
-        Value *sjljF = Intrinsic::getDeclaration(jl_Module, Intrinsic::eh_sjlj_setjmp);
         jbuf = builder.CreateBitCast(jbuf, T_pint8);
         Value *sj = builder.CreateCall(sjljF, jbuf);
         // End of code from Clang
@@ -2475,6 +2475,7 @@ static void init_julia_llvm_env(Module *m)
     T_float64 = Type::getDoubleTy(getGlobalContext());
     T_pfloat64 = PointerType::get(T_float64, 0);
     T_void = Type::getVoidTy(jl_LLVMContext);
+    sjljF = Intrinsic::getDeclaration(jl_Module, Intrinsic::eh_sjlj_setjmp);
 
     // add needed base definitions to our LLVM environment
     StructType *valueSt = StructType::create(getGlobalContext(), "jl_value_t");
