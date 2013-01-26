@@ -14,12 +14,10 @@
 #include "htable.h"
 #include "arraylist.h"
 
-#include <setjmp.h>
-#if defined(__FreeBSD__)
-#  define jl_jmp_buf sigjmp_buf
-#else
-#  define jl_jmp_buf jmp_buf
-#endif
+typedef void* jl_jmp_buf[5];
+#define jl_setjmp(a,b)  __builtin_setjmp(a)
+#define jl_longjmp(a,b) __builtin_longjmp(a,1)
+
 
 // Check windows
 #if _WIN32 || _WIN64
@@ -1164,21 +1162,6 @@ static inline void jl_eh_restore_state(jl_handler_t *eh)
 
 DLLEXPORT void jl_enter_handler(jl_handler_t *eh);
 DLLEXPORT void jl_pop_handler(int n);
-
-#if defined(__WIN32__)
-#define jl_setjmp_f    _setjmp
-#define jl_setjmp(a,b) setjmp(a)
-#define jl_longjmp(a,b) longjmp(a,b)
-#else
-// determine actual entry point name
-#if defined(sigsetjmp)
-#define jl_setjmp_f    __sigsetjmp
-#else
-#define jl_setjmp_f    sigsetjmp
-#endif
-#define jl_setjmp(a,b) sigsetjmp(a,b)
-#define jl_longjmp(a,b) siglongjmp(a,b)
-#endif
 
 #define JL_TRY                                                    \
     int i__tr, i__ca; jl_handler_t __eh;                          \

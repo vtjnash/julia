@@ -33,7 +33,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Config/llvm-config.h"
-#include <setjmp.h>
 #ifdef __WIN32__
 #include <malloc.h>
 #endif
@@ -134,7 +133,6 @@ static Function *jlegal_func;
 static Function *jlallocobj_func;
 static Function *jlalloc2w_func;
 static Function *jlalloc3w_func;
-static Function *setjmp_func;
 static Function *box_int8_func;
 static Function *box_uint8_func;
 static Function *box_int16_func;
@@ -1729,7 +1727,24 @@ static Value *emit_expr(jl_value_t *expr, jl_codectx_t *ctx, bool isboxed,
         Value *jbuf = builder.CreateGEP((*ctx->handlers)[labl],
                                         ConstantInt::get(T_size,0));
         builder.CreateCall(jlenter_func, jbuf);
-        Value *sj = builder.CreateCall2(setjmp_func, jbuf, ConstantInt::get(T_int32,0));
+        //emit __builtin_setjmp, from Clang
+        // Store the frame pointer to the setjmp buffer.
+        jbuf = builder.CreateBitCast(jbuf, PointerType::get(T_pint8,0));
+        Value *FrameAddr = builder.CreateCall(
+                Intrinsic::getDeclaration(jl_Module, Intrinsic::frameaddress),
+                ConstantInt::get(T_int32, 0));
+        builder.CreateStore(FrameAddr, jbuf);
+        // Store the stack pointer to the setjmp buffer.
+        Value *StackAddr = builder.CreateCall(
+                Intrinsic::getDeclaration(jl_Module, Intrinsic::stacksave));
+        Value *StackSaveSlot = builder.CreateGEP(
+                jbuf, ConstantInt::get(T_int32, 2));
+        builder.CreateStore(StackAddr, StackSaveSlot);
+        // Call LLVM's EH setjmp, which is lightweight.
+        Value *sjljF = Intrinsic::getDeclaration(jl_Module, Intrinsic::eh_sjlj_setjmp);
+        jbuf = builder.CreateBitCast(jbuf, T_pint8);
+        Value *sj = builder.CreateCall(sjljF, jbuf);
+        // End of code from Clang
         Value *isz = builder.CreateICmpEQ(sj, ConstantInt::get(T_int32,0));
         BasicBlock *tryblk = BasicBlock::Create(getGlobalContext(), "try",
                                                 ctx->f);
@@ -2541,20 +2556,6 @@ static void init_julia_llvm_env(Module *m)
                          "jl_new_struct_uninit", jl_Module);
     jl_ExecutionEngine->addGlobalMapping(jlnew_func,
                                          (void*)&jl_new_struct_uninit);
-
-    std::vector<Type*> args2(0);
-    args2.push_back(T_pint8);
-    args2.push_back(T_int32);
-    setjmp_func =
-        Function::Create(FunctionType::get(T_int32, args2, false),
-                         Function::ExternalLinkage, "sigsetjmp", jl_Module);
-        //Intrinsic::getDeclaration(jl_Module, Intrinsic::eh_sjlj_setjmp);
-#ifdef LLVM32
-    setjmp_func->addFnAttr(Attributes::ReturnsTwice);
-#else
-    setjmp_func->addFnAttr(Attribute::ReturnsTwice);
-#endif
-    jl_ExecutionEngine->addGlobalMapping(setjmp_func, (void*)&jl_setjmp_f);
 
     std::vector<Type*> te_args(0);
     te_args.push_back(T_pint8);
