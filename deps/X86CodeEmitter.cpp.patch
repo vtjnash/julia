@@ -10,7 +10,10 @@
 >   if (Op3.isMBB()) {
 >     DispForReloc = &Op3;
 >   } else if (Op3.isGlobal()) {
-1179a1184
+1169a1174,1177
+>     //Similiarly for EH_SjLj_Setup
 >     case X86::EH_SjLj_Setup: //727
-1182d1186
+>       DEBUG(dbgs() << "#EH_SjLj_Setup\n");
+>       break;
+1182d1189
 < 
