@@ -242,6 +242,44 @@ linspace(start::Real, stop::Real) = linspace(start, stop, 100)
 logspace(start::Real, stop::Real, n::Integer) = 10.^linspace(start, stop, n)
 logspace(start::Real, stop::Real) = logspace(start, stop, 50)
 
+
+function meshgrid{T<:Real}(xi::(T,T,Integer)...)
+    # xi = ((start, stop, n), ...)
+    # actually create the meshgrid
+    sizes = tuple([x[3] for x in xi]...)
+    a = Array(Array{T,length(xi)},length(xi))
+    for (i,(start,stop,n)) in enumerate(xi)
+        dim = linspace(convert(T,start),convert(T,stop),n)
+        yi = Array(T,sizes)
+        cartesianmap((indices...) -> yi[indices...] = dim[indices[i]], sizes)
+        a[i] = yi
+    end
+    a
+end
+function meshgrid(xi::(Real,Real,Integer)...)
+    # convert all indices to the same type and dispatch again
+    T = typeof(xi[1][1])
+    for (start,stop,n) in xi
+        Tstart = typeof(start)
+        T = promote_type(T,typeof(start),typeof(stop))
+    end
+    xiT = Array((T,T,Integer),length(xi))
+    for (i,(start,stop,n)) in enumerate(xi)
+        xiT[i] = (convert(T,start)::T,convert(T,stop)::T,n)
+    end
+    xiT = tuple(xiT...)
+    meshgrid(xiT...)
+end
+function meshgrid(xi::(Integer,Integer,Integer)...)
+    # convert all indices to a float type and dispatch again
+    xiT = Array((Real,Real,Integer),length(xi))
+    for (i,(start,stop,n)) in enumerate(xi)
+        xiT[i] = (float(start),float(stop),n)
+    end
+    meshgrid(xiT...)
+end
+
+
 ## Conversions ##
 
 convert{T,n}(::Type{Array{T}}, x::Array{T,n}) = x
