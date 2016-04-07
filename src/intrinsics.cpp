@@ -340,7 +340,7 @@ static Value *auto_unbox(jl_value_t *x, jl_codectx_t *ctx)
     return auto_unbox(v, ctx);
 }
 
-static jl_value_t *staticeval_bitstype(jl_value_t *targ, const char *fname, jl_codectx_t *ctx)
+static jl_value_t *staticeval_bitstype(jl_value_t *targ, const char *fname, jl_codectx_t *ctx, bool throw_error = true)
 {
     // evaluate an argument at compile time to determine what type it is
     // does bitstype validation if and only if fname != NULL
@@ -349,12 +349,13 @@ static jl_value_t *staticeval_bitstype(jl_value_t *targ, const char *fname, jl_c
     if (jl_is_type_type(et) && jl_is_leaf_type(jl_tparam0(et))) {
         bt = jl_tparam0(et);
     }
-    else {
+    else if (ctx->linfo->def) { // don't bother attempting codegen static-eval for toplevel
         bt = jl_static_eval(targ, ctx, ctx->module, ctx->linfo, true, true);
         if (bt) jl_add_linfo_root(ctx->linfo, bt);
     }
     if (!bt || !jl_is_bitstype(bt)) {
-        emit_error("expected bits type as first argument", ctx);
+        if (throw_error)
+            emit_error("expected bits type as first argument", ctx);
         return NULL;
     }
     return bt;
@@ -386,9 +387,7 @@ static int get_bitstype_nbits(jl_value_t *bt)
 static jl_cgval_t generic_box(jl_value_t *targ, jl_value_t *x, jl_codectx_t *ctx)
 {
     // Examine the first argument //
-    jl_value_t *bt = static_eval(targ, ctx, true, true);
-    if (bt) jl_add_linfo_root(ctx->linfo, bt);
-
+    jl_value_t *bt = staticeval_bitstype(targ, "box", ctx, false);
     if (!bt || !jl_is_bitstype(bt)) {
         // it's easier to throw a good error from C than llvm
         if (bt) targ = bt;

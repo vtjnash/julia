@@ -209,8 +209,13 @@ function show(io::IO, m::Module)
 end
 
 function show(io::IO, l::LambdaInfo)
-    println(io, "LambdaInfo for ", l.name)
-    body = Expr(:body); body.args = uncompressed_ast(l)
+    if isdefined(l, :def)
+        println(io, "LambdaInfo for ", l.def.name)
+    else
+        println(io, "Toplevel LambdaInfo thunk")
+    end
+    body = Expr(:body)
+    body.args = uncompressed_ast(l)
     body.typ = l.rettype
     show(io, body)
 end
