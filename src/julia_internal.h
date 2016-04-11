@@ -277,8 +277,22 @@ jl_function_t *jl_module_get_initializer(jl_module_t *m);
 uint32_t jl_module_next_counter(jl_module_t *m);
 void jl_fptr_to_llvm(jl_fptr_t fptr, jl_lambda_info_t *lam, int specsig);
 jl_tupletype_t *arg_type_tuple(jl_value_t **args, size_t nargs);
+
 typedef int (*jl_typemap_visitor_fptr)(jl_typemap_entry_t *l, void *closure);
 int jl_typemap_visitor(union jl_typemap_t a, jl_typemap_visitor_fptr fptr, void *closure);
+
+struct typemap_intersection_env {
+    // input values
+    int offs;
+    jl_typemap_intersection_visitor_fptr fptr;
+    jl_tupletype_t *type;
+    jl_tupletype_t *tvars;
+    // output values
+    jl_tupletype_t *ti;
+    jl_svec_t *env;
+};
+typedef int (*jl_typemap_intersection_visitor_fptr)(jl_typemap_entry_t *l, struct typemap_intersection_env *closure);
+int jl_typemap_intersection_visitor(union jl_typemap_t a, jl_typemap_intersection_visitor_fptr fptr, struct typemap_intersection_env *closure);
 
 jl_value_t *skip_meta(jl_array_t *body);
 int has_meta(jl_array_t *body, jl_sym_t *sym);
