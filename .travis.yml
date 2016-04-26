@@ -56,7 +56,6 @@ notifications:
           - http://julia.mit.edu:8000/travis-hook
 before_install:
     - make check-whitespace
-    - JULIA_SYSIMG_BUILD_FLAGS="--output-ji ../usr/lib/julia/sys.ji"
     - if [ `uname` = "Linux" ]; then
         contrib/travis_fastfail.sh || exit 1;
         mkdir -p $HOME/bin;
@@ -86,7 +85,6 @@ before_install:
         export LDFLAGS="-L$(brew --prefix openblas-julia)/lib -L$(brew --prefix suite-sparse-julia)/lib";
         export DYLD_FALLBACK_LIBRARY_PATH="/usr/local/lib:/lib:/usr/lib:$(brew --prefix openblas-julia)/lib:$(brew --prefix suite-sparse-julia)/lib:$(brew --prefix arpack-julia)/lib";
         make $BUILDOPTS -C contrib -f repackage_system_suitesparse4.make;
-        JULIA_SYSIMG_BUILD_FLAGS="$JULIA_SYSIMG_BUILD_FLAGS --compile=all";
         COMPILE_MODE="--compile=min";
         TESTSTORUN="core ccall mmap llvmcall threads"; fi # TODO: turn this back to "all" once it's fast enough to not time out
     - git clone -q git://git.kitenet.net/moreutils
@@ -94,7 +92,8 @@ script:
     - make -C moreutils mispipe
     - make $BUILDOPTS -C base version_git.jl.phony
     - moreutils/mispipe "make $BUILDOPTS NO_GIT=1 -C deps" bar > deps.log || cat deps.log
-    - make $BUILDOPTS NO_GIT=1 JULIA_SYSIMG_BUILD_FLAGS="$JULIA_SYSIMG_BUILD_FLAGS" prefix=/tmp/julia install | moreutils/ts -s "%.s"
+    - make $BUILDOPTS NO_GIT=1 prefix=/tmp/julia release julia-ui-debug | moreutils/ts -s "%.s"
+    - make $BUILDOPTS NO_GIT=1 prefix=/tmp/julia install | moreutils/ts -s "%.s" # due to limited memory, link julia-sysimg-debug in a separate step
     - make $BUILDOPTS NO_GIT=1 build-stats
     - du -sk /tmp/julia/*
     - if [ `uname` = "Darwin" ]; then

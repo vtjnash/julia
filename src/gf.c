@@ -1223,7 +1223,10 @@ static void _compile_all_deq(jl_array_t *found)
         if (jl_is_method(ml->func.value)) {
             // type infer a copy of the template, to avoid modifying the template itself
             templ = ml->func.method->lambda_template;
-            linfo = jl_get_specialized(ml->func.method, ml->sig, jl_emptysvec);
+            if (templ->unspecialized_ducttape)
+                linfo = templ->unspecialized_ducttape; // TODO: switch to using the ->tfunc field to store/retrieve this
+            else
+                linfo = jl_get_specialized(ml->func.method, ml->sig, jl_emptysvec);
         }
         else if (jl_is_lambda_info(ml->func.value)) {
             templ = ml->func.linfo;
@@ -1261,6 +1264,8 @@ static void _compile_all_deq(jl_array_t *found)
                 templ->functionID = linfo->functionID;
                 templ->specFunctionID = linfo->specFunctionID;
                 templ->jlcall_api = linfo->jlcall_api;
+                templ->unspecialized_ducttape = linfo;
+                jl_gc_wb(templ->unspecialized_ducttape, linfo);
             }
         }
     }
