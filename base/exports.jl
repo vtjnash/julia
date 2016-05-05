@@ -1391,14 +1391,12 @@ export
     @code_native,
 
     # platform-conditional code
-    @windows,
-    @unix,
-    @osx,
-    @linux,
-    @windows_only,
-    @unix_only,
-    @osx_only,
-    @linux_only,
+    @static,
+    is_windows,
+    is_linux,
+    is_apple,
+    is_bsd,
+    is_unix,
 
     # tasks
     @schedule,

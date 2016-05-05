@@ -24,7 +24,7 @@ let err = nothing
     end
 end
 
-if @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
+if !is_windows() || Base.windows_version() >= Base.WINDOWS_VISTA_VER
     dirlink = joinpath(dir, "dirlink")
     symlink(subdir, dirlink)
     # relative link
@@ -35,7 +35,7 @@ if @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
     cd(pwd_)
 end
 
-@unix_only begin
+if !is_windows()
     link = joinpath(dir, "afilelink.txt")
     symlink(file, link)
     # relative link
@@ -65,7 +65,7 @@ chmod(file, filemode(file) | 0o222)
 @test filemode(file) & 0o111 == 0
 @test filesize(file) == 0
 
-@windows_only begin
+if is_windows()
     permissions = 0o444
     @test filemode(dir) & 0o777 != permissions
     @test filemode(subdir) & 0o777 != permissions
@@ -75,8 +75,7 @@ chmod(file, filemode(file) | 0o222)
     @test filemode(subdir) & 0o777 == permissions
     @test filemode(file) & 0o777 == permissions
     chmod(dir, 0o666, recursive=true)  # Reset permissions in case someone wants to use these later
-end
-@unix_only begin
+else
     mktempdir() do tmpdir
         tmpfile=joinpath(tmpdir, "tempfile.txt")
         touch(tmpfile)
@@ -102,8 +101,11 @@ end
 
 # On windows the filesize of a folder is the accumulation of all the contained
 # files and is thus zero in this case.
-@windows_only @test filesize(dir) == 0
-@unix_only @test filesize(dir) > 0
+if is_windows()
+    @test filesize(dir) == 0
+else
+    @test filesize(dir) > 0
+end
 now = time()
 # Allow 10s skew in addition to the time it took us to actually execute this code
 let skew = 10 + (now - starttime)
@@ -114,13 +116,15 @@ end
 #@test Int(time()) >= Int(mtime(file)) >= Int(mtime(dir)) >= 0 # 1 second accuracy should be sufficient
 
 # test links
-@unix_only @test islink(link) == true
-@unix_only @test readlink(link) == file
+if is_unix()
+    @test islink(link) == true
+    @test readlink(link) == file
+end
 
-if @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
+if !is_windows() || Base.windows_version() >= Base.WINDOWS_VISTA_VER
     @test islink(dirlink) == true
     @test isdir(dirlink) == true
-    @test readlink(dirlink) == subdir * @windows? "\\" : ""
+    @test readlink(dirlink) == subdir * (is_windows() ? "\\" : "")
 end
 
 # rm recursive TODO add links
@@ -156,22 +160,25 @@ rm(c_tmpdir, recursive=true)
 @test_throws Base.UVError rm(c_tmpdir, recursive=true)
 @test rm(c_tmpdir, force=true, recursive=true) === nothing
 
-# chown will give an error if the user does not have permissions to change files
-@unix_only if get(ENV, "USER", "") == "root" || get(ENV, "HOME", "") == "/root"
-    chown(file, -2, -1)  # Change the file owner to nobody
-    @test stat(file).uid !=0
-    chown(file, 0, -2)  # Change the file group to nogroup (and owner back to root)
-    @test stat(file).gid !=0
-    @test stat(file).uid ==0
-    chown(file, -1, 0)
-    @test stat(file).gid ==0
-    @test stat(file).uid ==0
+if !is_windows()
+    # chown will give an error if the user does not have permissions to change files
+    if get(ENV, "USER", "") == "root" || get(ENV, "HOME", "") == "/root"
+        chown(file, -2, -1)  # Change the file owner to nobody
+        @test stat(file).uid !=0
+        chown(file, 0, -2)  # Change the file group to nogroup (and owner back to root)
+        @test stat(file).gid !=0
+        @test stat(file).uid ==0
+        chown(file, -1, 0)
+        @test stat(file).gid ==0
+        @test stat(file).uid ==0
+    else
+        @test_throws Base.UVError chown(file, -2, -1)  # Non-root user cannot change ownership to another user
+        @test_throws Base.UVError chown(file, -1, -2)  # Non-root user cannot change group to a group they are not a member of (eg: nogroup)
+    end
 else
-    @test_throws Base.UVError chown(file, -2, -1)  # Non-root user cannot change ownership to another user
-    @test_throws Base.UVError chown(file, -1, -2)  # Non-root user cannot change group to a group they are not a member of (eg: nogroup)
+    # test that chown doesn't cause any errors for Windows
+    @test chown(file, -2, -2) == nothing
 end
-
-@windows_only @test chown(file, -2, -2) == nothing  # chown shouldn't cause any errors for Windows
 
 #######################################################################
 # This section tests file watchers.                                   #
@@ -279,8 +286,11 @@ my_tempdir = tempdir()
 
 path = tempname()
 # Issue #9053.
-@unix_only @test ispath(path) == false
-@windows_only @test ispath(path) == true
+if is_windows()
+    @test ispath(path) == true
+else
+    @test ispath(path) == false
+end
 
 (p, f) = mktemp()
 print(f, "Here is some text")
@@ -445,7 +455,7 @@ end
 
 # issue #10506 #10434
 ## Tests for directories and links to directories
-if @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
+if !is_windows() || Base.windows_version() >= Base.WINDOWS_VISTA_VER
     function setup_dirs(tmpdir)
         srcdir = joinpath(tmpdir, "src")
         hidden_srcdir = joinpath(tmpdir, ".hidden_srcdir")
@@ -655,7 +665,7 @@ end
 
 # issue #10506 #10434
 ## Tests for files and links to files as well as directories and links to directories
-@unix_only begin
+if !is_windows()
     function setup_files(tmpdir)
         srcfile = joinpath(tmpdir, "srcfile.txt")
         hidden_srcfile = joinpath(tmpdir, ".hidden_srcfile.txt")
@@ -881,15 +891,19 @@ function test_LibcFILE(FILEp)
     close(FILEp)
 end
 
-f = open(file, "w")
-write(f, "Hello, world!")
-close(f)
-f = open(file, "r")
-test_LibcFILE(convert(Libc.FILE, f))
-close(f)
-@unix_only f = RawFD(ccall(:open, Cint, (Ptr{UInt8}, Cint), file, Base.Filesystem.JL_O_RDONLY))
-@windows_only f = RawFD(ccall(:_open, Cint, (Ptr{UInt8}, Cint), file, Base.Filesystem.JL_O_RDONLY))
-test_LibcFILE(Libc.FILE(f,Libc.modestr(true,false)))
+let f = open(file, "w")
+    write(f, "Hello, world!")
+    close(f)
+    f = open(file, "r")
+    test_LibcFILE(convert(Libc.FILE, f))
+    close(f)
+    if is_windows()
+        f = RawFD(ccall(:_open, Cint, (Ptr{UInt8}, Cint), file, Base.Filesystem.JL_O_RDONLY))
+    else
+        f = RawFD(ccall(:open, Cint, (Ptr{UInt8}, Cint), file, Base.Filesystem.JL_O_RDONLY))
+    end
+    test_LibcFILE(Libc.FILE(f, Libc.modestr(true, false)))
+end
 
 # issue #10994: pathnames cannot contain embedded NUL chars
 for f in (mkdir, cd, Base.Filesystem.unlink, readlink, rm, touch, readdir, mkpath, stat, lstat, ctime, mtime, filemode, filesize, uperm, gperm, operm, touch, isblockdev, ischardev, isdir, isfifo, isfile, islink, ispath, issetgid, issetuid, issocket, issticky, realpath, watch_file, poll_file)
@@ -899,7 +913,7 @@ end
 @test_throws ArgumentError open("ba\0d", "w")
 @test_throws ArgumentError cp(file, "ba\0d")
 @test_throws ArgumentError mv(file, "ba\0d")
-if @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
+if !is_windows() || (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
     @test_throws ArgumentError symlink(file, "ba\0d")
 else
     @test_throws ErrorException symlink(file, "ba\0d")
@@ -921,7 +935,7 @@ cd(dirwalk) do
         touch(joinpath("sub_dir1", "file$i"))
     end
     touch(joinpath("sub_dir2", "file_dir2"))
-    has_symlinks = @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
+    has_symlinks = !is_windows() || (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
     follow_symlink_vec = has_symlinks ? [true, false] : [false]
     has_symlinks && symlink(abspath("sub_dir2"), joinpath("sub_dir1", "link"))
     for follow_symlinks in follow_symlink_vec
@@ -1010,11 +1024,11 @@ rm(dirwalk, recursive=true)
 ############
 # Clean up #
 ############
-@unix_only begin
+if !is_windows()
     rm(link)
     rm(rellink)
 end
-if @unix? true : (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
+if !is_windows() || (Base.windows_version() >= Base.WINDOWS_VISTA_VER)
     rm(dirlink)
     rm(relsubdirlink)
 end
@@ -1023,9 +1037,14 @@ rm(subdir)
 rm(subdir2)
 rm(dir)
 
-# The following fail on Windows with "stat: operation not permitted (EPERM)"
-@unix_only @test !ispath(file)
-@unix_only @test !ispath(dir)
+if is_windows()
+    # The following fail on Windows with "stat: operation not permitted (EPERM)"
+    @test_throws Base.UVError !ispath(file)
+    @test_throws Base.UVError !ispath(dir)
+else
+    @test !ispath(file)
+    @test !ispath(dir)
+end
 
 # issue #9687
 let n = tempname()
@@ -1077,6 +1096,7 @@ test2_12992()
 
 # issue 13559
 
+if !is_windows()
 function test_13559()
     fn = tempname()
     run(`mkfifo $fn`)
@@ -1094,4 +1114,5 @@ function test_13559()
     close(r)
     rm(fn)
 end
-@unix_only test_13559()
+test_13559()
+end

@@ -1,10 +1,20 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
-@unix_only @test expanduser("~")[1] != ENV["HOME"]
-
-@unix_only @test isabspath("/") == true
 @test isabspath("~") == false
-@unix_only @test isabspath(expanduser("~")) == true
+@test isabspath("/") == !is_windows()
+@test isabspath("A:/") == is_windows()
+@test isabspath("B:\\") == is_windows()
+@test isabspath("C:") == false
+@test isabspath("α:/") == false
+@test isabspath(".:/") == false
+#@test isabspath("_:/") == false # FIXME!
+@test isabspath("\\\\") == is_windows()
+if is_unix()
+    @test isabspath(expanduser("~")) == true
+    @test startswith(expanduser("~"), homedir())
+else
+    @test expanduser("~") == "~"
+end
 
 ############################################
 # This section tests relpath computation. #

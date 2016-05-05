@@ -16,7 +16,7 @@ export
     splitdrive,
     splitext
 
-@unix_only begin
+if is_unix()
     const path_separator    = "/"
     const path_separator_re = r"/+"
     const path_absolute_re  = r"^/"
@@ -26,8 +26,7 @@ export
 
     splitdrive(path::AbstractString) = ("",path)
     homedir() = ENV["HOME"]
-end
-@windows_only begin
+elseif is_windows()
     const path_separator    = "\\"
     const path_separator_re = r"[/\\]+"
     const path_absolute_re  = r"^(?:\w+:)?[/\\]"
@@ -40,6 +39,8 @@ end
         bytestring(m.captures[1]), bytestring(m.captures[2])
     end
     homedir() = get(ENV,"HOME",string(ENV["HOMEDRIVE"],ENV["HOMEPATH"]))
+else
+    error("path primitives for this OS need to be defined")
 end
 
 isabspath(path::AbstractString) = ismatch(path_absolute_re, path)
@@ -124,51 +125,57 @@ normpath(a::AbstractString, b::AbstractString...) = normpath(joinpath(a,b...))
 abspath(a::AbstractString) = normpath(isabspath(a) ? a : joinpath(pwd(),a))
 abspath(a::AbstractString, b::AbstractString...) = abspath(joinpath(a,b...))
 
-@windows_only function realpath(path::AbstractString)
-    path = cwstring(path)
-    buf = zeros(UInt16, length(path))
-    while true
-        n = ccall((:GetFullPathNameW, "kernel32"), stdcall,
-            UInt32, (Ptr{UInt16}, UInt32, Ptr{UInt16}, Ptr{Void}),
-            path, length(buf), buf, C_NULL)
-        systemerror(:realpath, n == 0)
-        x = n < length(buf) # is the buffer big enough?
-        resize!(buf, n) # shrink if x, grow if !x
-        x && return String(utf16to8(buf))
+if is_windows()
+    function realpath(path::AbstractString)
+        path = cwstring(path)
+        buf = zeros(UInt16, length(path))
+        while true
+            n = ccall((:GetFullPathNameW, "kernel32"), stdcall,
+                UInt32, (Ptr{UInt16}, UInt32, Ptr{UInt16}, Ptr{Void}),
+                path, length(buf), buf, C_NULL)
+            systemerror(:realpath, n == 0)
+            x = n < length(buf) # is the buffer big enough?
+            resize!(buf, n) # shrink if x, grow if !x
+            x && return String(utf16to8(buf))
+        end
+    end
+
+    function longpath(path::AbstractString)
+        path = cwstring(path)
+        buf = zeros(UInt16, length(path))
+        while true
+            n = ccall((:GetLongPathNameW, "kernel32"), stdcall,
+                UInt32, (Ptr{UInt16}, Ptr{UInt16}, UInt32),
+                path, buf, length(buf))
+            systemerror(:longpath, n == 0)
+            x = n < length(buf) # is the buffer big enough?
+            resize!(buf, n) # shrink if x, grow if !x
+            x && return String(utf16to8(buf))
+        end
+    end
+
+else
+    function realpath(path::AbstractString)
+        p = ccall(:realpath, Ptr{UInt8}, (Cstring, Ptr{UInt8}), path, C_NULL)
+        systemerror(:realpath, p == C_NULL)
+        s = bytestring(p)
+        Libc.free(p)
+        return s
     end
 end
 
-@windows_only function longpath(path::AbstractString)
-    path = cwstring(path)
-    buf = zeros(UInt16, length(path))
-    while true
-        n = ccall((:GetLongPathNameW, "kernel32"), stdcall,
-            UInt32, (Ptr{UInt16}, Ptr{UInt16}, UInt32),
-            path, buf, length(buf))
-        systemerror(:longpath, n == 0)
-        x = n < length(buf) # is the buffer big enough?
-        resize!(buf, n) # shrink if x, grow if !x
-        x && return String(utf16to8(buf))
+if is_windows()
+    expanduser(path::AbstractString) = path # on windows, ~ means "temporary file"
+else
+    function expanduser(path::AbstractString)
+        i = start(path)
+        c, i = next(path,i)
+        if c != '~' return path end
+        if done(path,i) return homedir() end
+        c, j = next(path,i)
+        if c == '/' return homedir()*path[i:end] end
+        throw(ArgumentError("~user tilde expansion not yet implemented"))
     end
-end
-
-@unix_only function realpath(path::AbstractString)
-    p = ccall(:realpath, Ptr{UInt8}, (Cstring, Ptr{UInt8}), path, C_NULL)
-    systemerror(:realpath, p == C_NULL)
-    s = bytestring(p)
-    Libc.free(p)
-    return s
-end
-
-@windows_only expanduser(path::AbstractString) = path # on windows, ~ means "temporary file"
-@unix_only function expanduser(path::AbstractString)
-    i = start(path)
-    c, i = next(path,i)
-    if c != '~' return path end
-    if done(path,i) return homedir() end
-    c, j = next(path,i)
-    if c == '/' return homedir()*path[i:end] end
-    throw(ArgumentError("~user tilde expansion not yet implemented"))
 end
 
 function relpath(path::AbstractString, startpath::AbstractString = ".")

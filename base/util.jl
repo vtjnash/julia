@@ -255,7 +255,9 @@ function blas_set_num_threads(n::Integer)
     end
 
     # OSX BLAS looks at an environment variable
-    @osx_only ENV["VECLIB_MAXIMUM_THREADS"] = n
+    @static if is_apple()
+        ENV["VECLIB_MAXIMUM_THREADS"] = n
+    end
 
     return nothing
 end

@@ -2189,7 +2189,7 @@ let x = [1,2,3]
 end
 
 # sig 2 is SIGINT per the POSIX.1-1990 standard
-@unix_only begin
+if !is_windows()
     ccall(:jl_exit_on_sigint, Void, (Cint,), 0)
     @test_throws InterruptException begin
         ccall(:kill, Void, (Cint, Cint,), getpid(), 2)

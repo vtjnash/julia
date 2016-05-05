@@ -18,12 +18,12 @@ const LOAD_PATH = String[]
 const LOAD_CACHE_PATH = String[]
 function init_load_path()
     vers = "v$(VERSION.major).$(VERSION.minor)"
-    if haskey(ENV,"JULIA_LOAD_PATH")
-        prepend!(LOAD_PATH, split(ENV["JULIA_LOAD_PATH"], @windows? ';' : ':'))
+    if haskey(ENV, "JULIA_LOAD_PATH")
+        prepend!(LOAD_PATH, split(ENV["JULIA_LOAD_PATH"], @static is_windows() ? ';' : ':'))
     end
-    push!(LOAD_PATH,abspath(JULIA_HOME,"..","local","share","julia","site",vers))
-    push!(LOAD_PATH,abspath(JULIA_HOME,"..","share","julia","site",vers))
-    push!(LOAD_CACHE_PATH,abspath(JULIA_HOME,"..","usr","lib","julia")) #TODO: fixme
+    push!(LOAD_PATH, abspath(JULIA_HOME, "..", "local", "share", "julia", "site", vers))
+    push!(LOAD_PATH, abspath(JULIA_HOME, "..", "share", "julia", "site", vers))
+    push!(LOAD_CACHE_PATH, abspath(JULIA_HOME, "..", "lib", "julia")) #TODO: fixme?
 end
 
 # initialize the local proc network address / port
