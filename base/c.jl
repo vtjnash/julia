@@ -16,7 +16,7 @@ typealias Cshort Int16
 typealias Cushort UInt16
 typealias Cint Int32
 typealias Cuint UInt32
-if OS_NAME === :Windows
+if is_windows()
     typealias Clong Int32
     typealias Culong UInt32
     typealias Cwchar_t UInt16
@@ -35,7 +35,7 @@ typealias Culonglong UInt64
 typealias Cfloat Float32
 typealias Cdouble Float64
 
-if OS_NAME !== :Windows
+if !is_windows()
     const sizeof_mode_t = ccall(:jl_sizeof_mode_t, Cint, ())
     if sizeof_mode_t == 2
         typealias Cmode_t Int16

@@ -1,6 +1,16 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
-const OS_NAME = ccall(:jl_get_OS_NAME, Any, ())
+let UNAME = ccall(:jl_get_UNAME, Any, ())
+    # change some `uname -s` values to "friendly" names
+    global OSNAME
+    if UNAME == :Darwin
+        OSNAME = :Apple
+    elseif UNAME == :WINNT
+        OSNAME = :Windows
+    else
+        OSNAME = UNAME
+    end
+end
 
 """
     is_unix([os])
@@ -74,23 +84,3 @@ macro static(ex)
     end
     throw(ArgumentError("invalid @static macro"))
 end
-
-# Windows version macros
-
-if is_windows()
-    function windows_version()
-        verinfo = ccall(:GetVersion, UInt32, ())
-        (Int(verinfo & 0xFF), Int((verinfo >> 8) & 0xFF))
-    end
-else
-    windows_version() = (0, 0)
-end
-"""
-    windows_version()
-
-Returns the version number for the Windows NT Kernel as a (major, minor) pair,
-or (0, 0) if this is not running on Windows.
-"""
-windows_version
-
-const WINDOWS_VISTA_VER = (6, 0)

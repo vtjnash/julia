@@ -17,6 +17,8 @@ FLAGS := \
 	-D_GNU_SOURCE -I$(BUILDDIR) -I$(SRCDIR) \
 	-I$(SRCDIR)/flisp -I$(SRCDIR)/support \
 	-I$(LIBUV_INC) -I$(build_includedir) -DLIBRARY_EXPORTS \
+	-DJL_BUILD_UNAME='"$(OS)"' \
+	-DJL_BUILD_ARCH='"$(ARCH)"' \
 	-I$(JULIAHOME)/deps/valgrind
 ifneq ($(USEMSVC), 1)
 FLAGS += -Wall -Wno-strict-aliasing -fno-omit-frame-pointer -fvisibility=hidden -fno-common \

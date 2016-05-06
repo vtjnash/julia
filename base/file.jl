@@ -424,7 +424,7 @@ if is_windows()
 end
 function symlink(p::AbstractString, np::AbstractString)
     @static if is_windows()
-        if Base.windows_version() < Base.WINDOWS_VISTA_VER
+        if Sys.windows_version() < Base.WINDOWS_VISTA_VER
             error("Windows XP does not support soft symlinks")
         end
     end

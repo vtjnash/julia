@@ -10,7 +10,7 @@ for use within backticks. You can change the editor by setting JULIA_EDITOR, VIS
 EDITOR as an environmental variable.
 """
 function editor()
-    if OS_NAME == :Windows || OS_NAME == :Darwin
+    if is_windows() || is_apple()
         default_editor = "open"
     elseif isfile("/etc/alternatives/editor")
         default_editor = "/etc/alternatives/editor"
@@ -42,10 +42,10 @@ function edit(path::AbstractString, line::Integer=0)
         cmd = line != 0 ? `$command $path -l $line` : `$command $path`
     elseif startswith(name, "subl") || name == "atom"
         cmd = line != 0 ? `$command $path:$line` : `$command $path`
-    elseif OS_NAME == :Windows && (name == "start" || name == "open")
+    elseif is_windows() && (name == "start" || name == "open")
         cmd = `cmd /c start /b $path`
         line_unsupported = true
-    elseif OS_NAME == :Darwin && (name == "start" || name == "open")
+    elseif is_apple() && (name == "start" || name == "open")
         cmd = `open -t $path`
         line_unsupported = true
     else
@@ -156,7 +156,7 @@ elseif is_windows()
     end
 
 else
-    clipboard(x="") = error("`clipboard` function not implemented for $OS_NAME")
+    clipboard(x="") = error("`clipboard` function not implemented for $(Sys.OS_NAME)")
 end
 
 # system information

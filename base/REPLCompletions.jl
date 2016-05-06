@@ -100,7 +100,7 @@ function complete_keyword(s::String)
 end
 
 function complete_path(path::AbstractString, pos; use_envpath=false)
-    if Base.is_unix(OS_NAME) && ismatch(r"^~(?:/|$)", path)
+    if Base.is_unix() && ismatch(r"^~(?:/|$)", path)
         # if the path is just "~", don't consider the expanded username as a prefix
         if path == "~"
             dir, prefix = homedir(), ""

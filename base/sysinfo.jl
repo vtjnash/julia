@@ -3,10 +3,10 @@
 module Sys
 
 export  CPU_CORES,
-        OS_NAME,
         WORD_SIZE,
         ARCH,
         MACHINE,
+        KERNEL,
         JIT,
         cpu_info,
         cpu_name,
@@ -16,10 +16,12 @@ export  CPU_CORES,
         free_memory,
         total_memory
 
-import ..Base: WORD_SIZE, OS_NAME, ARCH, MACHINE
+import ..Base: WORD_SIZE, UNAME, MACHINE
 import ..Base: show, uv_error
 
 global CPU_CORES
+
+const ARCH = ccall(:jl_get_ARCH, Any, ())
 
 function __init__()
     # set CPU core count
@@ -149,5 +151,25 @@ function set_process_title(title::AbstractString)
 end
 
 maxrss() = ccall(:jl_maxrss, Csize_t, ())
+
+# Windows version macros
+
+if is_windows()
+    function windows_version()
+        verinfo = ccall(:GetVersion, UInt32, ())
+        (Int(verinfo & 0xFF), Int((verinfo >> 8) & 0xFF))
+    end
+else
+    windows_version() = (0, 0)
+end
+"""
+    windows_version()
+
+Returns the version number for the Windows NT Kernel as a (major, minor) pair,
+or (0, 0) if this is not running on Windows.
+"""
+windows_version
+
+const WINDOWS_VISTA_VER = (6, 0)
 
 end # module Sys

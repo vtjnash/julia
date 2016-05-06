@@ -134,12 +134,12 @@ function dlpath(libname::Union{AbstractString, Symbol})
     return path
 end
 
-if OS_NAME === :Darwin
+if is_apple()
     const dlext = "dylib"
-elseif OS_NAME === :Windows
+elseif is_windows()
     const dlext = "dll"
 else
-    #assume OS_NAME === :Linux, or similar
+    #assume is_linux, or similar
     const dlext = "so"
 end
 

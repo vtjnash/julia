@@ -181,7 +181,6 @@ export
     ENV,
     JULIA_HOME,
     LOAD_PATH,
-    OS_NAME,
     PROGRAM_FILE,
     STDERR,
     STDIN,
