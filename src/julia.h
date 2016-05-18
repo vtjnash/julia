@@ -535,9 +535,12 @@ struct jl_ordereddict_t {
 };
 typedef struct _jl_typemap_level_t {
     JL_DATA_TYPE
-    struct jl_ordereddict_t arg1;
-    struct jl_ordereddict_t targ;
-    jl_typemap_entry_t *linear; // jl_typemap_t * (but no more levels)
+    jl_typemap_entry_t *bottom; // jl_typemap_t * (but no more levels) for entries which have no type at offs
+    struct jl_ordereddict_t targ; // contains Type{LeafType}
+    struct jl_ordereddict_t arg1; // contains LeafType
+    struct jl_ordereddict_t tname; // contains non-abstract Type{TypeName}
+    struct jl_ordereddict_t name1; // contains non-abstract TypeName
+    jl_typemap_entry_t *linear; // jl_typemap_t * (but no more levels) - most entries usually end up here
     jl_typemap_t *any; // type at offs is Any
     jl_value_t *key; // [nullable]
 } jl_typemap_level_t;

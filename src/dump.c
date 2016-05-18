@@ -1060,16 +1060,24 @@ static void jl_serialize_value_(jl_serializer_state *s, jl_value_t *v, int as_li
             // (which will need to be rehashed during deserialization anyhow)
             jl_typemap_level_t *node = (jl_typemap_level_t*)v;
             assert( // make sure this type has the expected ordering and layout
-                offsetof(jl_typemap_level_t, arg1) == 0 * sizeof(jl_value_t*) &&
-                offsetof(jl_typemap_level_t, targ) == 2 * sizeof(jl_value_t*) &&
-                offsetof(jl_typemap_level_t, linear) == 4 * sizeof(jl_value_t*) &&
-                offsetof(jl_typemap_level_t, any) == 5 * sizeof(jl_value_t*) &&
-                offsetof(jl_typemap_level_t, key) == 6 * sizeof(jl_value_t*) &&
-                sizeof(jl_typemap_level_t) == 7 * sizeof(jl_value_t*));
+                offsetof(jl_typemap_level_t, bottom) == 0 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, targ) == 1 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, arg1) == 3 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, tname) == 5 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, name1) == 7 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, linear) == 9 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, any) == 10 * sizeof(jl_value_t*) &&
+                offsetof(jl_typemap_level_t, key) == 11 * sizeof(jl_value_t*) &&
+                sizeof(jl_typemap_level_t) == 12 * sizeof(jl_value_t*));
+            jl_serialize_value(s, node->bottom);
+            jl_serialize_value(s, jl_nothing);
+            jl_serialize_value(s, node->targ.values);
             jl_serialize_value(s, jl_nothing);
             jl_serialize_value(s, node->arg1.values);
             jl_serialize_value(s, jl_nothing);
-            jl_serialize_value(s, node->targ.values);
+            jl_serialize_value(s, node->tname.values);
+            jl_serialize_value(s, jl_nothing);
+            jl_serialize_value(s, node->name1.values);
             jl_serialize_value(s, node->linear);
             jl_serialize_value(s, node->any);
             jl_serialize_value(s, node->key);

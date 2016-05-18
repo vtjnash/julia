@@ -1702,7 +1702,6 @@ void jl_init_types(void) JL_GC_DISABLED
     jl_any_type->super = jl_any_type;
     jl_nonfunction_mt = jl_any_type->name->mt;
     jl_any_type->name->mt = NULL;
-    jl_nonfunction_mt->offs = 0;
 
     jl_type_type = (jl_unionall_t*)jl_new_abstracttype((jl_value_t*)jl_symbol("Type"), core, jl_any_type, jl_emptysvec);
     jl_type_typename = ((jl_datatype_t*)jl_type_type)->name;
@@ -1938,15 +1937,25 @@ void jl_init_types(void) JL_GC_DISABLED
 
     jl_typemap_level_type =
         jl_new_datatype(jl_symbol("TypeMapLevel"), core, jl_any_type, jl_emptysvec,
-                        jl_perm_symsvec(7,
-                            "index_arg1",
-                            "arg1",
+                        jl_perm_symsvec(12,
+                            "bottom",
                             "index_targ",
                             "targ",
+                            "index_arg1",
+                            "arg1",
+                            "index_tname",
+                            "tname",
+                            "index_name1",
+                            "name1",
                             "list",
                             "any",
                             "key"),
-                        jl_svec(7,
+                        jl_svec(12,
+                            jl_any_type,
+                            jl_any_type,
+                            jl_any_type,
+                            jl_any_type,
+                            jl_any_type,
                             jl_any_type,
                             jl_any_type,
                             jl_any_type,
@@ -1954,7 +1963,7 @@ void jl_init_types(void) JL_GC_DISABLED
                             jl_any_type,
                             jl_any_type,
                             jl_any_type),
-                        0, 1, 6);
+                        0, 1, 11);
 
     jl_typemap_entry_type =
         jl_new_datatype(jl_symbol("TypeMapEntry"), core, jl_any_type, jl_emptysvec,
