@@ -202,8 +202,8 @@ function dllist()
     dynamic_libraries = Array{AbstractString}(0)
 
     @static if is_linux()
-        const callback = cfunction(dl_phdr_info_callback, Cint,
-                                   (Ref{dl_phdr_info}, Csize_t, Ref{Array{AbstractString,1}} ))
+        const callback = ccall(:jl_function_ptr, Ptr{Void}, (Any, Any, Any),
+            dl_phdr_info_callback, Cint, (Ref{dl_phdr_info}, Csize_t, Ref{Array{AbstractString,1}}))
         ccall(:dl_iterate_phdr, Cint, (Ptr{Void}, Ref{Array{AbstractString,1}}), callback, dynamic_libraries)
     end
 

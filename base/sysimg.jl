@@ -368,6 +368,7 @@ isdefined(Core, :Inference) && Docs.loaddocs(Core.Inference.CoreDocs.DOCS)
 
 function __init__()
     # Base library init
+    init_libuv()
     reinit_stdio()
     Multimedia.reinit_displays() # since Multimedia.displays uses STDOUT as fallback
     early_init()
@@ -375,6 +376,7 @@ function __init__()
     init_parallel()
     init_threadcall()
 end
+init_libuv()
 
 include = include_from_node1
 include("precompile.jl")

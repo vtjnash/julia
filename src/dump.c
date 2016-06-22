@@ -891,11 +891,23 @@ static void jl_serialize_value_(ios_t *s, jl_value_t *v)
     else if (jl_is_lambda_info(v)) {
         writetag(s, jl_lambda_info_type);
         jl_lambda_info_t *li = (jl_lambda_info_t*)v;
-        jl_serialize_value(s, li->code);
-        jl_serialize_value(s, li->slotnames);
-        jl_serialize_value(s, li->slottypes);
-        jl_serialize_value(s, li->slotflags);
-        jl_serialize_value(s, li->ssavaluetypes);
+        if (0 || (li->def && li->def->isstaged && li->def->lambda_template == v)) {
+            jl_serialize_value(s, li->code);
+            jl_serialize_value(s, li->slotnames);
+            jl_serialize_value(s, li->slottypes);
+            jl_serialize_value(s, li->slotflags);
+            jl_serialize_value(s, li->ssavaluetypes);
+        }
+        else {
+            jl_serialize_value(s, jl_nothing);
+            jl_serialize_value(s, NULL);
+            jl_serialize_value(s, NULL);
+            jl_serialize_value(s, NULL);
+            if (li->ssavaluetypes)
+                jl_serialize_value(s, jl_box_long(jl_array_len(li->ssavaluetypes)));
+            else
+                jl_serialize_value(s, NULL);
+        }
         jl_serialize_value(s, li->rettype);
         jl_serialize_value(s, (jl_value_t*)li->sparam_syms);
         jl_serialize_value(s, (jl_value_t*)li->sparam_vals);
