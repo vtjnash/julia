@@ -11,7 +11,7 @@ function notify_fun(idx)
 end
 
 function init_threadcall()
-    global c_notify_fun = cfunction(notify_fun, Void, (Cint,))
+    global c_notify_fun = ccall(:jl_function_ptr, Ptr{Void}, (Any, Any, Any), notify_fun, Void, (Cint,))
 end
 
 """
