@@ -674,10 +674,11 @@ end
 # Issue #16578 (Lowering) mismatch between push_loc and pop_loc
 module TestMeta_16578
 using Base.Test
-function get_expr_list(ex)
-    if isa(ex, LambdaInfo)
-        return Base.uncompressed_ast(ex)
-    elseif ex.head == :thunk
+function get_expr_list(ex::Core.SourceInfo)
+    return ex.code::Array{Any,1}
+end
+function get_expr_list(ex::Expr)
+    if ex.head == :thunk
         return get_expr_list(ex.args[1])
     else
         return ex.args
@@ -767,11 +768,11 @@ end
     end
 end
 
-f1_exprs = get_expr_list(@code_typed f1(1))
+f1_exprs = get_expr_list(@code_typed(f1(1))[1])
 @test count_meta_loc(f1_exprs) == 0
 @test Meta.isexpr(f1_exprs[end], :return)
 
-f2_exprs = get_expr_list(@code_typed f2(1))
+f2_exprs = get_expr_list(@code_typed(f2(1))[1])
 @test count_meta_loc(f2_exprs) == 1
 @test is_pop_loc(f2_exprs[end - 1])
 @test Meta.isexpr(f2_exprs[end], :return)
