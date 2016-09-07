@@ -4561,3 +4561,11 @@ function f18173()
     successflag = false
 end
 @test f18173() == false
+
+let _true = Ref(true), f, g, h
+    @noinline f() = ccall((:error, :error), Void, ()) # some expression that throws an error in codegen
+    @noinline g() = _true[] ? 0 : h()
+    @noinline h() = (g(); f())
+    @test_throws @code_native h() # due to a failure to compile f()
+    @test g() == 0
+end

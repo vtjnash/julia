@@ -830,7 +830,6 @@ jl_llvm_functions_t jl_compile_linfo(jl_lambda_info_t *li, jl_source_info_t *src
             JL_UNLOCK(&codegen_lock);
             return decls;
         }
-        assert(!li->inCompile);
     }
     else {
         // similar to above, but never returns a NULL
@@ -848,7 +847,6 @@ jl_llvm_functions_t jl_compile_linfo(jl_lambda_info_t *li, jl_source_info_t *src
     assert(jl_is_source_info(src));
 
     // Step 2: setup global state
-    li->inCompile = 1;
     BasicBlock *old = nested_compile ? builder.GetInsertBlock() : NULL;
     DebugLoc olddl = builder.getCurrentDebugLocation();
     bool last_n_c = nested_compile;
@@ -859,10 +857,12 @@ jl_llvm_functions_t jl_compile_linfo(jl_lambda_info_t *li, jl_source_info_t *src
     // Step 3. actually do the work of emitting the function
     std::unique_ptr<Module> m;
     Function *f = NULL, *specf = NULL;
+    int inCompile = (li->functionObjectsDecls.functionObject != NULL);
     JL_TRY {
-        m = emit_function(li, src, &li->functionObjectsDecls);
-        f = (Function*)li->functionObjectsDecls.functionObject;
-        specf = (Function*)li->functionObjectsDecls.specFunctionObject;
+        jl_llvm_functions_t *pdecls = inCompile ? &decls : &li->functionObjectsDecls;
+        m = emit_function(li, src, pdecls);
+        if (!inCompile)
+            decls = li->functionObjectsDecls;
         //n_emit++;
     }
     JL_CATCH {
@@ -875,11 +875,11 @@ jl_llvm_functions_t jl_compile_linfo(jl_lambda_info_t *li, jl_source_info_t *src
             builder.SetInsertPoint(old);
             builder.SetCurrentDebugLocation(olddl);
         }
-        li->inCompile = 0;
         JL_UNLOCK(&codegen_lock); // Might GC
         jl_rethrow_with_add("error compiling %s", jl_symbol_name(li->def ? li->def->name : anonymous_sym));
     }
-    decls = li->functionObjectsDecls;
+    f = (Function*)decls.functionObject;
+    specf = (Function*)decls.specFunctionObject;
 
     // Step 4. Prepare debug info to receive this function
     // record that this function name came from this linfo,
@@ -901,7 +901,7 @@ jl_llvm_functions_t jl_compile_linfo(jl_lambda_info_t *li, jl_source_info_t *src
     // Step 5. Add the result to the execution engine now
     jl_finalize_module(m.release(), !toplevel);
 
-    if (li->jlcall_api != 2) {
+    if (li->jlcall_api != 2 && !inCompile) {
         // if not inlineable, code won't be needed again
         if (JL_DELETE_NON_INLINEABLE && jl_options.debug_level <= 1 &&
             li->def && li->inferred && jl_is_source_info(li->inferred) &&
@@ -916,7 +916,6 @@ jl_llvm_functions_t jl_compile_linfo(jl_lambda_info_t *li, jl_source_info_t *src
         builder.SetInsertPoint(old);
         builder.SetCurrentDebugLocation(olddl);
     }
-    li->inCompile = 0;
     nested_compile = last_n_c;
     JL_UNLOCK(&codegen_lock); // Might GC
 
@@ -988,7 +987,7 @@ static uint64_t getAddressForFunction(llvm::Function *llvmf)
     llvm::raw_fd_ostream out(1,false);
 #endif
 #ifdef USE_MCJIT
-    jl_finalize_function(llvmf, NULL);
+    jl_finalize_function(llvmf);
     uint64_t ret = jl_ExecutionEngine->getFunctionAddress(llvmf->getName());
     // delay executing trace callbacks until here to make sure there's no
     // recursive compilation.
@@ -1011,10 +1010,51 @@ uint64_t jl_get_llvm_fptr(llvm::Function *llvmf)
     return addr;
 }
 
-// this assumes that jl_compile_linfo has already been called
-// and forces compilation of the lambda info
-// for threading, need to ensure that if `fptr` is loaded non-NULL
-// then jlcall_api would also have been read correctly
+static jl_lambda_info_t *jl_get_unspecialized(jl_lambda_info_t *method)
+{
+    // one unspecialized version of a function can be shared among all cached specializations
+    jl_method_t *def = method->def;
+    if (def->needs_sparam_vals_ducttape == 2) {
+        if (def->isstaged) {
+            def->needs_sparam_vals_ducttape = 1;
+        }
+        else {
+            // determine if this needs an unspec version compiled for each
+            // sparam, or whether they can be shared
+            // TODO: remove this once runtime intrinsics are hooked up
+            int needs_sparam_vals_ducttape = 0;
+            if (method->sparam_vals != jl_emptysvec) {
+                jl_array_t *code = (jl_array_t*)def->source->code;
+                JL_GC_PUSH1(&code);
+                if (!jl_typeis(code, jl_array_any_type))
+                    code = jl_uncompress_ast(def, code);
+                size_t i, l = jl_array_len(code);
+                for (i = 0; i < l; i++) {
+                    if (jl_has_intrinsics(method, jl_array_ptr_ref(code, i), def->module)) {
+                        needs_sparam_vals_ducttape = 1;
+                        break;
+                    }
+                }
+                JL_GC_POP();
+            }
+            def->needs_sparam_vals_ducttape = needs_sparam_vals_ducttape;
+        }
+    }
+    if (def->needs_sparam_vals_ducttape) {
+        return method;
+    }
+    if (def->unspecialized == NULL) {
+        JL_LOCK(&def->writelock);
+        if (def->unspecialized == NULL) {
+            def->unspecialized = jl_get_specialized(def, def->sig, jl_emptysvec);
+            jl_gc_wb(def, def->unspecialized);
+        }
+        JL_UNLOCK(&def->writelock);
+    }
+    return def->unspecialized;
+}
+
+// this compiles li and emits fptr
 extern "C"
 jl_generic_ftpr_t jl_generate_fptr(jl_lambda_info_t *li, void *_F)
 {
@@ -1037,8 +1077,31 @@ jl_generic_ftpr_t jl_generate_fptr(jl_lambda_info_t *li, void *_F)
         JL_UNLOCK(&codegen_lock);
         return fptr;
     }
+    jl_lambda_info_t *unspec = NULL;
+    if (li->def && !li->def->isstaged && li->def->unspecialized) {
+        assert(!li->def->needs_sparam_vals_ducttape);
+        unspec = li->def->unspecialized;
+    }
+    if (!F || !jl_can_finalize_function(F)) {
+        // can't compile F in the JIT right now,
+        // so instead compile an unspecialized version
+        // and return its fptr instead
+        if (!unspec)
+            unspec = jl_get_unspecialized(li); // get-or-create the unspecialized version to cache the result
+        jl_source_info_t *src = unspec->def->isstaged ? jl_code_for_staged(unspec) : unspec->def->source;
+        jl_llvm_functions_t decls = unspec->functionObjectsDecls;
+        if (unspec == li) {
+            // temporarily clear the decls so that it will compile our unspec version of src
+            unspec->functionObjectsDecls.functionObject = NULL;
+            unspec->functionObjectsDecls.specFunctionObject = NULL;
+        }
+        F = (Function*)jl_compile_linfo(unspec, src).functionObject;
+        if (unspec == li) {
+            unspec->functionObjectsDecls = decls;
+        }
+        assert(jl_can_finalize_function(F));
+    }
     assert(F);
-    assert(!li->inCompile);
     fptr.fptr = (jl_fptr_t)getAddressForFunction(F);
     fptr.jlcall_api = jl_jlcall_api(F);
     assert(fptr.fptr != NULL);
@@ -1056,11 +1119,14 @@ jl_generic_ftpr_t jl_generate_fptr(jl_lambda_info_t *li, void *_F)
             li->unspecialized_ducttape = fptr.fptr;
         }
     }
-    else if (li->def && !li->def->isstaged && li->def->unspecialized) {
-        jl_lambda_info_t *unspec = li->def->unspecialized;
+    else if (unspec) {
         if (unspec->fptr) {
             // don't change fptr as that leads to race conditions
             // with the (not) simultaneous update to jlcall_api
+        }
+        else if (unspec == li) {
+            if (fptr.jlcall_api == 1)
+                li->unspecialized_ducttape = fptr.fptr;
         }
         else if (unspec->functionObjectsDecls.functionObject == F) {
             unspec->jlcall_api = fptr.jlcall_api;
@@ -1988,7 +2054,7 @@ static void jl_add_linfo_root(jl_lambda_info_t *li, jl_value_t *val)
         }
         jl_array_ptr_1d_push(m->roots, val);
     }
-    JL_UNLOCK(&li->def->writelock);
+    JL_UNLOCK(&m->writelock);
     JL_GC_POP();
 }
 
@@ -3487,6 +3553,7 @@ static Function *gen_cfun_wrapper(jl_function_t *ff, jl_value_t *jlrettype, jl_t
     Function *cw = Function::Create(FunctionType::get(sret ? T_void : prt, fargt_sig, false),
             GlobalVariable::ExternalLinkage,
             funcName.str(), M);
+    jl_init_function(cw);
     cw->setAttributes(attrs);
 #ifdef LLVM37
     cw->addFnAttr("no-frame-pointer-elim", "true");
@@ -3843,6 +3910,7 @@ static Function *gen_jlcall_wrapper(jl_lambda_info_t *lam, Function *f, bool sre
 
     Function *w = Function::Create(jl_func_sig, GlobalVariable::ExternalLinkage,
                                    funcName.str(), M);
+    jl_init_function(w);
 #ifdef LLVM37
     w->addFnAttr("no-frame-pointer-elim", "true");
 #endif
@@ -4067,6 +4135,7 @@ static std::unique_ptr<Module> emit_function(jl_lambda_info_t *lam, jl_source_in
         f = Function::Create(FunctionType::get(rt, fsig, false),
                              GlobalVariable::ExternalLinkage,
                              funcName.str(), M);
+        jl_init_function(f);
         if (ctx.sret) {
             f->addAttribute(1, Attribute::StructRet);
             f->addAttribute(1, Attribute::NoAlias);
@@ -4082,6 +4151,7 @@ static std::unique_ptr<Module> emit_function(jl_lambda_info_t *lam, jl_source_in
         f = Function::Create(needsparams ? jl_func_sig_sparams : jl_func_sig,
                              GlobalVariable::ExternalLinkage,
                              funcName.str(), M);
+        jl_init_function(f);
 #ifdef LLVM37
         f->addFnAttr("no-frame-pointer-elim", "true");
 #endif
@@ -5028,6 +5098,7 @@ extern "C" void jl_fptr_to_llvm(jl_fptr_t fptr, jl_lambda_info_t *lam, int specs
                 fsig.push_back(ty);
             }
             Function *f = Function::Create(FunctionType::get(rt, fsig, false), Function::ExternalLinkage, funcName.str(), shadow_output);
+            jl_init_function(f);
             if (sret)
                 f->addAttribute(1, Attribute::StructRet);
 
