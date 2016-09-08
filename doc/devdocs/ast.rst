@@ -38,8 +38,8 @@ The following data types exist in lowered form:
     Slots that require per-use type annotations are represented with
     ``TypedSlot``, which has a ``typ`` field.
 
-``LambdaInfo``
-    wraps the IR of each method.
+``SourceInfo``
+    wraps the IR of a method.
 
 ``LineNumberNode``
     contains a single number, specifying the line number the next statement
@@ -117,11 +117,11 @@ These symbols appear in the ``head`` field of ``Expr``\s in lowered form.
     ``(::T)(x) = x``.
 
     ``args[2]`` - a ``SimpleVector`` of argument type data. ``args[2][1]`` is
-    a ``Tuple`` type of the argument types, and ``args[2][2]`` is a
+    a ``SimpleVector`` of the argument types, and ``args[2][2]`` is a
     ``SimpleVector`` of type variables corresponding to the method's static
     parameters.
 
-    ``args[3]`` - a ``LambdaInfo`` of the method itself. For "out of scope"
+    ``args[3]`` - a ``SourceInfo`` of the method itself. For "out of scope"
     method definitions (adding a method to a function that also has methods defined
     in different scopes) this is an expression that evaluates to a ``:lambda``
     expression.
@@ -183,12 +183,65 @@ These symbols appear in the ``head`` field of ``Expr``\s in lowered form.
 
     ``:pop_loc``: returns to the source location before the matching ``:push_loc``.
 
+
+Method
+~~~~~~
+
+A unique'd container describing the shared metadata for a single (unspecialized) method.
+
+``name``, ``module``, ``file``, ``line``, ``sig`` - Metadata to uniquely identify the method
+    for the computer and the human
+
+``ambig`` - Cache of other methods that may be ambiguous with this one
+
+``specializations`` - Cache of all LambdaInfo ever created for this Method,
+    used to ensure uniqueness. Uniqueness is required for efficiency,
+    especially for incremental precompile and tracking of method invalidation.
+
+``source`` - The original source code (compressed),
+
+``roots`` - Pointers to non-AST things required by compression of the AST or native code from codegen.
+
+``nargs``, ``isva``, ``called``, ``isstaged`` - Descriptive bit-fields for the source code of this Method.
+
+
 LambdaInfo
 ~~~~~~~~~~
 
-``sparam_syms`` - The names (symbols) of static parameters.
+A unique'd container describing a single callable signature for a Method.
+See especially ref:`dev-locks` for important details on how to modify these fields safely.
 
-``sparam_vals`` - The values of the static parameters (once known), indexed by ``sparam_syms``.
+``specTypes`` - The primary key for this LambdaInfo.
+    Uniqueness is guaranteed through a `def.specializations` lookup.
+
+``def`` - The `Method` that this function describes a specialization of.
+    Or `null`, if this is a top-level Lambda that is not part of a Method.
+
+``sparam_vals`` - The values of the static parameters in specTypes
+    indexed by ``def.sparam_syms``. For the ``LambdaInfo`` at ``Method.unspecialized``,
+    this is the empty ``SimpleVector``. But for a runtime ``LambdaInfo`` from the ``MethodTable`` cache,
+    this will always be defined and indexable.
+
+``rettype`` - The inferred return type for the ``specFunctionObject`` field,
+    and really the function in general.
+
+``inferred`` - May contain a cache of the inferred source for this function,
+    or other information about the inference result such as a constant return value
+    may be put here (if `jlcall_api == 2`), or it could be set to `nothing`
+    to just indicate `rettype` is inferred
+
+``ftpr`` - The generic jlcall entry point
+
+``jlcall_api`` - The ABI to use when calling ``fptr``. Some significant ones include:
+    - 0 - not compiled yet
+    - 1 - JL_CALLABLE ``jl_value_t *(*)(jl_function_t *f, jl_value_t *args[nargs], uint32_t nargs)``
+    - 2 - constant (stored in ``inferred``)
+
+
+SourceInfo
+~~~~~~~~~~
+
+A temporary container for holding lowered source code.
 
 ``code`` - An ``Any`` array of statements, or a UInt8 array with a compressed representation of the code.
 
@@ -207,10 +260,17 @@ LambdaInfo
 ``ssavaluetypes`` - Either an array or an Int giving the number of compiler-inserted
     temporary locations in the function. If an array, specifies a type for each location.
 
-``nargs`` - The number of argument slots. The first ``nargs`` entries of the slots
-    arrays refer to arguments.
+Boolean properties:
 
-``isva`` - A boolean indicating whether the function is variadic.
+``inferred`` - Whether this has been produced by type inference
+
+``inlineable`` - Whether this should be inlined
+
+``propagate_inbounds`` - Whether this should should propagate @inbounds when inlined
+    for the purpose of eliding @boundscheck blocks
+
+``pure`` - Whether this is known to be a pure function of its arguments,
+    without respect to the state of the method caches or other mutable global state
 
 
 Surface syntax AST
