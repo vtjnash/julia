@@ -252,22 +252,6 @@ This is not really necessary, since each test case is simply run once in place. 
 `@test` to expand to a try-catch block that records the test result (true, false, or exception
 raised) and calls the test suite handler on it.
 
-However this caused a new problem. When many tests are grouped together in a single function,
-e.g. a single top level expression, or some other test grouping function, that function could
-have a very large number of exception handlers. This triggered a kind of dataflow analysis worst
-case, where type inference spun around for minutes enumerating possible paths through the forest
-of handlers. This was fixed by simply bailing out of type inference when it encounters more than
-some number of handlers (currently 25). Presumably no performance-critical function will have
-more than 25 exception handlers. If one ever does, I'm willing to raise the limit to 26.
-
-A minor issue occurs during the bootstrap process due to storing all constructors in a single
-method table. In the second bootstrap step, where `inference.ji` is compiled using `inference0.ji`,
-constructors for `inference0`'s types remain in the table, so there are still references to the
-old inference module and `inference.ji` is 2x the size it should be. This was fixed in `dump.c` by
-filtering definitions from "replaced modules" out of method tables and caches before saving a
-system image. A "replaced module" is one that satisfies the condition `m != jl_get_global(m->parent, m->name)`
--- in other words, some newer module has taken its name and place.
-
 Another type inference worst case was triggered by the following code from the [QuadGK.jl package](https://github.com/JuliaMath/QuadGK.jl),
 formerly part of Base:
 

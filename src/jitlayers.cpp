@@ -1161,7 +1161,7 @@ static void jl_gen_llvm_globaldata(llvm::Module *mod, ValueToValueMapTy &VMap,
     if (sysimg_data) {
         Constant *data = ConstantDataArray::get(jl_LLVMContext,
             ArrayRef<uint8_t>((const unsigned char*)sysimg_data, sysimg_len));
-        addComdat(new GlobalVariable(*mod, data->getType(), true,
+        addComdat(new GlobalVariable(*mod, data->getType(), false,
                                      GlobalVariable::ExternalLinkage,
                                      data, "jl_system_image_data"));
         Constant *len = ConstantInt::get(T_size, sysimg_len);
