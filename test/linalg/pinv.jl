@@ -112,7 +112,7 @@ end
 
 srand(12345)
 
-let
+let n, m, a
     for eltya in (Float64, Complex128)
 
         debug && println("\n\n<<<<<", eltya, ">>>>>")
@@ -190,7 +190,7 @@ end
 
 
 for eltya in (Float32, Complex64)
-
+    local m, n, a
     debug && println("\n\n<<<<<", eltya, ">>>>>")
 
     m = 1000
@@ -266,6 +266,7 @@ end
 
 # test zero matrices
 for eltya in (Float32, Float64, Complex64, Complex128)
+    local a
     debug && println("\n\n<<<<<", eltya, ">>>>>")
     debug && println("\n--- zero constant ---")
     a = pinv(zero(eltya))
@@ -273,6 +274,7 @@ for eltya in (Float32, Float64, Complex64, Complex128)
 end
 
 for eltya in (Float32, Float64, Complex64, Complex128)
+    local a
     debug && println("\n\n<<<<<", eltya, ">>>>>")
     debug && println("\n--- zero vector ---")
     a = pinv([zero(eltya); zero(eltya)])
@@ -281,6 +283,7 @@ for eltya in (Float32, Float64, Complex64, Complex128)
 end
 
 for eltya in (Float32, Float64, Complex64, Complex128)
+    local a
     debug && println("\n\n<<<<<", eltya, ">>>>>")
     debug && println("\n--- zero Diagonal matrix ---")
     a = pinv(Diagonal([zero(eltya); zero(eltya)]))
@@ -301,6 +304,7 @@ for eltya in (Float32, Float64)
 end
 
 for eltya in (Float32, Float64)
+    local a
     debug && println("\n\n<<<<<", eltya, ">>>>>")
     debug && println("\n--- sub-normal vector ---")
     a = pinv([realmin(eltya); realmin(eltya)]/100)
@@ -314,6 +318,7 @@ for eltya in (Float32, Float64)
 end
 
 for eltya in (Float32, Float64)
+    local a
     debug && println("\n\n<<<<<", eltya, ">>>>>")
     debug && println("\n--- sub-normal Diagonal matrix ---")
     a = pinv(Diagonal([realmin(eltya); realmin(eltya)]/100))

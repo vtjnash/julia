@@ -247,7 +247,7 @@ end
 import Base.LinAlg: fillslots!, UnitLowerTriangular
 @testset "fill! and fillslots!" begin
     let #fill!
-        let # fillslots!
+        let A, B, S, Ult # fillslots!
             A = Tridiagonal(randn(2), randn(3), randn(2))
             @test fillslots!(A, 3) == Tridiagonal([3, 3.], [3, 3, 3.], [3, 3.])
             B = Bidiagonal(randn(3), randn(2), true)
@@ -274,7 +274,7 @@ import Base.LinAlg: fillslots!, UnitLowerTriangular
                 end
             end
         end
-        let # fill!(small, x)
+        let val, b, st, t, x # fill!(small, x)
             val = randn()
             b = Bidiagonal(randn(1,1), true)
             st = SymTridiagonal(randn(1,1))

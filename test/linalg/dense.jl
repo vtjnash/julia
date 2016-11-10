@@ -16,15 +16,16 @@ n2 = 2*n1
 
 srand(1234321)
 
-a = rand(n,n)
-for elty in (Float32, Float64, Complex64, Complex128)
-    a = convert(Matrix{elty}, a)
-    # cond
-    @test_approx_eq_eps cond(a, 1) 4.837320054554436e+02 0.01
-    @test_approx_eq_eps cond(a, 2) 1.960057871514615e+02 0.01
-    @test_approx_eq_eps cond(a, Inf) 3.757017682707787e+02 0.01
-    @test_approx_eq_eps cond(a[:,1:5]) 10.233059337453463 0.01
-    @test_throws ArgumentError cond(a,3)
+let a = rand(n,n)
+    for elty in (Float32, Float64, Complex64, Complex128)
+        a = convert(Matrix{elty}, a)
+        # cond
+        @test_approx_eq_eps cond(a, 1) 4.837320054554436e+02 0.01
+        @test_approx_eq_eps cond(a, 2) 1.960057871514615e+02 0.01
+        @test_approx_eq_eps cond(a, Inf) 3.757017682707787e+02 0.01
+        @test_approx_eq_eps cond(a[:,1:5]) 10.233059337453463 0.01
+        @test_throws ArgumentError cond(a,3)
+    end
 end
 
 areal = randn(n,n)/2
@@ -155,6 +156,7 @@ nnorm = 10
 mmat = 10
 nmat = 8
 for elty in (Float32, Float64, BigFloat, Complex{Float32}, Complex{Float64}, Complex{BigFloat}, Int32, Int64, BigInt)
+    local A
     debug && println(elty)
 
     ## Vector
@@ -242,15 +244,16 @@ for elty in (Float32, Float64, BigFloat, Complex{Float32}, Complex{Float64}, Com
         @test norm(x,3) ≈ cbrt(sum(abs.(x).^3.))
         @test norm(x,Inf) ≈ maximum(abs.(x))
     end
+
     ## Matrix (Operator)
-        A = ones(elty,10,10)
-        As = view(A,1:5,1:5)
-        @test norm(A, 1) ≈ 10
-        elty <: Union{BigFloat,Complex{BigFloat},BigInt} || @test norm(A, 2) ≈ 10
-        @test norm(A, Inf) ≈ 10
-        @test norm(As, 1) ≈ 5
-        elty <: Union{BigFloat,Complex{BigFloat},BigInt} || @test norm(As, 2) ≈ 5
-        @test norm(As, Inf) ≈ 5
+    A = ones(elty,10,10)
+    As = view(A,1:5,1:5)
+    @test norm(A, 1) ≈ 10
+    elty <: Union{BigFloat,Complex{BigFloat},BigInt} || @test norm(A, 2) ≈ 10
+    @test norm(A, Inf) ≈ 10
+    @test norm(As, 1) ≈ 5
+    elty <: Union{BigFloat,Complex{BigFloat},BigInt} || @test norm(As, 2) ≈ 5
+    @test norm(As, Inf) ≈ 5
 
     for i = 1:10
         A = elty <: Integer ? convert(Matrix{elty}, rand(1:10, mmat, nmat)) :
@@ -310,8 +313,7 @@ end
 
 ## Issue related tests
 # issue #1447
-let
-    A = [1.+0.0im 0; 0 1]
+let A = [1.+0.0im 0; 0 1],
     B = pinv(A)
     for i = 1:4
         @test A[i] ≈ B[i]
@@ -319,8 +321,7 @@ let
 end
 
 # issue #2246
-let
-    A = [1 2 0 0; 0 1 0 0; 0 0 0 0; 0 0 0 0]
+let A = [1 2 0 0; 0 1 0 0; 0 0 0 0; 0 0 0 0],
     Asq = sqrtm(A)
     @test Asq*Asq ≈ A
     A2 = view(A, 1:2, 1:2)
@@ -328,15 +329,13 @@ let
     @test A2sq*A2sq ≈ A2
 end
 
-let
-    N = 3
+let N = 3
     @test log(det(eye(N))) ≈ logdet(eye(N))
 end
 
 # issue #2637
-let
-  a = [1, 2, 3]
-  b = [4, 5, 6]
+let a = [1, 2, 3],
+    b = [4, 5, 6]
   @test kron(eye(2),eye(2)) == eye(4)
   @test kron(a,b) == [4,5,6,8,10,12,12,15,18]
   @test kron(a',b') == [4 5 6 8 10 12 12 15 18]
@@ -475,6 +474,7 @@ A = [ 1  5  9
 a = [ones(20) 1:20 1:20]
 b = reshape(eye(8, 5), 20, 2)
 for elty in (Float32, Float64, Complex64, Complex128)
+    global a, b
     a = convert(Matrix{elty}, a)
     b = convert(Matrix{elty}, b)
 
@@ -503,7 +503,7 @@ end
 
 # test ops on Numbers
 for elty in [Float32,Float64,Complex64,Complex128]
-    a = rand(elty)
+    local a = rand(elty)
     @test expm(a) == exp(a)
     @test isposdef(one(elty))
     @test sqrtm(a) == sqrt(a)

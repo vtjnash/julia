@@ -105,7 +105,7 @@ u = SubString(str, 1, 5)
 @test ismatch(Regex(""), SubString("",1,0))
 
 # isvalid(), chr2ind() and ind2chr() for SubString{DirectIndexString}
-let s="lorem ipsum",
+let ss, s="lorem ipsum",
     sdict=Dict(SubString(s,1,11)=>s,
                SubString(s,1,6)=>"lorem ",
                SubString(s,1,0)=>"",

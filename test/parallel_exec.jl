@@ -459,7 +459,7 @@ map!(x->1, d)
 # Shared arrays of singleton immutables
 @everywhere immutable ShmemFoo end
 for T in [Void, ShmemFoo]
-    s = @inferred(SharedArray(T, 10))
+    local s = @inferred(SharedArray(T, 10))
     @test T() === remotecall_fetch(x->x[3], workers()[1], s)
 end
 
@@ -520,12 +520,14 @@ workloads = Int[sum(ids .== i) for i in 2:nprocs()]
 
 # Testing buffered  and unbuffered reads
 # This large array should write directly to the socket
-a = ones(10^6)
-@test a == remotecall_fetch((x)->x, id_other, a)
+let a = ones(10^6)
+    @test a == remotecall_fetch((x)->x, id_other, a)
+end
 
 # Not a bitstype, should be buffered
-s = [randstring() for x in 1:10^5]
-@test s == remotecall_fetch((x)->x, id_other, s)
+let s = [randstring() for x in 1:10^5]
+    @test s == remotecall_fetch((x)->x, id_other, s)
+end
 
 #large number of small requests
 num_small_requests = 10000
@@ -536,7 +538,8 @@ ntasks = 10
 rr_list = [Channel(32) for x in 1:ntasks]
 a = ones(2*10^5)
 for rr in rr_list
-    @async let rr=rr
+    local rr
+    @async let rr = rr
         try
             for i in 1:10
                 @test a == remotecall_fetch((x)->x, id_other, a)
@@ -767,7 +770,7 @@ try
     pmap(x -> x==50 ? error("foobar") : x, 1:100)
 catch e
     @test unmangle_exception(e).msg == "foobar"
-    error_thrown = true
+    global error_thrown = true
 end
 @test error_thrown
 
@@ -839,7 +842,7 @@ if DoFullTest
     # error message but should not terminate.
     for w in Base.PGRP.workers
         if isa(w, Base.Worker)
-            s = connect(get(w.config.host), get(w.config.port))
+            local s = connect(get(w.config.host), get(w.config.port))
             write(s, randstring(32))
         end
     end

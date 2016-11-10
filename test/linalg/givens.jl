@@ -2,7 +2,6 @@
 
 using Base.Test
 
-let
 debug = false
 
 # Test givens rotations
@@ -73,4 +72,3 @@ for elty in (Float32, Float64, Complex64, Complex128)
         @test abs((G*x)[2]) < eps(real(elty))
     end
 end
-end #let

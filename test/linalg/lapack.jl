@@ -46,8 +46,7 @@ end
 end
 
 @testset "gebrd, bdsqr, throw for bdsdc" begin
-    let
-        n = 10
+    let n = 10
         @testset for elty in (Float32, Float64)
             d, e = convert(Vector{elty}, randn(n)), convert(Vector{elty}, randn(n - 1))
             U, Vt, C = eye(elty, n), eye(elty, n), eye(elty, n)
@@ -73,8 +72,7 @@ end
 end
 
 @testset "Issue #7886" begin
-    let
-        x, r = LAPACK.gelsy!([0 1; 0 2; 0 3.], [2, 4, 6.])
+    let x, r = LAPACK.gelsy!([0 1; 0 2; 0 3.], [2, 4, 6.])
         @test x ≈ [0,2]
         @test r == 1
     end

@@ -114,6 +114,7 @@ end
 
 #Triangular Types and QR
 for typ in [UpperTriangular,LowerTriangular,Base.LinAlg.UnitUpperTriangular,Base.LinAlg.UnitLowerTriangular]
+    local a
     a = rand(n,n)
     atri = typ(a)
     b = rand(n,n)

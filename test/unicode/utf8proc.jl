@@ -237,6 +237,7 @@ let grphtest = (("b\u0300lahβlahb\u0302láh", ["b\u0300","l","a","h",
     for T in (String,GenericString)
         for nf in (:NFC, :NFD)
             for (s, g) in grphtest
+                local s
                 s_ = T(normalize_string(s, nf))
                 g_ = map(s -> normalize_string(s, nf), g)
                 # #9261

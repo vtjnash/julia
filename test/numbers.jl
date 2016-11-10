@@ -742,6 +742,7 @@ end
 @test lexcmp(1, NaN) == -1
 @test lexcmp(NaN, NaN) == 0
 
+let x
 for x=-5:5, y=-5:5
     @test (x==y)==(Float64(x)==Int64(y))
     @test (x!=y)==(Float64(x)!=Int64(y))
@@ -773,6 +774,7 @@ for x=-5:5, y=-5:5
         @test (x<=y)==(Float64(x)<=UInt64(y))
         @test (x>=y)==(Float64(x)>=UInt64(y))
     end
+end
 end
 
 function _cmp_(x::Union{Int64,UInt64}, y::Float64)
@@ -829,6 +831,7 @@ function _cmp_(x::Union{Int64,UInt64}, y::Float64)
     error("invalid: _cmp_($x,$y)")
 end
 
+let x
 for x=Int64(2)^53-2:Int64(2)^53+5,
     y=[2.0^53-2 2.0^53-1 2.0^53 2.0^53+2 2.0^53+4]
     u = UInt64(x)
@@ -916,6 +919,7 @@ for x=Int64(2)^53-2:Int64(2)^53+5,
         @test  (-x <= -y)
         @test  (-y <= -x)
     end
+end
 end
 
 @test Int64(2)^62-1 != 2.0^62
@@ -1497,6 +1501,7 @@ end
 @test cld(typemin(Int64)+3,-2) ==  4611686018427387903
 @test cld(typemin(Int64)+3,-7) ==  1317624576693539401
 
+let x
 for x=Any[typemin(Int64), -typemax(Int64), -typemax(Int64)+1, -typemax(Int64)+2,
           typemax(Int64)-2, typemax(Int64)-1, typemax(Int64),
           typemax(UInt64)-1, typemax(UInt64)-2, typemax(UInt64)],
@@ -1512,7 +1517,9 @@ for x=Any[typemin(Int64), -typemax(Int64), -typemax(Int64)+1, -typemax(Int64)+2,
         @test cld(x,unsigned(y)) == cld(x,y)
     end
 end
+end
 
+let x
 for x=0:5, y=1:5
     @test div(UInt(x),UInt(y)) == div(x,y)
     @test div(UInt(x),y) == div(x,y)
@@ -1543,6 +1550,7 @@ for x=0:5, y=1:5
     @test mod(x,UInt(y)) == mod(x,y)
     @test mod(UInt(x),-y) == mod(x,-y)
     @test mod(-x,UInt(y)) == mod(-x,y)
+end
 end
 
 @test div(typemax(UInt64)  , 1) ==  typemax(UInt64)
@@ -1690,6 +1698,7 @@ end
 # rounding difficult values
 
 for x = 2^53-10:2^53+10
+    local x
     y = Float64(x)
     i = trunc(Int64,y)
     @test Int64(trunc(y)) == i
@@ -1703,6 +1712,7 @@ for x = 2^53-10:2^53+10
 end
 
 for x = 2^24-10:2^24+10
+    local x
     y = Float32(x)
     i = trunc(Int,y)
     @test Int(trunc(y)) == i
@@ -1999,6 +2009,7 @@ approx_eq(a, b) = approx_eq(a, b, 1e-6)
 @test approx_eq(floor(-123.456,1), -123.5)
 # rounding with too much (or too few) precision
 for x in (12345.6789, 0, -12345.6789)
+    local x
     y = float(x)
     @test y == trunc(x, 1000)
     @test y == round(x, 1000)
@@ -2194,7 +2205,7 @@ end
 # check powermod function against few types (in particular [U]Int128 and BigInt)
 for i = -10:10, p = 0:5, m = -10:10
     m == 0 && continue
-    x = powermod(i, p, m)
+    local x = powermod(i, p, m)
     for T in [Int32, Int64, Int128, UInt128, BigInt]
         T <: Unsigned && m < 0 && continue
         let xT = powermod(i, p, T(m))
@@ -2293,6 +2304,7 @@ end
 @test nextpow(3,241) == 243
 @test prevpow(3,244) == 243
 for a = -1:1
+    local a
     @test_throws DomainError nextpow(a, 2)
     @test_throws DomainError prevpow(a, 2)
 end
@@ -2495,6 +2507,7 @@ end
 
 #isreal(x::Real) = true
 for x in [1.23, 7, e, 4//5] #[FP, Int, Irrational, Rat]
+    local x
     @test isreal(x) == true
 end
 
@@ -2524,12 +2537,14 @@ let number_types = Set()
 
     #ndims{T<:Number}(::Type{T}) = 0
     for x in number_types
+        local x
         @test ndims(x) == 0
     end
 end
 
 #getindex(x::Number) = x
 for x in [1.23, 7, e, 4//5] #[FP, Int, Irrational, Rat]
+    local x
     @test getindex(x) == x
 end
 
@@ -2540,6 +2555,7 @@ end
 #getindex(x::Array,0 throws BoundsError
 #getindex(x::Array,length(x::Array)+1) throws BoundsError
 for x in [1.23, 7, e, 4//5] #[FP, Int, Irrational, Rat]
+    local x
     @test_throws BoundsError getindex(x,-1)
     @test_throws BoundsError getindex(x,0)
     @test_throws BoundsError getindex(x,2)
@@ -2551,6 +2567,7 @@ end
 # copysign(x::Real, y::Real) = ifelse(signbit(x)!=signbit(y), -x, x)
 # flipsign(x::Real, y::Real) = ifelse(signbit(y), -x, x)
 for x in [1.23, 7, e, 4//5]
+    local x
     for y in [1.23, 7, e, 4//5]
         @test copysign(x, y) == x
         @test copysign(x, -y) == -x
@@ -2665,6 +2682,7 @@ end
 
 
 for a = -3:3
+    local a
     @test Rational(Float32(a)) == Rational(a)
     @test Rational(a)//2 == a//2
     @test a//Rational(2) == Rational(a/2)
@@ -2679,11 +2697,11 @@ for a = -3:3
 end
 
 # issue #15205
-let T = Rational
-    x = Complex{T}(1//3 + 1//4*im)
-    y = Complex{T}(1//2 + 1//5*im)
-    xf = Complex{BigFloat}(1//3 + 1//4*im)
-    yf = Complex{BigFloat}(1//2 + 1//5*im)
+let T = Rational,
+    x = Complex{T}(1//3 + 1//4*im),
+    y = Complex{T}(1//2 + 1//5*im),
+    xf = Complex{BigFloat}(1//3 + 1//4*im),
+    yf = Complex{BigFloat}(1//2 + 1//5*im),
     yi = 4
 
     @test x^y ≈ xf^yf

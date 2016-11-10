@@ -19,6 +19,7 @@
 @test strip("foobarfoo", ['f','o']) == "bar"
 @test strip("foobarfoo", ('f','o')) == "bar"
 
+let s
 for s in ("", " ", " abc", "abc ", "  abc  "), f in (lstrip, rstrip, strip)
     fs = f(s)
     for T = (String, GenericString)
@@ -34,6 +35,7 @@ for s in ("", " ", " abc", "abc ", "  abc  "), f in (lstrip, rstrip, strip)
         @test fs == fb
         @test typeof(fb) == SubString{T}
     end
+end
 end
 
 # split

@@ -16,6 +16,7 @@ v = randn(n)
 B = randn(n,2)
 
 for elty in (Float32, Float64, Complex64, Complex128, Int)
+    global d, dl, du, v, B
     if elty == Int
         srand(61516384)
         d = rand(1:100, n)
@@ -225,6 +226,7 @@ let n = 12 #Size of matrix problem to test
     srand(123)
     debug && println("SymTridiagonal (symmetric tridiagonal) matrices")
     for relty in (Float32, Float64), elty in (relty, Complex{relty})
+        local a, b, A, B
         debug && println("elty is $(elty), relty is $(relty)")
         a = convert(Vector{elty}, randn(n))
         b = convert(Vector{elty}, randn(n-1))
