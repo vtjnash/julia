@@ -742,7 +742,7 @@ end
 @test lexcmp(1, NaN) == -1
 @test lexcmp(NaN, NaN) == 0
 
-let x
+let x, y
 for x=-5:5, y=-5:5
     @test (x==y)==(Float64(x)==Int64(y))
     @test (x!=y)==(Float64(x)!=Int64(y))
@@ -831,7 +831,7 @@ function _cmp_(x::Union{Int64,UInt64}, y::Float64)
     error("invalid: _cmp_($x,$y)")
 end
 
-let x
+let x, y, u, c
 for x=Int64(2)^53-2:Int64(2)^53+5,
     y=[2.0^53-2 2.0^53-1 2.0^53 2.0^53+2 2.0^53+4]
     u = UInt64(x)
@@ -1030,6 +1030,7 @@ f9085() = typemax(UInt64) != 2.0^64
 @test @inferred(rationalize(Int, 3.0, 0)) === 3//1
 @test_throws ArgumentError rationalize(Int, big(3.0), -1.)
 
+let a, b, c
 for a = -5:5, b = -5:5
     if a == b == 0; continue; end
     if ispow2(b)
@@ -1060,6 +1061,7 @@ for a = -5:5, b = -5:5
             @test (a//b >  c//d) == (a/b >  c/d)
         end
     end
+end
 end
 
 @test 0.5 == 1//2
@@ -1698,7 +1700,7 @@ end
 # rounding difficult values
 
 for x = 2^53-10:2^53+10
-    local x
+    local x, y
     y = Float64(x)
     i = trunc(Int64,y)
     @test Int64(trunc(y)) == i
@@ -1712,7 +1714,7 @@ for x = 2^53-10:2^53+10
 end
 
 for x = 2^24-10:2^24+10
-    local x
+    local x, y
     y = Float32(x)
     i = trunc(Int,y)
     @test Int(trunc(y)) == i
@@ -2555,7 +2557,7 @@ end
 #getindex(x::Array,0 throws BoundsError
 #getindex(x::Array,length(x::Array)+1) throws BoundsError
 for x in [1.23, 7, e, 4//5] #[FP, Int, Irrational, Rat]
-    local x
+    local x, y
     @test_throws BoundsError getindex(x,-1)
     @test_throws BoundsError getindex(x,0)
     @test_throws BoundsError getindex(x,2)
@@ -2567,7 +2569,7 @@ end
 # copysign(x::Real, y::Real) = ifelse(signbit(x)!=signbit(y), -x, x)
 # flipsign(x::Real, y::Real) = ifelse(signbit(y), -x, x)
 for x in [1.23, 7, e, 4//5]
-    local x
+    local x, y
     for y in [1.23, 7, e, 4//5]
         @test copysign(x, y) == x
         @test copysign(x, -y) == -x
@@ -2757,8 +2759,7 @@ for Tf = (Float16, Float32, Float64), Ti = (Int16, Int32, Int64)
     @test round(Tf, zero(Ti)//one(Ti), RoundNearestTiesAway) == 0
 end
 
-let
-    io = IOBuffer()
+let io = IOBuffer()
     rational1 = Rational(1465, 8593)
     rational2 = Rational(-4500, 9000)
     @test sprint(io -> show(io, rational1)) == "1465//8593"

@@ -25,66 +25,71 @@ for i1 = 1:length(u8str2)
     end
 end
 
-str="tempus fugit"              #length(str)==12
-ss=SubString(str,1,length(str)) #match source string
-@test length(ss)==length(str)
+let str="tempus fugit"              #length(str)==12
+    ss=SubString(str,1,length(str)) #match source string
+    @test length(ss)==length(str)
 
-ss=SubString(str,1,0)    #empty SubString
-@test length(ss)==0
+    ss=SubString(str,1,0)    #empty SubString
+    @test length(ss)==0
 
-ss=SubString(str,14,20)  #start indexed beyond source string length
-@test length(ss)==0
+    ss=SubString(str,14,20)  #start indexed beyond source string length
+    @test length(ss)==0
 
-ss=SubString(str,10,16)  #end indexed beyond source string length
-@test length(ss)==3
+    ss=SubString(str,10,16)  #end indexed beyond source string length
+    @test length(ss)==3
 
-str2=""
-ss=SubString(str2,1,4)  #empty source string
-@test length(ss)==0
+    str2=""
+    ss=SubString(str2,1,4)  #empty source string
+    @test length(ss)==0
 
-ss=SubString(str2,1,1)  #empty source string, identical start and end index
-@test length(ss)==0
+    ss=SubString(str2,1,1)  #empty source string, identical start and end index
+    @test length(ss)==0
+end
 
 @test SubString("foobar",big(1),big(3)) == "foo"
 
-str = "aa\u2200\u2222bb"
-u = SubString(str, 3, 6)
-@test length(u)==2
-b = IOBuffer()
-write(b, u)
-@test takebuf_string(b) == "\u2200\u2222"
+let str = "aa\u2200\u2222bb"
+    u = SubString(str, 3, 6)
+    @test length(u)==2
+    b = IOBuffer()
+    write(b, u)
+    @test takebuf_string(b) == "\u2200\u2222"
 
-@test_throws ArgumentError SubString(str, 4, 5)
-@test_throws BoundsError next(u, 0)
-@test_throws BoundsError next(u, 7)
-@test_throws BoundsError getindex(u, 0)
-@test_throws BoundsError getindex(u, 7)
-@test_throws BoundsError getindex(u, 0:1)
-@test_throws BoundsError getindex(u, 7:7)
-@test reverseind(u, 1) == 4
-@test typeof(Base.cconvert(Ptr{Int8},u)) == SubString{String}
-@test Base.cconvert(Ptr{Int8},u) == u
+    @test_throws ArgumentError SubString(str, 4, 5)
+    @test_throws BoundsError next(u, 0)
+    @test_throws BoundsError next(u, 7)
+    @test_throws BoundsError getindex(u, 0)
+    @test_throws BoundsError getindex(u, 7)
+    @test_throws BoundsError getindex(u, 0:1)
+    @test_throws BoundsError getindex(u, 7:7)
+    @test reverseind(u, 1) == 4
+    @test typeof(Base.cconvert(Ptr{Int8},u)) == SubString{String}
+    @test Base.cconvert(Ptr{Int8},u) == u
+end
 
-str = "føøbar"
-u = SubString(str, 4, 3)
-@test length(u)==0
-b = IOBuffer()
-write(b, u)
-@test takebuf_string(b) == ""
+let str = "føøbar"
+    u = SubString(str, 4, 3)
+    @test length(u)==0
+    b = IOBuffer()
+    write(b, u)
+    @test takebuf_string(b) == ""
+end
 
-str = "føøbar"
-u = SubString(str, 10, 10)
-@test length(u)==0
-b = IOBuffer()
-write(b, u)
-@test takebuf_string(b) == ""
+let str = "føøbar"
+    u = SubString(str, 10, 10)
+    @test length(u)==0
+    b = IOBuffer()
+    write(b, u)
+    @test takebuf_string(b) == ""
+end
 
 # search and SubString (issue #5679)
-str = "Hello, world!"
-u = SubString(str, 1, 5)
-@test rsearch(u, "World") == 0:-1
-@test rsearch(u, 'z') == 0
-@test rsearch(u, "ll") == 3:4
+let str = "Hello, world!"
+    u = SubString(str, 1, 5)
+    @test rsearch(u, "World") == 0:-1
+    @test rsearch(u, 'z') == 0
+    @test rsearch(u, "ll") == 3:4
+end
 
 # sizeof
 @test sizeof(SubString("abc\u2222def",4,4)) == 3
@@ -132,17 +137,18 @@ end #let
 
 #for isvalid(SubString{String})
 let s = "Σx + βz - 2"
-  for i in -1:length(s)+2
-      ss=SubString(s,1,i)
-      @test isvalid(ss,i)==isvalid(s,i)
-  end
+    for i in -1:(length(s) + 2)
+        local ss = SubString(s, 1, i)
+        @test isvalid(ss, i) == isvalid(s, i)
+    end
 end
 
-ss=SubString("hello",1,5)
-@test_throws BoundsError ind2chr(ss, -1)
-@test_throws BoundsError chr2ind(ss, -1)
-@test_throws BoundsError chr2ind(ss, 10)
-@test_throws BoundsError ind2chr(ss, 10)
+let ss=SubString("hello",1,5)
+    @test_throws BoundsError ind2chr(ss, -1)
+    @test_throws BoundsError chr2ind(ss, -1)
+    @test_throws BoundsError chr2ind(ss, 10)
+    @test_throws BoundsError ind2chr(ss, 10)
+end
 
 # length(SubString{String}) performance specialization
 let s = "|η(α)-ϕ(κ)| < ε"
@@ -154,10 +160,11 @@ end
 
 ## Reverse strings ##
 
-rs = RevString("foobar")
-@test length(rs) == 6
-@test sizeof(rs) == 6
-@test isascii(rs)
+let rs = RevString("foobar")
+    @test length(rs) == 6
+    @test sizeof(rs) == 6
+    @test isascii(rs)
+end
 
 # issue #4586
 @test rsplit(RevString("ailuj"),'l') == ["ju","ia"]
@@ -219,22 +226,23 @@ end
 ## Cstring tests ##
 
 # issue #13974: comparison against pointers
+let
+    str = String("foobar")
+    ptr = pointer(str)
+    cstring = Cstring(ptr)
+    @test ptr == cstring
+    @test cstring == ptr
 
-str = String("foobar")
-ptr = pointer(str)
-cstring = Cstring(ptr)
-@test ptr == cstring
-@test cstring == ptr
+    # convenient NULL string creation from Ptr{Void}
+    nullstr = Cstring(C_NULL)
 
-# convenient NULL string creation from Ptr{Void}
-nullstr = Cstring(C_NULL)
+    # Comparisons against NULL strings
+    @test ptr != nullstr
+    @test nullstr != ptr
 
-# Comparisons against NULL strings
-@test ptr != nullstr
-@test nullstr != ptr
-
-# Short-hand comparison against C_NULL
-@test nullstr == C_NULL
-@test C_NULL == nullstr
-@test cstring != C_NULL
-@test C_NULL != cstring
+    # Short-hand comparison against C_NULL
+    @test nullstr == C_NULL
+    @test C_NULL == nullstr
+    @test cstring != C_NULL
+    @test C_NULL != cstring
+end

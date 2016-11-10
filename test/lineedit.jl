@@ -153,7 +153,7 @@ let f = keymap_fcn([test_keymap_7, test_keymap_6])
     buf = IOBuffer("abd")
     f(buf)
     @test a_foo == 3
-    a_foo = 0
+    global a_foo = 0
     f(buf)
     @test a_foo == 3
     f(buf)
@@ -343,9 +343,8 @@ let buf = IOBuffer()
     @test String(buf.data[1:buf.size]) == "βγαδε"
 end
 
-let
-    term = TestHelpers.FakeTerminal(IOBuffer(), IOBuffer(), IOBuffer())
-    s = LineEdit.init_state(term, ModalInterface([Prompt("test> ")]))
+let term = TestHelpers.FakeTerminal(IOBuffer(), IOBuffer(), IOBuffer()),
+    s = LineEdit.init_state(term, ModalInterface([Prompt("test> ")])),
     buf = LineEdit.buffer(s)
 
     LineEdit.edit_insert(s,"first line\nsecond line\nthird line")
@@ -390,10 +389,10 @@ end
 # julia> is 6 characters + 1 character for space,
 # so the rest of the terminal is 73 characters
 #########################################################################
-let
+let s, buf
     buf = IOBuffer(
-    "begin\nprint(\"A very very very very very very very very very very very very ve\")\nend")
-    seek(buf,4)
+        "begin\nprint(\"A very very very very very very very very very very very very ve\")\nend")
+    seek(buf, 4)
     outbuf = IOBuffer()
     termbuf = Base.Terminals.TerminalBuffer(outbuf)
     term = TestHelpers.FakeTerminal(IOBuffer(), IOBuffer(), IOBuffer())

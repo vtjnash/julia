@@ -3,12 +3,12 @@
 using Base.SparseArrays.SPQR
 using Base.SparseArrays.CHOLMOD
 
-let
-m, n = 100, 10
-nn = 100
-
+let m = 100,
+    n = 10,
+    nn = 100
 for eltyA in (Float64, Complex{Float64})
     for eltyB in (Int, Float64, Complex{Float64})
+        local A, B
         if eltyA <: Real
             A = sparse([1:n; rand(1:m, nn - n)], [1:n; rand(1:n, nn - n)], randn(nn), m, n)
         else
@@ -49,12 +49,12 @@ for eltyA in (Float64, Complex{Float64})
         end
     end
 end
+end
 
 # Issue 14134
-F = qrfact(sprandn(10,5,0.5))
-b = IOBuffer()
-serialize(b, F)
-seekstart(b)
-@test_throws ArgumentError deserialize(b)\ones(10)
-
+let F = qrfact(sprandn(10, 5, 0.5)),
+    b = IOBuffer()
+    serialize(b, F)
+    seekstart(b)
+    @test_throws ArgumentError deserialize(b)\ones(10)
 end

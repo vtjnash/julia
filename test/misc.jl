@@ -137,7 +137,7 @@ let
 end
 
 # lock / unlock
-let l = ReentrantLock()
+let t, l = ReentrantLock()
     lock(l)
     success = Ref(false)
     @test trylock(l) do
@@ -168,7 +168,7 @@ let t = @elapsed 1+1
     @test isa(t, Real) && t >= 0
 end
 
-let
+let val, t
     val, t = @timed sin(1)
     @test val == sin(1)
     @test isa(t, Real) && t >= 0
@@ -316,9 +316,10 @@ X8 = Vector{UInt8}[
     [0xff,0xbf,0xbf,0xbf],
 ]
 
-for s in [map(first,V8); X8],
-    i = 1:length(s)-1,
-    j = i+1:length(s)-(i==1)
+for s in [map(first, V8); X8],
+    i = 1:length(s) - 1,
+    j = (i + 1):(length(s) - (i == 1))
+
     ss = s[i:j]
     ss in X8 || push!(X8, ss)
 end
@@ -476,10 +477,10 @@ end
 
 let
     global c_18711 = 0
-    buf = IOContext(IOBuffer(), :hascontext => true)
-    Base.with_output_color(:red, buf) do buf
+    local buf = IOContext(IOBuffer(), :hascontext => true)
+    Base.with_output_color(:red, buf) do lbuf
         global c_18711
-        get(buf, :hascontext, false) && (c_18711 += 1)
+        get(lbuf, :hascontext, false) && (c_18711 += 1)
     end
     @test c_18711 == 1
 end

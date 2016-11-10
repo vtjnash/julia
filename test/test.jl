@@ -41,23 +41,25 @@ type NoThrowTestSet <: Base.Test.AbstractTestSet
 end
 Base.Test.record(ts::NoThrowTestSet, t::Base.Test.Result) = (push!(ts.results, t); t)
 Base.Test.finish(ts::NoThrowTestSet) = ts.results
-fails = @testset NoThrowTestSet begin
-    # Fail - wrong exception
-    @test_throws OverflowError error()
-    # Fail - no exception
-    @test_throws OverflowError 1 + 1
-    # Fail - comparison
-    @test 1+1 == 2+2
-    # Error - unexpected pass
-    @test_broken true
+let fails = @testset NoThrowTestSet begin
+        # Fail - wrong exception
+        @test_throws OverflowError error()
+        # Fail - no exception
+        @test_throws OverflowError 1 + 1
+        # Fail - comparison
+        @test 1+1 == 2+2
+        # Error - unexpected pass
+        @test_broken true
+    end
+
+    for i in 1:3
+        @test isa(fails[i], Base.Test.Fail)
+    end
+    @test contains(sprint(show, fails[1]), "Thrown: ErrorException")
+    @test contains(sprint(show, fails[2]), "No exception thrown")
+    @test contains(sprint(show, fails[3]), "Evaluated: 2 == 4")
+    @test contains(sprint(show, fails[4]), "Unexpected Pass")
 end
-for i in 1:3
-    @test isa(fails[i], Base.Test.Fail)
-end
-@test contains(sprint(show, fails[1]), "Thrown: ErrorException")
-@test contains(sprint(show, fails[2]), "No exception thrown")
-@test contains(sprint(show, fails[3]), "Evaluated: 2 == 4")
-@test contains(sprint(show, fails[4]), "Unexpected Pass")
 
 # Test printing of a TestSetException
 tse_str = sprint(show, Test.TestSetException(1,2,3,4,Vector{Union{Base.Test.Error, Base.Test.Fail}}()))
@@ -224,6 +226,7 @@ testset_depth17462 = Test.get_testset_depth()
 counter_17462_pre = 0
 counter_17462_post = 0
 tss17462 = @testset for x in [1,2,3,4]
+    global counter_17462_pre, counter_17462_post
     counter_17462_pre += 1
     if x == 1
         @test counter_17462_pre == x

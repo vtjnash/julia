@@ -461,6 +461,7 @@ c, r, res = test_scomplete(s)
 @test (String[], 0:-1, false) == test_scomplete("\$a")
 
 if is_unix()
+let s, c, r
     #Assume that we can rely on the existence and accessibility of /tmp
 
     # Tests path in Julia code and closing " if it's a file
@@ -517,7 +518,7 @@ if is_unix()
     # Pressing tab after having entered "/tmp " should not
     # attempt to complete "/tmp" but rather work on the current
     # working directory again.
-    let s, c, r
+    let s, c, r, file
         file = joinpath(path, "repl completions")
         s = "/tmp "
         c,r = test_scomplete(s)
@@ -525,7 +526,7 @@ if is_unix()
     end
 
     # Test completing paths with an escaped trailing space
-    let s, c, r
+    let s, c, r, file
         file = joinpath(tempdir(), "repl completions")
         touch(file)
         s = string(tempdir(), "/repl\\ ")
@@ -552,7 +553,7 @@ if is_unix()
     end
 
     # Tests detecting of files in the env path (in shell mode)
-    let path, s, c, r
+    let path, s, c, r, file
         oldpath = ENV["PATH"]
         path = tempdir()
         # PATH can also contain folders which we aren't actually allowed to read.
@@ -601,6 +602,7 @@ if is_unix()
             rm(dir)
         end
     end
+end
 end
 
 #test that it can auto complete with spaces in file/path

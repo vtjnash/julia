@@ -189,9 +189,11 @@ end
 
 # issue #8652
 args_morespecific(a, b) = ccall(:jl_args_morespecific, Cint, (Any,Any), a, b) != 0
-let T1 = TypeVar(:T, Integer, true), T2 = TypeVar(:T, Integer, true)
-    a = Tuple{Type{T1}, T1}
+let T1 = TypeVar(:T, Integer, true),
+    T2 = TypeVar(:T, Integer, true),
+    a = Tuple{Type{T1}, T1},
     b2 = Tuple{Type{T2}, Integer}
+
     @test args_morespecific(a, b2)
     @test !args_morespecific(b2, a)
     a = Tuple{Type{T1}, Ptr{T1}}
@@ -201,16 +203,19 @@ let T1 = TypeVar(:T, Integer, true), T2 = TypeVar(:T, Integer, true)
 end
 
 # issue #11534
-let T = TypeVar(:T, Tuple{Vararg{RangeIndex}}, true)
-    t1 = Tuple{AbstractArray, Tuple{Vararg{RangeIndex}}}
+let T = TypeVar(:T, Tuple{Vararg{RangeIndex}}, true),
+    t1 = Tuple{AbstractArray, Tuple{Vararg{RangeIndex}}},
     t2 = Tuple{Array, T}
+
     @test !args_morespecific(t1, t2)
     @test  args_morespecific(t2, t1)
 end
 
-let T = TypeVar(:T, Any, true), N = TypeVar(:N, Any, true)
-    a = Tuple{Array{T,N}, Vararg{Int,N}}
+let T = TypeVar(:T, Any, true),
+    N = TypeVar(:N, Any, true),
+    a = Tuple{Array{T,N}, Vararg{Int,N}},
     b = Tuple{Array,Int}
+
     @test  args_morespecific(a, b)
     @test !args_morespecific(b, a)
     a = Tuple{Array, Vararg{Int,N}}
@@ -1617,9 +1622,8 @@ function tupledispatch(a::TupleParam{(1,:a)})
     a.x
 end
 
-let
-    # tuples can be used as type params
-    t1 = TupleParam{(1,:a)}(true)
+# tuples can be used as type params
+let t1 = TupleParam{(1,:a)}(true),
     t2 = TupleParam{(1,:b)}(true)
 
     # tuple type params can't contain invalid type params

@@ -1331,10 +1331,13 @@ end
 
 ## Transpose ##
 
-b1 = bitrand(v1)
-@check_bit_operation transpose(b1) BitMatrix
+let b1 = bitrand(v1)
+    @check_bit_operation transpose(b1) BitMatrix
+end
 
-for m1 = 0:n1, m2 = 0:n2
+for m1 in 0:n1,
+    m2 in 0:n2
+    local b1
     b1 = bitrand(m1, m2)
     @check_bit_operation transpose(b1) BitMatrix
 end
@@ -1343,7 +1346,7 @@ timesofar("transpose")
 
 ## Permutedims ##
 
-let b1 = bitrand(s1, s2, s3, s4)
+let b1 = bitrand(s1, s2, s3, s4),
     p = randperm(4)
     @check_bit_operation permutedims(b1, p) BitArray{4}
     @check_bit_operation permutedims(b1, tuple(p...)) BitArray{4}

@@ -865,7 +865,7 @@ end
 @test_throws ArgumentError parse(BigFloat, "1\0")
 
 # serialization (issue #12386)
-let b = IOBuffer()
+let b = IOBuffer(),
     x = 2.1*big(pi)
     serialize(b, x)
     seekstart(b)

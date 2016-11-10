@@ -152,6 +152,7 @@ let # Issue 9160
 
     for Ti in CHOLMOD.ITypes.types
         for elty in CHOLMOD.VRealTypes.types
+            local A, B
 
             A = sprand(10,10,0.1)
             A = convert(SparseMatrixCSC{elty,Ti},A)
@@ -272,6 +273,7 @@ unsafe_store!(puint,  5, 3*div(sizeof(Csize_t), 4) + 5*div(sizeof(Ptr{Void}), 4)
 
 ## High level interface
 for elty in (Float64, Complex{Float64})
+    local A, b
     if elty == Float64
         A = randn(5, 5)
         b = randn(5)
@@ -649,7 +651,7 @@ Fnew = deserialize(b)
 @test_throws MethodError cholfact(Hermitian(speye(Complex{BigFloat}, 5)))
 
 # test \ for Factor and StridedVecOrMat
-let x = rand(5)
+let x = rand(5),
     A = cholfact(sparse(diagm(x.\1)))
     @test A\view(ones(10),1:2:10) ≈ x
     @test A\view(eye(5,5),:,:) ≈ diagm(x)
@@ -661,12 +663,14 @@ B = complex(randn(5,2), randn(5,2))
 @test cholfact(A)\B ≈ A\B
 
 # Make sure that ldltfact performs an LDLt (Issue #19032)
-let m = 400, n = 500
-    A = sprandn(m, n, .2)
-    M = [speye(n) A'; A -speye(m)]
-    b = M*ones(m + n)
-    F = ldltfact(M)
+let m = 400,
+    n = 500,
+    A = sprandn(m, n, .2),
+    M = [speye(n) A'; A -speye(m)],
+    b = M*ones(m + n),
+    F = ldltfact(M),
     s = unsafe_load(get(F.p))
+
     @test s.is_super == 0
     @test F\b ≈ ones(m + n)
 end

@@ -353,9 +353,10 @@ let v = varm([1.0+2.0im], 0; corrected = false)
 end
 
 # Issue #17153 and PR #17154
-let a = rand(10,10)
-    b = deepcopy(a)
+let a = rand(10,10),
+    b = deepcopy(a),
     x = median(a, 1)
+
     @test b == a
     x = median(a, 2)
     @test b == a

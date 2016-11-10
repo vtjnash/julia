@@ -347,7 +347,7 @@ for T in (Int32, Int64, Float32, Float64)
     @test varmin[] === T(0)
 end
 
-let async = Base.AsyncCondition(), t
+let async = Base.AsyncCondition(), t, c
     c = Condition()
     task = schedule(Task(function()
         notify(c)

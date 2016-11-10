@@ -189,9 +189,9 @@ let
 end
 
 # collect multidimensional array
-let
-    a, b = 1:3, [4 6;
-                 5 7]
+let a = 1:3,
+    b = [4 6;
+         5 7],
     p = product(a, b)
     @test size(p)    == (3, 2, 2)
     @test length(p)  == 12
@@ -205,8 +205,9 @@ let
 end
 
 # with 1D inputs
-let
-    a, b, c = 1:2, 1.0:10.0, Int32(1):Int32(0)
+let a = 1:2,
+    b = 1.0:10.0,
+    c = Int32(1):Int32(0)
 
     # length
     @test length(product(a))       == 2
@@ -230,8 +231,10 @@ let
 end
 
 # with multidimensional inputs
-let
-    a, b, c = randn(4, 4), randn(3, 3, 3), randn(2, 2, 2, 2)
+let a = randn(4, 4),
+    b = randn(3, 3, 3),
+    c = randn(2, 2, 2, 2)
+
     args = Any[(a,),
                (a, a),
                (a, b),
@@ -274,9 +277,8 @@ let
 end
 
 # product of finite length and infinite length iterators
-let
-    a = 1:2
-    b = countfrom(1)
+let a = 1:2,
+    b = countfrom(1),
     ab = product(a, b)
     ba = product(b, a)
     abexp = [(1, 1), (2, 1), (1, 2), (2, 2), (1, 3), (2, 3)]

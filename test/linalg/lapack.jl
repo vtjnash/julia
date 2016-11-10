@@ -72,7 +72,8 @@ end
 end
 
 @testset "Issue #7886" begin
-    let x, r = LAPACK.gelsy!([0 1; 0 2; 0 3.], [2, 4, 6.])
+    let
+        x, r = LAPACK.gelsy!([0 1; 0 2; 0 3.], [2, 4, 6.])
         @test x ≈ [0,2]
         @test r == 1
     end

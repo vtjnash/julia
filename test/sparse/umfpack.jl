@@ -119,8 +119,8 @@ for T in (BigFloat, Complex{BigFloat})
 end
 
 #size(::UmfpackLU)
-let
-    m = n = 1
+let m = 1,
+    n = 1,
     F = lufact(sparse(ones(m, n)))
     @test size(F) == (m, n)
     @test size(F, 1) == m
@@ -129,16 +129,14 @@ let
     @test_throws ArgumentError size(F,-1)
 end
 
-let
-    a = rand(5)
+let a = rand(5)
     @test_throws ArgumentError Base.SparseArrays.UMFPACK.solve!(a, lufact(speye(5,5)), a, Base.SparseArrays.UMFPACK.UMFPACK_A)
     aa = complex(a)
     @test_throws ArgumentError Base.SparseArrays.UMFPACK.solve!(aa, lufact(complex(speye(5,5))), aa, Base.SparseArrays.UMFPACK.UMFPACK_A)
 end
 
 #18246,18244-lufact sparse pivot
-let
-    A = speye(4)
+let A = speye(4)
     A[1:2,1:2] = [-.01 -200; 200 .001]
     F = lufact(A)
     @test F[:p] == [3 ; 4 ; 2 ; 1]

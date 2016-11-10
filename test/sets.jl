@@ -119,7 +119,7 @@ end
 # start, done, next
 for data_in in ((7,8,4,5),
                 ("hello", 23, 2.7, (), [], (1,8)))
-    local data_in, s
+    local data_in, s, t
     s = Set(data_in)
 
     s_new = Set()

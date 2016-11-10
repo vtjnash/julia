@@ -242,26 +242,23 @@ let x = Vector{Int}[[1,2], [3,4]]
 end
 
 # test that LinAlg.axpy! works for element type without commutative multiplication
-let
-    α = ones(Int, 2, 2)
-    x = fill([1 0; 1 1], 3)
+let α = ones(Int, 2, 2),
+    x = fill([1 0; 1 1], 3),
     y = fill(zeros(Int, 2, 2), 3)
     @test LinAlg.axpy!(α, x, deepcopy(y)) == x .* Matrix{Int}[α]
     @test LinAlg.axpy!(α, x, deepcopy(y)) != Matrix{Int}[α] .* x
 end
 
 # test that LinAlg.axpy! works for x and y of different dimensions
-let
-    α = 5
-    x = 2:5
-    y = ones(Int, 2, 4)
-    rx = [1 4]
+let α = 5,
+    x = 2:5,
+    y = ones(Int, 2, 4),
+    rx = [1 4],
     ry = [2 8]
     @test LinAlg.axpy!(α, x, rx, y, ry) == [1 1 1 1; 11 1 1 26]
 end
 
-let
-    vr = [3.0, 4.0]
+let vr = [3.0, 4.0]
     for Tr in (Float32, Float64)
         for T in (Tr, Complex{Tr})
             v = convert(Vector{T}, vr)
@@ -276,8 +273,7 @@ let
 end
 
 #Test potential overflow in normalize!
-let
-    δ = inv(prevfloat(typemax(Float64)))
+let δ = inv(prevfloat(typemax(Float64))),
     v = [δ, -δ]
 
     @test norm(v) === 7.866824069956793e-309

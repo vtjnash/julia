@@ -110,8 +110,8 @@ function my_intmap(x)
     return a
 end
 
-let x = spv_x1
-    a = my_intmap(x)
+let x = spv_x1,
+    a = my_intmap(x),
     xc = sparsevec(a, 8)
     @test exact_equal(x, xc)
 
@@ -123,7 +123,7 @@ let x = spv_x1
 end
 
 # spones - copies structure, but replaces nzvals with ones
-let x = SparseVector(8, [2, 3, 6], [12.0, 18.0, 25.0])
+let x = SparseVector(8, [2, 3, 6], [12.0, 18.0, 25.0]),
     y = spones(x)
     @test (x .!= 0) == (y .!= 0)
     @test y == SparseVector(8, [2, 3, 6], [1.0, 1.0, 1.0])
@@ -277,7 +277,7 @@ let a = SparseVector(8, [2, 5, 6], Int32[12, 35, 72])
     @test sparsevec(ctranspose(ctranspose(acp))) == acp
 end
 
-let x1 = SparseVector(8, [2, 5, 6], [12.2, 1.4, 5.0])
+let x1 = SparseVector(8, [2, 5, 6], [12.2, 1.4, 5.0]),
     x2 = SparseVector(8, [3, 4], [1.2, 3.4])
     copy!(x2, x1)
     @test x2 == x1
@@ -305,7 +305,7 @@ let x1 = SparseVector(8, [2, 5, 6], [12.2, 1.4, 5.0])
     @test_throws BoundsError copy!(x2, x1)
 end
 
-let x1 = sparse([2, 1, 2], [1, 3, 3], [12.2, 1.4, 5.0], 2, 4)
+let x1 = sparse([2, 1, 2], [1, 3, 3], [12.2, 1.4, 5.0], 2, 4),
     x2 = SparseVector(8, [3, 4], [1.2, 3.4])
     copy!(x2, x1)
     @test x2[:] == x1[:]
@@ -333,7 +333,7 @@ let x1 = sparse([2, 1, 2], [1, 3, 3], [12.2, 1.4, 5.0], 2, 4)
     @test_throws BoundsError copy!(x2, x1)
 end
 
-let x1 = SparseVector(8, [2, 5, 6], [12.2, 1.4, 5.0])
+let x1 = SparseVector(8, [2, 5, 6], [12.2, 1.4, 5.0]),
     x2 = sparse([1, 2], [2, 2], [1.2, 3.4], 2, 4)
     copy!(x2, x1)
     @test x2[:] == x1[:]
@@ -394,7 +394,7 @@ end
 
 ### Concatenation
 
-let m = 80, n = 100
+let m = 80, n = 100, A
     A = Array{SparseVector{Float64,Int}}(n)
     tnnz = 0
     for i = 1:length(A)
@@ -496,7 +496,7 @@ let S = sprand(4, 8, 0.5)
     end
 end
 
-let r = [1,10], S = sparse(r, r, r)
+let r = [1,10], S = sparse(r, r, r), v
     Sf = Array(S)
     @assert isa(Sf, Matrix{Int})
 
@@ -720,13 +720,14 @@ end
 
 ### BLAS Level-1
 
-let x = sprand(16, 0.5), x2 = sprand(16, 0.4)
-    xf = Array(x)
+let x = sprand(16, 0.5),
+    x2 = sprand(16, 0.4),
+    xf = Array(x),
     xf2 = Array(x2)
 
     # axpy!
     for c in [1.0, -1.0, 2.0, -2.0]
-        y = Array(x)
+        local y = Array(x)
         @test Base.axpy!(c, x2, y) === y
         @test y == Array(x2 * c + x)
     end
@@ -763,8 +764,8 @@ let x = sprand(16, 0.5), x2 = sprand(16, 0.4)
 end
 
 let x = complex(sprand(32, 0.6), sprand(32, 0.6)),
-    y = complex(sprand(32, 0.6), sprand(32, 0.6))
-    xf = Array(x)::Vector{Complex128}
+    y = complex(sprand(32, 0.6), sprand(32, 0.6)),
+    xf = Array(x)::Vector{Complex128},
     yf = Array(y)::Vector{Complex128}
     @test dot(x, x) ≈ dot(xf, xf)
     @test dot(x, y) ≈ dot(xf, yf)
@@ -775,8 +776,11 @@ end
 
 ## dense A * sparse x -> dense y
 
-let A = randn(9, 16), x = sprand(16, 0.7)
-    xf = Array(x)
+let A = randn(9, 16),
+    x = sprand(16, 0.7),
+    xf = Array(x),
+    y
+
     for α in [0.0, 1.0, 2.0], β in [0.0, 0.5, 1.0]
         y = rand(9)
         rr = α*A*xf + β*y
@@ -788,8 +792,11 @@ let A = randn(9, 16), x = sprand(16, 0.7)
     @test A*x ≈ A*xf
 end
 
-let A = randn(16, 9), x = sprand(16, 0.7)
-    xf = Array(x)
+let A = randn(16, 9),
+    x = sprand(16, 0.7),
+    xf = Array(x),
+    y
+
     for α in [0.0, 1.0, 2.0], β in [0.0, 0.5, 1.0]
         y = rand(9)
         rr = α*A'xf + β*y
@@ -803,9 +810,12 @@ end
 
 ## sparse A * sparse x -> dense y
 
-let A = sprandn(9, 16, 0.5), x = sprand(16, 0.7)
-    Af = Array(A)
-    xf = Array(x)
+let A = sprandn(9, 16, 0.5),
+    x = sprand(16, 0.7),
+    Af = Array(A),
+    xf = Array(x),
+    y
+
     for α in [0.0, 1.0, 2.0], β in [0.0, 0.5, 1.0]
         y = rand(9)
         rr = α*Af*xf + β*y
@@ -817,9 +827,12 @@ let A = sprandn(9, 16, 0.5), x = sprand(16, 0.7)
     @test y ≈ Af*xf
 end
 
-let A = sprandn(16, 9, 0.5), x = sprand(16, 0.7)
-    Af = Array(A)
-    xf = Array(x)
+let A = sprandn(16, 9, 0.5),
+    x = sprand(16, 0.7),
+    Af = Array(A),
+    xf = Array(x),
+    y
+
     for α in [0.0, 1.0, 2.0], β in [0.0, 0.5, 1.0]
         y = rand(9)
         rr = α*Af'xf + β*y
@@ -844,10 +857,13 @@ end
 
 ## sparse A * sparse x -> sparse y
 
-let A = sprandn(9, 16, 0.5), x = sprand(16, 0.7), x2 = sprand(9, 0.7)
-    Af = Array(A)
-    xf = Array(x)
-    x2f = Array(x2)
+let A = sprandn(9, 16, 0.5),
+    x = sprand(16, 0.7),
+    x2 = sprand(9, 0.7),
+    Af = Array(A),
+    xf = Array(x),
+    x2f = Array(x2),
+    y
 
     y = A*x
     @test isa(y, SparseVector{Float64,Int})
@@ -862,10 +878,11 @@ end
 
 let A = complex(sprandn(7, 8, 0.5), sprandn(7, 8, 0.5)),
     x = complex(sprandn(8, 0.6), sprandn(8, 0.6)),
-    x2 = complex(sprandn(7, 0.75), sprandn(7, 0.75))
-    Af = Array(A)
-    xf = Array(x)
-    x2f = Array(x2)
+    x2 = complex(sprandn(7, 0.75), sprandn(7, 0.75)),
+    Af = Array(A),
+    xf = Array(x),
+    x2f = Array(x2),
+    y
 
     y = A*x
     @test isa(y, SparseVector{Complex128,Int})

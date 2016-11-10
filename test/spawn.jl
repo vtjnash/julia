@@ -288,7 +288,7 @@ let bad = "bad\0name"
 end
 
 # issue #12829
-let out = Pipe(), echo = `$exename --startup-file=no -e 'print(STDOUT, " 1\t", readstring(STDIN))'`, ready = Condition(), t
+let out = Pipe(), echo = `$exename --startup-file=no -e 'print(STDOUT, " 1\t", readstring(STDIN))'`, ready = Condition(), t, c, ln1, ln2, desc
     @test_throws ArgumentError write(out, "not open error")
     t = @async begin # spawn writer task
         open(echo, "w", out) do in1

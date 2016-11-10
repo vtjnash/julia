@@ -11,11 +11,14 @@ let n = 10
     Aimg   = randn(n,n)/2
 
     @testset for eltya in (Float32, Float64, Complex64, Complex128, BigFloat, Int)
-        A = eltya == Int ?
-                rand(1:7, n, n) :
-                convert(Matrix{eltya}, eltya <: Complex ?
+        local A
+        if eltya == Int
+            A = rand(1:7, n, n)
+        else
+            A = convert(Matrix{eltya}, eltya <: Complex ?
                     complex(Areal, Aimg) :
                     Areal)
+        end
 
         if eltya != BigFloat
             H = hessfact(A)

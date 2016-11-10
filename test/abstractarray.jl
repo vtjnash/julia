@@ -125,28 +125,30 @@ end
 @test_throws ArgumentError sub2ind((1:3,), 2)
 @test_throws ArgumentError ind2sub((1:3,), 2)
 # 2-dimensional
-k = 0
-for j = 1:3, i = 1:4
-    @test sub2ind((4,3), i, j) == (k+=1)
-    @test ind2sub((4,3), k) == (i,j)
-    @test sub2ind((1:4,1:3), i, j) == k
-    @test ind2sub((1:4,1:3), k) == (i,j)
-    @test sub2ind((0:3,3:5), i-1, j+2) == k
-    @test ind2sub((0:3,3:5), k) == (i-1, j+2)
+let k = 0
+    for j = 1:3, i = 1:4
+        @test sub2ind((4,3), i, j) == (k+=1)
+        @test ind2sub((4,3), k) == (i,j)
+        @test sub2ind((1:4,1:3), i, j) == k
+        @test ind2sub((1:4,1:3), k) == (i,j)
+        @test sub2ind((0:3,3:5), i-1, j+2) == k
+        @test ind2sub((0:3,3:5), k) == (i-1, j+2)
+    end
 end
 # Delete when partial linear indexing is deprecated (#14770)
 @test sub2ind((4,3), 7) == 7
 @test sub2ind((1:4,1:3), 7) == 7
 @test sub2ind((0:3,3:5), 7) == 8
 # 3-dimensional
-l = 0
-for k = 1:2, j = 1:3, i = 1:4
-    @test sub2ind((4,3,2), i, j, k) == (l+=1)
-    @test ind2sub((4,3,2), l) == (i,j,k)
-    @test sub2ind((1:4,1:3,1:2), i, j, k) == l
-    @test ind2sub((1:4,1:3,1:2), l) == (i,j,k)
-    @test sub2ind((0:3,3:5,-101:-100), i-1, j+2, k-102) == l
-    @test ind2sub((0:3,3:5,-101:-100), l) == (i-1, j+2, k-102)
+let l = 0
+    for k = 1:2, j = 1:3, i = 1:4
+        @test sub2ind((4,3,2), i, j, k) == (l+=1)
+        @test ind2sub((4,3,2), l) == (i,j,k)
+        @test sub2ind((1:4,1:3,1:2), i, j, k) == l
+        @test ind2sub((1:4,1:3,1:2), l) == (i,j,k)
+        @test sub2ind((0:3,3:5,-101:-100), i-1, j+2, k-102) == l
+        @test ind2sub((0:3,3:5,-101:-100), l) == (i-1, j+2, k-102)
+    end
 end
 
 A = reshape(collect(1:9), (3,3))
@@ -723,7 +725,7 @@ A = TSlowNIndexes(rand(2,2))
 @test @inferred(indices(rand(3,2), 3)) == 1:1
 
 #17088
-let
+let n, v
     n = 10
     M = rand(n, n)
     # vector of vectors

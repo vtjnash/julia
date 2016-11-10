@@ -5,7 +5,7 @@ using Base.Test
 @testset "eigs" begin
     let
         srand(1234)
-        local n,a,asym,b,bsym,d,v
+        local n, a, asym, b, bsym, d, v, areal, breal
         n = 10
         areal  = sprandn(n,n,0.4)
         breal  = sprandn(n,n,0.4)
@@ -242,10 +242,12 @@ end
 end
 
 # Symmetric generalized with singular B
-let
-    n = 10
-    k = 3
-    A = randn(n,n); A = A'A
-    B = randn(n,k);  B = B*B'
+let n = 10,
+    k = 3,
+    A = randn(n, n),
+    B = randn(n, k)
+
+    A = A'A
+    B = B*B'
     @test sort(eigs(A, B, nev = k, sigma = 1.0)[1]) ≈ sort(eigvals(A, B)[1:k])
 end

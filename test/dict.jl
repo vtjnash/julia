@@ -339,15 +339,13 @@ for k5886 in keys(d5886)
 end
 
 # issue #8877
-let
-    a = Dict("foo"  => 0.0, "bar" => 42.0)
+let a = Dict("foo"  => 0.0, "bar" => 42.0),
     b = Dict("フー" => 17, "バー" => 4711)
     @test typeof(merge(a, b)) === Dict{String,Float64}
 end
 
 # issue 9295
-let
-    d = Dict()
+let d = Dict()
     @test push!(d, 'a' => 1) === d
     @test d['a'] == 1
     @test push!(d, 'b' => 2, 'c' => 3) === d
@@ -362,8 +360,7 @@ end
 
 # issue #10647
 type T10647{T}; x::T; end
-let
-    a = ObjectIdDict()
+let a = ObjectIdDict()
     a[1] = a
     a[a] = 2
     a[3] = T10647(a)

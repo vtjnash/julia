@@ -505,30 +505,33 @@ end
 
 # unique across dim
 
-# All rows and columns unique
-A = ones(10, 10)
-A[diagind(A)] = shuffle!([1:10;])
-@test unique(A, 1) == A
-@test unique(A, 2) == A
-
-# 10 repeats of each row
-B = A[shuffle!(repmat(1:10, 10)), :]
-C = unique(B, 1)
-@test sortrows(C) == sortrows(A)
-@test unique(B, 2) == B
-@test unique(B.', 2).' == C
-
-# Along third dimension
-D = cat(3, B, B)
-@test unique(D, 1) == cat(3, C, C)
-@test unique(D, 3) == cat(3, B)
-
-# With hash collisions
 immutable HashCollision
     x::Float64
 end
 Base.hash(::HashCollision, h::UInt) = h
-@test map(x->x.x, unique(map(HashCollision, B), 1)) == C
+
+# All rows and columns unique
+let A, B, C, D
+    A = ones(10, 10)
+    A[diagind(A)] = shuffle!([1:10;])
+    @test unique(A, 1) == A
+    @test unique(A, 2) == A
+
+    # 10 repeats of each row
+    B = A[shuffle!(repmat(1:10, 10)), :]
+    C = unique(B, 1)
+    @test sortrows(C) == sortrows(A)
+    @test unique(B, 2) == B
+    @test unique(B.', 2).' == C
+
+    # Along third dimension
+    D = cat(3, B, B)
+    @test unique(D, 1) == cat(3, C, C)
+    @test unique(D, 3) == cat(3, B)
+
+    # With hash collisions
+    @test map(x -> x.x, unique(map(HashCollision, B), 1)) == C
+end
 
 @testset "large matrices transpose" begin
     for i = 1 : 3
@@ -855,7 +858,7 @@ end
 
 @testset "mapslices" begin
     let
-        local a,h,i
+        local a, b, c, m, h, s
         a = rand(5,5)
         s = mapslices(sort, a, [1])
         S = mapslices(sort, a, [2])
@@ -1014,7 +1017,9 @@ end
     for idx in Any[1, 2, 5, 9, 10, 1:0, 2:1, 1:1, 2:2, 1:2, 2:4, 9:8, 10:9, 9:9, 10:10,
                    8:9, 9:10, 6:9, 7:10]
         for repl in Any[[], [11], [11,22], [11,22,33,44,55]]
-            a = [1:10;]; acopy = copy(a)
+            local a
+            a = [1:10;]
+            acopy = copy(a)
             @test splice!(a, idx, repl) == acopy[idx]
             @test a == [acopy[1:(first(idx)-1)]; repl; acopy[(last(idx)+1):end]]
         end
@@ -1107,18 +1112,21 @@ end
 end
 
 # issue 4228
-A = [[i i; i i] for i=1:2]
-@test cumsum(A) == Any[[1 1; 1 1], [3 3; 3 3]]
-@test cumprod(A) == Any[[1 1; 1 1], [4 4; 4 4]]
+let A = [[i i; i i] for i=1:2]
+    @test cumsum(A) == Any[[1 1; 1 1], [3 3; 3 3]]
+    @test cumprod(A) == Any[[1 1; 1 1], [4 4; 4 4]]
+end
 
 # PR #4627
-A = [1,2]
-@test append!(A, A) == [1,2,1,2]
-@test prepend!(A, A) == [1,2,1,2,1,2,1,2]
+let A = [1,2]
+    @test append!(A, A) == [1,2,1,2]
+    @test prepend!(A, A) == [1,2,1,2,1,2,1,2]
+end
 
-A = [1,2]
-s = Set([1,2,3])
-@test sort(append!(A, s)) == [1,1,2,2,3]
+let A = [1,2]
+    s = Set([1,2,3])
+    @test sort(append!(A, s)) == [1,1,2,2,3]
+end
 
 @testset "cases where shared arrays can/can't be grown" begin
     A = [1 3;2 4]
@@ -1154,9 +1162,10 @@ for N = 1:Nmax
 end
 
 # issue #6645 (32-bit)
-let
-    x = Float64[]
-    for i=1:5; push!(x, 1.0); end
+let x = Float64[]
+    for i = 1:5
+        push!(x, 1.0)
+    end
     @test dot(zeros(5),x) == 0.0
 end
 
@@ -1170,10 +1179,12 @@ end
 @test map(join, ["z", "я"]) == ["z", "я"]
 
 # Handle block matrices
-A = [randn(2,2) for i = 1:2, j = 1:2]
-@test issymmetric(A.'A)
-A = [complex(randn(2,2), randn(2,2)) for i = 1:2, j = 1:2]
-@test ishermitian(A'A)
+let A = [randn(2,2) for i = 1:2, j = 1:2]
+    @test issymmetric(A.'A)
+end
+let A = [complex(randn(2,2), randn(2,2)) for i = 1:2, j = 1:2]
+    @test ishermitian(A'A)
+end
 
 # issue #7197
 function i7197()
@@ -1558,9 +1569,10 @@ module RetTypeDecl
 end
 
 # range, range ops
-A = 1:5
-B = 1.5:5.5
-@test A + B == 2.5:2.0:10.5
+let A = 1:5,
+    B = 1.5:5.5
+    @test A + B == 2.5:2.0:10.5
+end
 
 @testset "slicedim" begin
     for A in (reshape(collect(1:20), 4, 5),
@@ -1607,25 +1619,30 @@ for (a,s) in zip(A, S)
     @test a == s
 end
 
-C = copy(B)
-@test A == C
-@test B == C
+let C = copy(B)
+    @test A == C
+    @test B == C
+end
 
 @test vec(A) == vec(B) == vec(S)
 @test minimum(A) == minimum(B) == minimum(S)
 @test maximum(A) == maximum(B) == maximum(S)
 
-a, ai = findmin(A)
-b, bi = findmin(B)
-s, si = findmin(S)
-@test a == b == s
-@test ai == bi == si
+let
+    a, ai = findmin(A)
+    b, bi = findmin(B)
+    s, si = findmin(S)
+    @test a == b == s
+    @test ai == bi == si
+end
 
-a, ai = findmax(A)
-b, bi = findmax(B)
-s, si = findmax(S)
-@test a == b == s
-@test ai == bi == si
+let
+    a, ai = findmax(A)
+    b, bi = findmax(B)
+    s, si = findmax(S)
+    @test a == b == s
+    @test ai == bi == si
+end
 
 fill!(B, 2)
 @test all(x->x==2, B)

@@ -19,12 +19,13 @@ L64 = linspace(Int64(1), Int64(4), 4)
 @test L32[3] == 3 && L64[3] == 3
 @test L32[4] == 4 && L64[4] == 4
 
-r = 5:-1:1
-@test r[1]==5
-@test r[2]==4
-@test r[3]==3
-@test r[4]==2
-@test r[5]==1
+let r = 5:-1:1
+    @test r[1]==5
+    @test r[2]==4
+    @test r[3]==3
+    @test r[4]==2
+    @test r[5]==1
+end
 
 @test length(.1:.1:.3) == 3
 @test length(1.1:1.1:3.3) == 3
@@ -45,13 +46,13 @@ r = 5:-1:1
 @test isempty((1:4)[5:4])
 @test_throws BoundsError (1:10)[8:-1:-2]
 
-r = typemax(Int)-5:typemax(Int)-1
-@test_throws BoundsError r[7]
+let r = typemax(Int)-5:typemax(Int)-1
+    @test_throws BoundsError r[7]
+end
 
 @test findin([5.2, 3.3], 3:20) == findin([5.2, 3.3], collect(3:20))
 
-let
-    span = 5:20
+let span = 5:20,
     r = -7:3:42
     @test findin(r, span) == 5:10
     r = 15:-2:-38
@@ -142,11 +143,13 @@ end
 #@test (3 in 3+0*(1:5))
 #@test !(4 in 3+0*(1:5))
 
-r = 0.0:0.01:1.0
-@test (r[30] in r)
-r = (-4*Int64(maxintfloat(Int === Int32 ? Float32 : Float64))):5
-@test (3 in r)
-@test (3.0 in r)
+let r = 0.0:0.01:1.0
+    @test (r[30] in r)
+end
+let r = (-4*Int64(maxintfloat(Int === Int32 ? Float32 : Float64))):5
+    @test (3 in r)
+    @test (3.0 in r)
+end
 
 @test !(1 in 1:0)
 @test !(1.0 in 1.0:0.0)
@@ -171,7 +174,7 @@ end
 @test_throws OverflowError length(typemin(Int):typemax(Int))
 @test_throws OverflowError length(-1:typemax(Int)-1)
 
-let s = 0
+let s = 0, n
     # loops ending at typemax(Int)
     for i = (typemax(Int)-1):typemax(Int)
         s += 1
@@ -306,14 +309,19 @@ end
 @test [0.0:prevfloat(0.1):0.3;] == [0.0, prevfloat(0.1), prevfloat(0.2), 0.3]
 @test [0.0:nextfloat(0.1):0.3;] == [0.0, nextfloat(0.1), nextfloat(0.2)]
 
-for T = (Float32, Float64,),# BigFloat),
-    a = -5:25, s = [-5:-1;1:25;], d = 1:25, n = -1:15
+for T in (Float32, Float64,),# BigFloat),
+    a in -5:25,
+    s in [-5:-1;1:25;],
+    d in 1:25,
+    n in -1:15
+
     den   = convert(T,d)
     start = convert(T,a)/den
     step  = convert(T,s)/den
     stop  = convert(T,(a+(n-1)*s))/den
     vals  = T[a:s:a+(n-1)*s;]./den
     r = start:step:stop
+
     @test [r;] == vals
     @test [linspace(start, stop, length(r));] == vals
     # issue #7420
@@ -461,21 +469,24 @@ let r1 = 1.0:0.1:2.0, r2 = 1.0f0:0.2f0:3.0f0, r3 = 1:2:21
 end
 
 # issue #7114
-r = -0.004532318104333742:1.2597349521122731e-5:0.008065031416788989
-@test length(r[1:end-1]) == length(r) - 1
-@test isa(r[1:2:end],Range) && length(r[1:2:end]) == div(length(r)+1, 2)
-@test r[3:5][2] ≈ r[4]
-@test r[5:-2:1][2] ≈ r[3]
-@test_throws BoundsError r[0:10]
-@test_throws BoundsError r[1:10000]
+let r = -0.004532318104333742:1.2597349521122731e-5:0.008065031416788989
+    @test length(r[1:end-1]) == length(r) - 1
+    @test isa(r[1:2:end],Range) && length(r[1:2:end]) == div(length(r)+1, 2)
+    @test r[3:5][2] ≈ r[4]
+    @test r[5:-2:1][2] ≈ r[3]
+    @test_throws BoundsError r[0:10]
+    @test_throws BoundsError r[1:10000]
+end
 
-r = linspace(1/3,5/7,6)
-@test length(r) == 6
-@test r[1] == 1/3
-@test abs(r[end] - 5/7) <= eps(5/7)
-r = linspace(0.25,0.25,1)
-@test length(r) == 1
-@test_throws ErrorException linspace(0.25,0.5,1)
+let r = linspace(1/3,5/7,6)
+    @test length(r) == 6
+    @test r[1] == 1/3
+    @test abs(r[end] - 5/7) <= eps(5/7)
+end
+let r = linspace(0.25,0.25,1)
+    @test length(r) == 1
+    @test_throws ErrorException linspace(0.25,0.5,1)
+end
 
 # issue #7426
 @test [typemax(Int):1:typemax(Int);] == [typemax(Int)]
@@ -571,14 +582,15 @@ let io = IOBuffer()
 end
 
 # issue 10950
-r = 1//2:3
-@test length(r) == 3
-i = 1
-for x in r
-    @test x == i//2
-    i += 2
+let r = 1//2:3
+    @test length(r) == 3
+    i = 1
+    for x in r
+        @test x == i//2
+        i += 2
+    end
+    @test i == 7
 end
-@test i == 7
 
 # stringmime/show should display the range or linspace nicely
 # to test print_range in range.jl
@@ -771,9 +783,10 @@ r = Base.OneTo(3)
 @test r+1 === 2:4
 @test 2*r === 2:2:6
 @test r+r === 2:2:6
-k = 0
-for i in r
-    @test i == (k+=1)
+let k = 0
+    for i in r
+        @test i == (k += 1)
+    end
 end
 @test intersect(r, Base.OneTo(2)) == Base.OneTo(2)
 @test intersect(r, 0:5) == 1:3

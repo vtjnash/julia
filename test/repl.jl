@@ -533,8 +533,8 @@ end
 
 # Test stream mode
 if !is_windows() || Sys.windows_version() >= Sys.WINDOWS_VISTA_VER
-    outs, ins, p = readandwrite(`$exename --startup-file=no --quiet`)
-    write(ins,"1\nquit()\n")
+    outs, ins, _ = readandwrite(`$exename --startup-file=no --quiet`)
+    write(ins, "1\nquit()\n")
     @test readstring(outs) == "1\n"
 end
 end # let exename

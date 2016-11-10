@@ -329,14 +329,16 @@ import Base: *, transpose
 transpose(x::RootInt) = x
 @test Base.promote_op(*, RootInt, RootInt) === Int
 
-a = [RootInt(3)]
-C = [0]
-A_mul_Bt!(C, a, a)
-@test C[1] == 9
-a = [RootInt(2),RootInt(10)]
-@test a*a' == [4 20; 20 100]
-A = [RootInt(3) RootInt(5)]
-@test A*a == [56]
+let
+    a = [RootInt(3)]
+    C = [0]
+    A_mul_Bt!(C, a, a)
+    @test C[1] == 9
+    a = [RootInt(2),RootInt(10)]
+    @test a*a' == [4 20; 20 100]
+    A = [RootInt(3) RootInt(5)]
+    @test A*a == [56]
+end
 
 function test_mul(C, A, B)
     A_mul_B!(C, A, B)
@@ -347,6 +349,7 @@ end
 let
     eltypes = [Float32, Float64, Int64]
     for k in [3, 4, 10]
+        local C
         T = rand(eltypes)
         bi1 = Bidiagonal(rand(T, k), rand(T, k-1), rand(Bool))
         bi2 = Bidiagonal(rand(T, k), rand(T, k-1), rand(Bool))
@@ -357,10 +360,12 @@ let
         C = rand(T, k, k)
         specialmatrices = (bi1, bi2, tri1, tri2, stri1, stri2)
         for A in specialmatrices
+            local A, B
             B = specialmatrices[rand(1:length(specialmatrices))]
             test_mul(C, A, B)
         end
         for S in specialmatrices
+            local A, B, C
             l = rand(1:6)
             B = randn(k, l)
             C = randn(k, l)
@@ -371,6 +376,7 @@ let
         end
     end
     for T in eltypes
+        local A, B, C
         A = Bidiagonal(rand(T, 2), rand(T, 1), rand(Bool))
         B = Bidiagonal(rand(T, 2), rand(T, 1), rand(Bool))
         C = randn(2,2)

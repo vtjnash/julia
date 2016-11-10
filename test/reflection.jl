@@ -339,8 +339,9 @@ end
 
 # test jl_get_llvm_fptr. We test functions both in and definitely not in the system image
 definitely_not_in_sysimg() = nothing
-for (f,t) in ((definitely_not_in_sysimg,Tuple{}),
-        (Base.throw_boundserror,Tuple{UnitRange{Int64},Int64}))
+for (f, t) in ((definitely_not_in_sysimg, Tuple{}),
+               (Base.throw_boundserror, Tuple{UnitRange{Int64},Int64}))
+    local f, t
     t = Base.tt_cons(Core.Typeof(f), Base.to_tuple_type(t))
     llvmf = ccall(:jl_get_llvmf, Ptr{Void}, (Any, Bool, Bool), t, false, true)
     @test llvmf != C_NULL
