@@ -281,15 +281,15 @@
                      ,(resolve-expansion-vars- (caddr e) env m inarg))))
 
            ((localize)
-            (let ((expr (cadr e))
-                  (lvars (map unescape (cddr e))))
-              (let ((vs (delete-duplicates
-                         (expr-find-all (lambda (v)
-                                          (and (symbol? v) (or (memq v lvars)
-                                                               (assq v env))))
-                                        expr identity)))
-                    (e2 (resolve-expansion-vars-with-new-env expr env m inarg)))
-                `(call (-> (tuple ,@vs) ,e2) ,@vs))))
+            (let* ((expr (cadr e))
+                   (lvars (map unescape (cddr e)))
+                   (vs (delete-duplicates
+                        (expr-find-all (lambda (v)
+                                         (and (symbol? v) (or (memq v lvars)
+                                                              (assq v env))))
+                                       expr identity)))
+                   (e2 `(let ,expr ,@(map (lambda (e) (make-assignment e e)) vs))))
+                (resolve-expansion-vars- e2 env m inarg)))
 
            ((let)
             (let* ((newenv (new-expansion-env-for e env))
