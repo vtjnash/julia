@@ -1470,4 +1470,6 @@ end
 @deprecate (|)(A::AbstractArray, b::Number)         A .| b
 @deprecate (|)(A::AbstractArray, B::AbstractArray)  A .| B
 
+is_intrinsic_expr(x::ANY) = false
+
 # End deprecations scheduled for 0.6
