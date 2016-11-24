@@ -352,7 +352,7 @@ function fptosi_tfunc(x::ANY)
 end
 
     ## conversion ##
-add_tfunc(box, 2, 2, box_tfunc)
+add_tfunc(bitcast, 2, 2, box_tfunc)
 add_tfunc(sext_int, 2, 2, box_tfunc)
 add_tfunc(zext_int, 2, 2, box_tfunc)
 add_tfunc(trunc_int, 2, 2, box_tfunc)
