@@ -62,7 +62,7 @@ function unsafe_wrap{T,N}(::Union{Type{Array},Type{Array{T}},Type{Array{T,N}}},
 end
 function unsafe_wrap{T}(::Union{Type{Array},Type{Array{T}},Type{Array{T,1}}},
                         p::Ptr{T}, d::Integer, own::Bool=false)
-    ccall(:jl_ptr_to_array_1d, Vector{T},
+    ccall(:jl_ptr_to_array_1d, Array{T,1},
           (Any, Ptr{Void}, Csize_t, Cint), Array{T,1}, p, d, own)
 end
 unsafe_wrap{N,I<:Integer}(Atype::Type, p::Ptr, dims::NTuple{N,I}, own::Bool=false) =
@@ -114,8 +114,8 @@ and makes a copy of the data.
 """
 unsafe_wrap(::Type{String}, p::Union{Ptr{UInt8},Ptr{Int8}}, len::Integer, own::Bool=false) =
     ccall(:jl_array_to_string, Ref{String}, (Any,),
-          ccall(:jl_ptr_to_array_1d, Vector{UInt8}, (Any, Ptr{UInt8}, Csize_t, Cint),
-                Vector{UInt8}, p, len, own))
+          ccall(:jl_ptr_to_array_1d, Array{UInt8,1}, (Any, Ptr{UInt8}, Csize_t, Cint),
+                Array{UInt8,1}, p, len, own))
 unsafe_wrap(::Type{String}, p::Union{Ptr{UInt8},Ptr{Int8}}, own::Bool=false) =
     unsafe_wrap(String, p, ccall(:strlen, Csize_t, (Ptr{UInt8},), p), own)
 
