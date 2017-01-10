@@ -46,10 +46,10 @@ WeakKeyDict() = WeakKeyDict{Any,Any}()
 WeakKeyDict(kv::Tuple{}) = WeakKeyDict()
 copy(d::WeakKeyDict) = WeakKeyDict(d)
 
+WeakKeyDict(     ps::Pair...)                 = WeakKeyDict{Any,Any}(ps)
 WeakKeyDict{K,V}(ps::Pair{K,V}...)            = WeakKeyDict{K,V}(ps)
 WeakKeyDict{K  }(ps::Pair{K}...,)             = WeakKeyDict{K,Any}(ps)
 WeakKeyDict{V  }(ps::(Pair{K,V} where K)...,) = WeakKeyDict{Any,V}(ps)
-WeakKeyDict(     ps::Pair...)                 = WeakKeyDict{Any,Any}(ps)
 
 function WeakKeyDict(kv)
     try

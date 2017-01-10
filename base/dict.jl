@@ -135,10 +135,10 @@ copy(d::Dict) = Dict(d)
 
 const AnyDict = Dict{Any,Any}
 
+Dict(     ps::Pair...)                 = Dict{Any,Any}(ps) # define first, since method sort order is wrong for the following
 Dict{K,V}(ps::Pair{K,V}...)            = Dict{K,V}(ps)
 Dict{K  }(ps::Pair{K}...,)             = Dict{K,Any}(ps)
 Dict{V  }(ps::(Pair{K,V} where K)...,) = Dict{Any,V}(ps)
-Dict(     ps::Pair...)                 = Dict{Any,Any}(ps)
 
 function Dict(kv)
     try

@@ -621,21 +621,8 @@ static jl_typemap_entry_t *jl_typemap_assoc_by_type_(jl_typemap_entry_t *ml, jl_
                                                    ml->sig, lensig, ml->va);
             else {
                 ismatch = jl_subtype_matching((jl_value_t*)types, (jl_value_t*)ml->sig, penv);
-                if (ismatch && penv) {
+                if (ismatch && penv)
                     resetenv = 1;
-                    // parametric methods only match if all typevars will be matched
-                    // when `types` is concrete
-                    // verify this by checking that any typevar that appears in env
-                    // appears in the wrapper for types
-                    size_t i, l;
-                    for (i = 0, l = jl_svec_len(*penv); i < l; i++) {
-                        jl_value_t *param = jl_svecref(*penv, i);
-                        if (jl_is_typevar(param) && !jl_is_param_bound((jl_value_t*)types, (jl_tvar_t*)param)) {
-                            ismatch = 0;
-                            break;
-                        }
-                    }
-                }
             }
 
             if (ismatch) {
