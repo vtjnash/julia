@@ -271,52 +271,58 @@ JL_DLLEXPORT jl_code_info_t *jl_code_for_staged(jl_method_instance_t *linfo)
     jl_module_t *last_m = ptls->current_module;
     jl_module_t *task_last_m = ptls->current_task->current_module;
     size_t last_age = jl_get_ptls_states()->world_age;
+    int nargs = linfo->def->nargs;
     assert(jl_svec_len(linfo->def->sparam_syms) == jl_svec_len(sparam_vals));
+    assert(jl_nparams(tt) == nargs ||
+           (linfo->def->isva && (jl_nparams(tt) >= nargs - 1)));
     JL_TRY {
         ptls->in_pure_callback = 1;
         // need to eval macros in the right module
         ptls->current_task->current_module = ptls->current_module = linfo->def->module;
         // and the right world
         ptls->world_age = generator->def->min_world;
-
-        ex = jl_exprn(lambda_sym, 2);
-
-        int nargs = linfo->def->nargs;
-        jl_array_t *argnames = jl_alloc_vec_any(nargs);
-        jl_array_ptr_set(ex->args, 0, argnames);
-        for (i = 0; i < nargs; i++)
-            jl_array_ptr_set(argnames, i, jl_array_ptr_ref(linfo->def->source->slotnames, i));
-
-        jl_expr_t *scopeblock = jl_exprn(jl_symbol("scope-block"), 1);
-        jl_array_ptr_set(ex->args, 1, scopeblock);
-        jl_expr_t *body = jl_exprn(jl_symbol("block"), 2);
-        jl_array_ptr_set(((jl_expr_t*)jl_exprarg(ex,1))->args, 0, body);
-        linenum = jl_box_long(linfo->def->line);
-        jl_value_t *linenode = jl_new_struct(jl_linenumbernode_type, linenum);
-        jl_array_ptr_set(body->args, 0, linenode);
-
         // invoke code generator
-        assert(jl_nparams(tt) == jl_array_len(argnames) ||
-               (linfo->def->isva && (jl_nparams(tt) >= jl_array_len(argnames) - 1)));
-        jl_array_ptr_set(body->args, 1,
-                jl_call_staged(sparam_vals, generator, jl_svec_data(tt->parameters), jl_nparams(tt)));
+        func = (jl_code_info_t*)jl_call_staged(sparam_vals, generator, jl_svec_data(tt->parameters), jl_nparams(tt));
 
-        if (linfo->def->sparam_syms != jl_emptysvec) {
-            // mark this function as having the same static parameters as the generator
-            size_t i, nsp = jl_svec_len(linfo->def->sparam_syms);
-            jl_expr_t *newast = jl_exprn(jl_symbol("with-static-parameters"), nsp + 1);
-            jl_exprarg(newast, 0) = (jl_value_t*)ex;
-            // (with-static-parameters func_expr sp_1 sp_2 ...)
-            for (i = 0; i < nsp; i++)
-                jl_exprarg(newast, i+1) = jl_svecref(linfo->def->sparam_syms, i);
-            ex = newast;
-        }
-
-        func = (jl_code_info_t*)jl_expand((jl_value_t*)ex);
         if (!jl_is_code_info(func)) {
-            if (jl_is_expr(func) && ((jl_expr_t*)func)->head == error_sym)
-                jl_interpret_toplevel_expr((jl_value_t*)func);
-            jl_error("generated function body is not pure. this likely means it contains a closure or comprehension.");
+            ex = jl_exprn(lambda_sym, 2);
+
+            jl_array_t *argnames = jl_alloc_vec_any(nargs);
+            jl_array_ptr_set(ex->args, 0, argnames);
+            for (i = 0; i < nargs; i++)
+                jl_array_ptr_set(argnames, i, jl_array_ptr_ref(linfo->def->source->slotnames, i));
+
+            jl_expr_t *scopeblock = jl_exprn(jl_symbol("scope-block"), 1);
+            jl_array_ptr_set(ex->args, 1, scopeblock);
+            jl_expr_t *body = jl_exprn(jl_symbol("block"), 2);
+            jl_array_ptr_set(((jl_expr_t*)jl_exprarg(ex,1))->args, 0, body);
+            linenum = jl_box_long(linfo->def->line);
+            jl_value_t *linenode = jl_new_struct(jl_linenumbernode_type, linenum);
+            jl_array_ptr_set(body->args, 0, linenode);
+            jl_array_ptr_set(body->args, 1, func);
+
+            if (linfo->def->sparam_syms != jl_emptysvec) {
+                // mark this function as having the same static parameters as the generator
+                size_t i, nsp = jl_svec_len(linfo->def->sparam_syms);
+                jl_expr_t *newast = jl_exprn(jl_symbol("with-static-parameters"), nsp + 1);
+                jl_exprarg(newast, 0) = (jl_value_t*)ex;
+                // (with-static-parameters func_expr sp_1 sp_2 ...)
+                for (i = 0; i < nsp; i++)
+                    jl_exprarg(newast, i+1) = jl_svecref(linfo->def->sparam_syms, i);
+                ex = newast;
+            }
+
+            func = (jl_code_info_t*)jl_expand((jl_value_t*)ex);
+            if (!jl_is_code_info(func)) {
+                if (jl_is_expr(func) && ((jl_expr_t*)func)->head == error_sym)
+                    jl_interpret_toplevel_expr((jl_value_t*)func);
+                jl_error("generated function body is not pure. this likely means it contains a closure or comprehension.");
+            }
+        }
+        else {
+            // partially validate code-info object
+            if (!jl_typeis(func->code, jl_array_any_type))
+                jl_error("invalid CodeInfo returned from generated function");
         }
 
         jl_array_t *stmts = (jl_array_t*)func->code;
