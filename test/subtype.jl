@@ -861,3 +861,7 @@ f18348{T<:Any}(::Type{T}, x::T) = 2
 # Issue #12721
 f12721{T<:Type{Int}}(::T) = true
 @test_throws MethodError f12721(Float64)
+
+# supertype operator
+@test !(Int >: Integer)
+@test Integer >: Int

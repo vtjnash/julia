@@ -9,9 +9,16 @@ typealias Indices{N} NTuple{N,AbstractUnitRange}
 """
     <:(T1, T2)
 
-Subtype operator, equivalent to `issubtype(T1,T2)`.
+Subtype operator, equivalent to `issubtype(T1, T2)`.
 """
 const (<:) = issubtype
+
+"""
+    >:(T1, T2)
+
+Supertype operator, equivalent to `issubtype(T2, T1)`.
+"""
+const (>:)(a::ANY, b::ANY) = issubtype(b, a)
 
 """
     supertype(T::DataType)
