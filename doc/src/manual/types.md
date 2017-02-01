@@ -1045,6 +1045,10 @@ end
 Of course, this depends on what `Int` is aliased to -- but that is predefined to be the correct
 type -- either `Int32` or `Int64`.
 
+(Note that unlike `Int`, `Float` does not exist as a type-alias for a specific sized `AbstractFloat`.
+Unlike with integer registers, the size of the floating point representation is problem dependent,
+not platform dependent.)
+
 For parametric types, `typealias` can be convenient for providing names for cases where some of
 the parameter choices are fixed:
 
