@@ -42,6 +42,6 @@ Extended documentation for mathematical symbols & functions is [here](@ref math-
 | `::`        | type annotation, depending on context                                                       |
 | `:( )`      | quoted expression                                                                           |
 | `:a`        | symbol a                                                                                    |
-| `<:`        | [subtype operator](@ref <:)                                                                 |
-| `>:`        | [supertype operator](@ref Base.:>:) (reverse of subtype operator)                           |
-| `===`       | [eqal comparison operator](@ref ===)                                                        |
+| `<:`        | [`subtype operator`](@ref <:)                                                               |
+| `>:`        | [`supertype operator`](@ref >:) (reverse of subtype operator)                               |
+| `===`       | [`eqal comparison operator`](@ref ===)                                                      |
