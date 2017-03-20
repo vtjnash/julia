@@ -20,11 +20,6 @@ jl_gc_pagemeta_t *jl_gc_page_metadata(void *data)
     return page_metadata(data);
 }
 
-region_t *jl_gc_find_region(void *ptr)
-{
-    return find_region(ptr);
-}
-
 // Find the memory block in the pool that owns the byte pointed to by p.
 // For end of object pointer (which is always the case for pointer to a
 // singleton object), this usually returns the same pointer which points to
@@ -32,21 +27,19 @@ region_t *jl_gc_find_region(void *ptr)
 // the end of the page.
 JL_DLLEXPORT jl_taggedvalue_t *jl_gc_find_taggedvalue_pool(char *p, size_t *osize_p)
 {
-    region_t *r = find_region(p);
-    // Not in the pool
-    if (!r)
+    if (!page_metadata(p))
+        // Not in the pool
         return NULL;
+    struct jl_gc_metadata_ext info = page_metadata_ext(p);
     char *page_begin = gc_page_data(p) + GC_PAGE_OFFSET;
     // In the page header
     if (p < page_begin)
         return NULL;
     size_t ofs = p - page_begin;
-    int pg_idx = page_index(r, page_begin);
     // Check if this is a free page
-    if (!(r->allocmap[pg_idx / 32] & (uint32_t)(1 << (pg_idx % 32))))
+    if (!(info.region0->allocmap[info.region0_i32 / 32] & (uint32_t)(1 << info.region0_i)))
         return NULL;
-    jl_gc_pagemeta_t *pagemeta = &r->meta[pg_idx];
-    int osize = pagemeta->osize;
+    int osize = info.meta->osize;
     // Shouldn't be needed, just in case
     if (osize == 0)
         return NULL;
@@ -1016,14 +1009,42 @@ static void gc_count_pool_page(jl_gc_pagemeta_t *pg)
     }
 }
 
-static void gc_count_pool_region(region_t *region)
+static void gc_count_pool_region0(region0_t *region0)
 {
-    for (int pg_i = 0; pg_i < region->pg_cnt / 32; pg_i++) {
-        uint32_t line = region->allocmap[pg_i];
+    for (int pg_i = 0; pg_i < REGION0_PG_COUNT / 32; pg_i++) {
+        uint32_t line = region0->allocmap[pg_i];
         if (line) {
             for (int j = 0; j < 32; j++) {
                 if ((line >> j) & 1) {
-                    gc_count_pool_page(&region->meta[pg_i*32 + j]);
+                    gc_count_pool_page(region0->meta[pg_i * 32 + j]);
+                }
+            }
+        }
+    }
+}
+
+static void gc_count_pool_region1(region1_t *region1)
+{
+    for (int pg_i = 0; pg_i < REGION1_PG_COUNT / 32; pg_i++) {
+        uint32_t line = region1->allocmap0[pg_i];
+        if (line) {
+            for (int j = 0; j < 32; j++) {
+                if ((line >> j) & 1) {
+                    gc_count_pool_region0(region1->meta0[pg_i * 32 + j]);
+                }
+            }
+        }
+    }
+}
+
+static void gc_count_pool_regions(void)
+{
+    for (int pg_i = 0; pg_i < (REGION2_PG_COUNT + 31) / 32; pg_i++) {
+        uint32_t line = memory_map.allocmap1[pg_i];
+        if (line) {
+            for (int j = 0; j < 32; j++) {
+                if ((line >> j) & 1) {
+                    gc_count_pool_region1(memory_map.meta1[pg_i * 32 + j]);
                 }
             }
         }
@@ -1034,11 +1055,7 @@ void gc_count_pool(void)
 {
     memset(&poolobj_sizes, 0, sizeof(poolobj_sizes));
     empty_pages = 0;
-    for (int i = 0; i < REGION_COUNT; i++) {
-        if (!regions[i].pages)
-            break;
-        gc_count_pool_region(&regions[i]);
-    }
+    gc_count_pool_regions();
     jl_safe_printf("****** Pool stat: ******\n");
     for (int i = 0;i < 4;i++)
         jl_safe_printf("bits(%d): %"  PRId64 "\n", i, poolobj_sizes[i]);

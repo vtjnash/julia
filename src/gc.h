@@ -147,33 +147,77 @@ typedef struct {
     uint8_t *ages;
 } jl_gc_pagemeta_t;
 
-typedef struct {
-    char data[GC_PAGE_SZ];
-} jl_gc_page_t
-#if !defined(_COMPILER_MICROSOFT_) && !(defined(_COMPILER_MINGW_) && defined(_COMPILER_CLANG_))
-__attribute__((aligned(GC_PAGE_SZ)))
+// Page layout:
+//  Newpage freelist: sizeof(void*)
+//  Padding: GC_PAGE_OFFSET - sizeof(void*)
+//  Blocks: osize * n
+//    Tag: sizeof(jl_taggedvalue_t)
+//    Data: <= osize - sizeof(jl_taggedvalue_t)
+
+// these plus GC_PAGE_LG2 must sum to sizeof(void*)
+// and should be multiples of 32 (MIN_REGION_PG_COUNT), except REGION2_PG_COUNT can be 1
+#ifdef _P64
+#define REGION0_PG_COUNT (1 << 16)
+#define REGION1_PG_COUNT (1 << 16)
+#define REGION2_PG_COUNT (1 << 18)
+#define REGION0_INDEX(p) (((uintptr_t)(p) >> 14) & 0xFFFF) // shift by GC_PAGE_LG2
+#define REGION1_INDEX(p) (((uintptr_t)(p) >> 30) & 0xFFFF)
+#define REGION_INDEX(p)  (((uintptr_t)(p) >> 46) & 0x3FFFF)
+#else
+#define REGION0_PG_COUNT (1 << 8)
+#define REGION1_PG_COUNT (1 << 10)
+#define REGION2_PG_COUNT (1 << 0)
+#define REGION0_INDEX(p) (((uintptr_t)(p) >> 14) & 0xFF) // shift by GC_PAGE_LG2
+#define REGION1_INDEX(p) (((uintptr_t)(p) >> 22) & 0x3FF)
+#define REGION_INDEX(p)  (0)
 #endif
-;
+
 
 typedef struct {
-    // Page layout:
-    //  Newpage freelist: sizeof(void*)
-    //  Padding: GC_PAGE_OFFSET - sizeof(void*)
-    //  Blocks: osize * n
-    //    Tag: sizeof(jl_taggedvalue_t)
-    //    Data: <= osize - sizeof(jl_taggedvalue_t)
-    jl_gc_page_t *pages; // [pg_cnt]; must be first, to preserve page alignment
-    uint32_t *allocmap; // [pg_cnt / 32]
-    jl_gc_pagemeta_t *meta; // [pg_cnt]
-    int pg_cnt;
+    jl_gc_pagemeta_t *meta[REGION0_PG_COUNT];
+    uint32_t allocmap[REGION0_PG_COUNT / 32];
+    uint32_t freemap[REGION0_PG_COUNT / 32];
+    // store a lower bound of the first free page in each region
+    int lb;
+    // an upper bound of the last non-free page
+    int ub;
+} region0_t;
+
+typedef struct {
+    region0_t *meta0[REGION1_PG_COUNT];
+    uint32_t allocmap0[REGION1_PG_COUNT / 32];
+    uint32_t freemap0[REGION1_PG_COUNT / 32];
+    // store a lower bound of the first free page in each region
+    int lb;
+    // an upper bound of the last non-free page
+    int ub;
+} region1_t;
+
+typedef struct {
+    region1_t *meta1[REGION2_PG_COUNT];
+    uint32_t allocmap1[REGION2_PG_COUNT / 32];
+    uint32_t freemap1[REGION2_PG_COUNT / 32];
     // store a lower bound of the first free page in each region
     int lb;
     // an upper bound of the last non-free page
     int ub;
 } region_t;
 
+STATIC_INLINE unsigned ffs_u32(uint32_t bitvec)
+{
+#if defined(_COMPILER_MINGW_)
+    return __builtin_ffs(bitvec) - 1;
+#elif defined(_COMPILER_MICROSOFT_)
+    unsigned long j;
+    _BitScanForward(&j, bitvec);
+    return j;
+#else
+    return ffs(bitvec) - 1;
+#endif
+}
+
 extern jl_gc_num_t gc_num;
-extern region_t regions[REGION_COUNT];
+extern region_t memory_map;
 extern bigval_t *big_objects_marked;
 extern arraylist_t finalizer_list_marked;
 extern arraylist_t to_finalize;
@@ -198,11 +242,6 @@ STATIC_INLINE jl_taggedvalue_t *page_pfl_beg(jl_gc_pagemeta_t *p)
 STATIC_INLINE jl_taggedvalue_t *page_pfl_end(jl_gc_pagemeta_t *p)
 {
     return (jl_taggedvalue_t*)(p->data + p->fl_end_offset);
-}
-
-STATIC_INLINE int page_index(region_t *region, void *data)
-{
-    return (gc_page_data(data) - region->pages->data) / GC_PAGE_SZ;
 }
 
 STATIC_INLINE int gc_marked(uintptr_t bits)
@@ -232,31 +271,49 @@ STATIC_INLINE void *gc_ptr_clear_tag(void *v, uintptr_t mask)
 
 NOINLINE uintptr_t gc_get_stack_ptr(void);
 
-STATIC_INLINE region_t *find_region(void *ptr)
-{
-    for (int i = 0; i < REGION_COUNT && regions[i].pages; i++) {
-        region_t *region = &regions[i];
-        char *begin = region->pages->data;
-        char *end = begin + region->pg_cnt * sizeof(jl_gc_page_t);
-        if ((char*)ptr >= begin && (char*)ptr <= end) {
-            return region;
-        }
-    }
-    return NULL;
-}
-
 STATIC_INLINE jl_gc_pagemeta_t *page_metadata(void *_data)
 {
-    uintptr_t data = ((uintptr_t)_data) - 1;
-    for (int i = 0; i < REGION_COUNT && regions[i].pages; i++) {
-        region_t *region = &regions[i];
-        uintptr_t begin = (uintptr_t)region->pages->data;
-        uintptr_t offset = data - begin;
-        if (offset < region->pg_cnt * sizeof(jl_gc_page_t)) {
-            return &region->meta[offset >> GC_PAGE_LG2];
-        }
-    }
-    return NULL;
+    uintptr_t data = ((uintptr_t)_data);
+    unsigned i;
+    i = REGION_INDEX(data);
+    region1_t *r1 = memory_map.meta1[i];
+    if (!r1)
+        return NULL;
+    i = REGION1_INDEX(data);
+    region0_t *r0 = r1->meta0[i];
+    if (!r0)
+        return NULL;
+    i = REGION0_INDEX(data);
+    return r0->meta[i];
+}
+
+struct jl_gc_metadata_ext {
+    region1_t *region1;
+    region0_t *region0;
+    jl_gc_pagemeta_t *meta;
+    unsigned region_i32, region1_i32, region0_i32;
+    unsigned region_i, region1_i, region0_i;
+};
+
+STATIC_INLINE struct jl_gc_metadata_ext page_metadata_ext(void *_data)
+{
+    uintptr_t data = (uintptr_t)_data;
+    struct jl_gc_metadata_ext info;
+    unsigned i;
+    i = REGION_INDEX(data);
+    info.region_i = i % 32;
+    info.region_i32 = i / 32;
+    info.region1 = memory_map.meta1[i];
+    i = REGION1_INDEX(data);
+    info.region1_i = i % 32;
+    info.region1_i32 = i / 32;
+    info.region0 = info.region1->meta0[i];
+    i = REGION0_INDEX(data);
+    info.region0_i = i % 32;
+    info.region0_i32 = i / 32;
+    info.meta = info.region0->meta[i];
+    assert(info.meta);
+    return info;
 }
 
 STATIC_INLINE void gc_big_object_unlink(const bigval_t *hdr)
@@ -285,7 +342,7 @@ void jl_mark_box_caches(jl_ptls_t ptls);
 // GC pages
 
 void jl_gc_init_page(void);
-NOINLINE void *jl_gc_alloc_page(void);
+NOINLINE jl_gc_pagemeta_t *jl_gc_alloc_page(void);
 void jl_gc_free_page(void *p);
 
 // GC debug
