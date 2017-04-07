@@ -648,7 +648,8 @@ jl_value_t *jl_interpret_call(jl_method_instance_t *lam, jl_value_t **args, uint
         }
     }
     if (src && (jl_value_t*)src != jl_nothing) {
-        src = jl_uncompress_ast(lam->def, (jl_array_t*)src);
+        if (!jl_is_code_info(src))
+            src = jl_uncompress_ast(lam->def->module, (jl_value_t*)src);
         lam->inferred = (jl_value_t*)src;
         jl_gc_wb(lam, src);
     }

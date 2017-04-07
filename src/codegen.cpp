@@ -1172,8 +1172,6 @@ jl_llvm_functions_t jl_compile_linfo(jl_method_instance_t **pli, jl_code_info_t 
         // we waited at the lock).
         if (li->def == NULL) {
             src = (jl_code_info_t*)li->inferred;
-            if (src && (jl_value_t*)src != jl_nothing)
-                src = jl_uncompress_ast(li->def, (jl_array_t*)src);
             if (decls.functionObject != NULL || !src || !jl_is_code_info(src) || li->jlcall_api == 2) {
                 goto locked_out;
             }
@@ -1189,7 +1187,7 @@ jl_llvm_functions_t jl_compile_linfo(jl_method_instance_t **pli, jl_code_info_t 
             src = (jl_code_info_t*)li->inferred;
             if (src) {
                 if ((jl_value_t*)src != jl_nothing)
-                    src = jl_uncompress_ast(li->def, (jl_array_t*)src);
+                    src = jl_uncompress_ast(li->def->module, (jl_value_t*)src);
                 if (!jl_is_code_info(src)) {
                     src = jl_type_infer(pli, world, 0);
                     li = *pli;
@@ -1209,7 +1207,7 @@ jl_llvm_functions_t jl_compile_linfo(jl_method_instance_t **pli, jl_code_info_t 
         }
         else {
             if ((jl_value_t*)src != jl_nothing)
-                src = jl_uncompress_ast(li->def, (jl_array_t*)src);
+                src = jl_uncompress_ast(li->def->module, (jl_value_t*)src);
         }
         assert(jl_is_code_info(src));
 
@@ -1289,7 +1287,7 @@ jl_llvm_functions_t jl_compile_linfo(jl_method_instance_t **pli, jl_code_info_t 
                 // don't delete the code for the generator
                 li != li->def->generator &&
                 // don't delete inlineable code, unless it is constant
-                (li->jlcall_api == 2 || !jl_ast_flag_inlineable((jl_array_t*)li->inferred)) &&
+                (li->jlcall_api == 2 || !jl_ast_flag_inlineable(li->inferred)) &&
                 // don't delete code when generating a precompile file
                 !imaging_mode &&
                 // don't delete code when it's not actually directly being used
@@ -1600,7 +1598,7 @@ void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, bool getwrapp
     }
     if (!src || (jl_value_t*)src == jl_nothing)
         jl_error("source not found for function");
-    src = jl_uncompress_ast(linfo->def, (jl_array_t*)src);
+    src = jl_uncompress_ast(linfo->def->module, (jl_value_t*)src);
 
     // Backup the info for the nested compile
     JL_LOCK(&codegen_lock);
@@ -6196,31 +6194,11 @@ static std::unique_ptr<Module> emit_function(
         dbuilder.finalize();
     }
 
-    // copy ctx.roots into m->roots
+    // copy ctx.roots into m->shared_roots
     // if we created any new roots during codegen
     if (ctx.roots) {
-        jl_method_t *m = lam->def;
-        JL_LOCK(&m->writelock);
-        if (m->roots == NULL) {
-            m->roots = ctx.roots;
-            jl_gc_wb(m, m->roots);
-        }
-        else {
-            size_t i, ilen = jl_array_dim0(ctx.roots);
-            size_t j, jlen = jl_array_dim0(m->roots);
-            for (i = 0; i < ilen; i++) {
-                jl_value_t *ival = jl_array_ptr_ref(ctx.roots, i);
-                for (j = 0; j < jlen; j++) {
-                    jl_value_t *jval = jl_array_ptr_ref(m->roots, j);
-                    if (ival == jval)
-                        break;
-                }
-                if (j == jlen) // not found - add to array
-                    jl_array_ptr_1d_push(m->roots, ival);
-            }
-        }
+        jl_add_to_module_roots(ctx.module, ctx.roots, 0);
         ctx.roots = NULL;
-        JL_UNLOCK(&m->writelock);
     }
 
     JL_GC_POP();

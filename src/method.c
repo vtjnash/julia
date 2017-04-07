@@ -287,7 +287,7 @@ JL_DLLEXPORT jl_code_info_t *jl_code_for_staged(jl_method_instance_t *linfo)
 
         jl_array_t *argnames = jl_alloc_vec_any(linfo->def->nargs);
         jl_array_ptr_set(ex->args, 0, argnames);
-        jl_fill_argnames((jl_array_t*)linfo->def->source, argnames);
+        jl_fill_argnames(linfo->def->source, argnames);
 
         jl_expr_t *scopeblock = jl_exprn(jl_symbol("scope-block"), 1);
         jl_array_ptr_set(ex->args, 1, scopeblock);
@@ -406,7 +406,7 @@ static void jl_method_set_source(jl_method_t *m, jl_code_info_t *src)
     src = jl_copy_code_info(src);
     src->code = copy;
     jl_gc_wb(src, copy);
-    m->source = (jl_value_t*)jl_compress_ast(m, src);
+    m->source = jl_compress_ast(m->module, src);
     jl_gc_wb(m, m->source);
     JL_GC_POP();
 }
@@ -420,7 +420,6 @@ JL_DLLEXPORT jl_method_t *jl_new_method_uninit(void)
     m->sig = NULL;
     m->sparam_syms = NULL;
     m->ambig = jl_nothing;
-    m->roots = NULL;
     m->module = ptls->current_module;
     m->source = NULL;
     m->unspecialized = NULL;

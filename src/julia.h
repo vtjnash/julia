@@ -243,7 +243,6 @@ typedef struct _jl_method_t {
     jl_value_t *source;  // original code template (jl_code_info_t, but may be compressed), null for builtins
     struct _jl_method_instance_t *unspecialized;  // unspecialized executable method instance, or null
     struct _jl_method_instance_t *generator;  // executable code-generating function if isstaged
-    jl_array_t *roots;  // pointers in generated code (shared to reduce memory), or null
 
     // cache of specializations of this method for invoke(), i.e.
     // cases where this method was called even though it was not necessarily
@@ -269,7 +268,7 @@ typedef struct _jl_method_instance_t {
     jl_value_t *rettype; // return type for fptr
     jl_svec_t *sparam_vals; // static parameter values, indexed by def->sparam_syms
     jl_array_t *backedges;
-    jl_value_t *inferred;  // inferred jl_code_info_t, or value of the function if jlcall_api == 2, or null
+    jl_value_t *inferred;  // inferred jl_code_info_t (may be compressed), the literal nothing, or null
     jl_value_t *inferred_const; // inferred constant return value, or null
     jl_method_t *def; // method this is specialized from, null if this is a toplevel thunk
     size_t min_world;
@@ -402,11 +401,13 @@ typedef struct _jl_module_t {
     JL_DATA_TYPE
     jl_sym_t *name;
     struct _jl_module_t *parent;
+    jl_array_t *shared_roots;  // shared cache (reduces memory) of pointers in MethodInstance objects, or null
     htable_t bindings;
     arraylist_t usings;  // modules with all bindings potentially imported
     uint8_t istopmod;
     uint64_t uuid;
     uint32_t counter;
+    jl_mutex_t writelock;
 } jl_module_t;
 
 // one Type-to-Value entry
@@ -1389,12 +1390,12 @@ JL_DLLEXPORT void jl_register_newmeth_tracer(void (*callback)(jl_method_t *trace
 // AST access
 JL_DLLEXPORT jl_value_t *jl_copy_ast(jl_value_t *expr);
 
-JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_method_t *m, jl_code_info_t *code);
-JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_method_t *m, jl_array_t *data);
-JL_DLLEXPORT uint8_t jl_ast_flag_inferred(jl_array_t *data);
-JL_DLLEXPORT uint8_t jl_ast_flag_inlineable(jl_array_t *data);
-JL_DLLEXPORT uint8_t jl_ast_flag_pure(jl_array_t *data);
-JL_DLLEXPORT void jl_fill_argnames(jl_array_t *data, jl_array_t *names);
+JL_DLLEXPORT jl_value_t *jl_compress_ast(jl_module_t *m, jl_code_info_t *code);
+JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_module_t *m, jl_value_t *ast);
+JL_DLLEXPORT uint8_t jl_ast_flag_inferred(jl_value_t *code);
+JL_DLLEXPORT uint8_t jl_ast_flag_inlineable(jl_value_t *code);
+JL_DLLEXPORT uint8_t jl_ast_flag_pure(jl_value_t *code);
+JL_DLLEXPORT void jl_fill_argnames(jl_value_t *code, jl_array_t *names);
 
 JL_DLLEXPORT int jl_is_operator(char *sym);
 JL_DLLEXPORT int jl_operator_precedence(char *sym);

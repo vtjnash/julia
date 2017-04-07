@@ -1318,6 +1318,10 @@ NOINLINE static int gc_mark_module(jl_ptls_t ptls, jl_module_t *m,
         refyoung |= gc_push_root(ptls, m->parent, d);
     }
 
+    if (m->shared_roots) {
+        refyoung |= gc_push_root(ptls, m->shared_roots, d);
+    }
+
     return refyoung;
 }
 

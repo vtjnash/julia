@@ -1882,7 +1882,7 @@ void jl_init_types(void)
     jl_method_type =
         jl_new_datatype(jl_symbol("Method"),
                         jl_any_type, jl_emptysvec,
-                        jl_svec(20,
+                        jl_svec(19,
                                 jl_symbol("name"),
                                 jl_symbol("module"),
                                 jl_symbol("file"),
@@ -1896,14 +1896,13 @@ void jl_init_types(void)
                                 jl_symbol("source"),
                                 jl_symbol("unspecialized"),
                                 jl_symbol("generator"),
-                                jl_symbol("roots"),
                                 jl_symbol("invokes"),
                                 jl_symbol("nargs"),
                                 jl_symbol("called"),
                                 jl_symbol("isva"),
                                 jl_symbol("isstaged"),
                                 jl_symbol("pure")),
-                        jl_svec(20,
+                        jl_svec(19,
                                 jl_sym_type,
                                 jl_module_type,
                                 jl_sym_type,
@@ -1917,7 +1916,6 @@ void jl_init_types(void)
                                 jl_any_type,
                                 jl_any_type, // jl_method_instance_type
                                 jl_any_type, // jl_method_instance_type
-                                jl_array_any_type,
                                 jl_any_type,
                                 jl_int32_type,
                                 jl_int32_type,

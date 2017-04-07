@@ -23,9 +23,11 @@ JL_DLLEXPORT jl_module_t *jl_new_module(jl_sym_t *name)
     jl_module_t *m = (jl_module_t*)jl_gc_alloc(ptls, sizeof(jl_module_t),
                                                jl_module_type);
     JL_GC_PUSH1(&m);
+    JL_MUTEX_INIT(&m->writelock);
     assert(jl_is_symbol(name));
     m->name = name;
     m->parent = NULL;
+    m->shared_roots = NULL;
     m->istopmod = 0;
     static unsigned int mcounter; // simple counter backup, in case hrtime is not incrementing
     m->uuid = jl_hrtime() + (++mcounter);
@@ -597,6 +599,56 @@ int jl_is_submodule(jl_module_t *child, jl_module_t *parent)
             return 0;
         child = child->parent;
     }
+}
+
+JL_DLLEXPORT jl_array_t *jl_add_to_module_roots(jl_module_t *m, jl_array_t *roots, int egal)
+{
+    JL_LOCK(&m->writelock);
+    static jl_value_t *int32 = NULL;
+    if (int32 == NULL)
+        int32 = jl_apply_array_type((jl_value_t*)jl_int32_type, 1);
+    size_t i, ilen = jl_array_dim0(roots);
+    jl_array_t *idxs = jl_alloc_array_1d(int32, ilen);
+
+    if (m->shared_roots == NULL) {
+        m->shared_roots = roots;
+        jl_gc_wb(m, roots);
+        for (i = 0; i < ilen; i++) {
+            ((uint32_t*)idxs->data)[i] = i;
+        }
+    }
+    else {
+        size_t j, jlen = jl_array_dim0(m->shared_roots);
+        for (i = 0; i < ilen; i++) {
+            jl_value_t *ival = jl_array_ptr_ref(roots, i);
+            for (j = 0; j < jlen; j++) {
+                jl_value_t *jval = jl_array_ptr_ref(m->shared_roots, j);
+                if (ival == jval || (egal && jl_egal(ival, jval)))
+                    break;
+            }
+            if (j == jlen) { // not found - add to array
+                jl_array_ptr_1d_push(m->shared_roots, ival);
+                j = jl_array_dim0(m->shared_roots) - 1;
+            }
+            ((uint32_t*)idxs->data)[i] = j;
+        }
+    }
+    JL_UNLOCK(&m->writelock);
+    return idxs;
+}
+
+JL_DLLEXPORT jl_array_t *jl_get_module_roots(jl_module_t *m, jl_array_t *idxs)
+{
+    JL_LOCK(&m->writelock);
+    size_t i, ilen = jl_array_len(idxs);
+    jl_array_t *roots = jl_alloc_vec_any(ilen);
+    for (i = 0; i < ilen; i++) {
+        uint32_t idx = ((uint32_t*)idxs->data)[i];
+        jl_value_t *val = jl_array_ptr_ref(m->shared_roots, idx);
+        jl_array_ptr_set(roots, i, val);
+    }
+    JL_UNLOCK(&m->writelock);
+    return roots;
 }
 
 #ifdef __cplusplus

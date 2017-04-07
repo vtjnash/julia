@@ -667,6 +667,7 @@ static void jl_serialize_module(jl_serializer_state *s, jl_module_t *m)
         assert(m->parent != m);
         return;
     }
+    jl_serialize_value(s, m->shared_roots);
     size_t i;
     void **table = m->bindings.table;
     for(i=1; i < m->bindings.size; i+=2) {
@@ -939,7 +940,6 @@ static void jl_serialize_value_(jl_serializer_state *s, jl_value_t *v, int as_li
         write_int8(s->s, m->pure);
         jl_serialize_value(s, (jl_value_t*)m->module);
         jl_serialize_value(s, (jl_value_t*)m->sparam_syms);
-        jl_serialize_value(s, (jl_value_t*)m->roots);
         jl_serialize_value(s, (jl_value_t*)m->source);
         jl_serialize_value(s, (jl_value_t*)m->unspecialized);
         jl_serialize_value(s, (jl_value_t*)m->generator);
@@ -1526,7 +1526,17 @@ static jl_value_t *jl_deserialize_value(jl_serializer_state *s, jl_value_t **loc
         return vtag;
     }
     else if (vtag == (jl_value_t*)LiteralVal_tag) {
-        return jl_array_ptr_ref(s->tree_literal_values, read_uint16(s->s));
+        uint32_t offset = read_uint16(s->s);
+        jl_value_t *v;
+        if (jl_typeis(s->tree_literal_values, jl_array_any_type)) {
+            v = jl_array_ptr_ref(s->tree_literal_values, offset);
+        }
+        else {
+            offset = ((uint32_t*)s->tree_literal_values->data)[offset];
+            v = jl_array_ptr_ref(s->tree_enclosing_module->shared_roots, offset);
+        }
+        assert(v);
+        return v;
     }
     jl_value_t *v = jl_deserialize_value_(s, vtag, loc);
     return v;
@@ -1683,9 +1693,6 @@ static jl_value_t *jl_deserialize_value_method(jl_serializer_state *s, jl_value_
     jl_gc_wb(m, m->module);
     m->sparam_syms = (jl_svec_t*)jl_deserialize_value(s, (jl_value_t**)&m->sparam_syms);
     jl_gc_wb(m, m->sparam_syms);
-    m->roots = (jl_array_t*)jl_deserialize_value(s, (jl_value_t**)&m->roots);
-    if (m->roots)
-        jl_gc_wb(m, m->roots);
     m->source = jl_deserialize_value(s, &m->source);
     if (m->source)
         jl_gc_wb(m, m->source);
@@ -1809,6 +1816,8 @@ static jl_value_t *jl_deserialize_value_module(jl_serializer_state *s)
         backref_list.items[pos] = m;
     m->parent = (jl_module_t*)jl_deserialize_value(s, (jl_value_t**)&m->parent);
     jl_gc_wb(m, m->parent);
+    m->shared_roots = (jl_array_t*)jl_deserialize_value(s, (jl_value_t**)&m->shared_roots);
+    jl_gc_wb(m, m->shared_roots);
 
     while (1) {
         jl_sym_t *name = (jl_sym_t*)jl_deserialize_value(s, NULL);
@@ -1865,6 +1874,7 @@ static jl_value_t *jl_deserialize_value_singleton(jl_serializer_state *s, jl_val
 {
     if (s->mode == MODE_AST) {
         jl_datatype_t *dt = (jl_datatype_t*)jl_deserialize_value(s, NULL);
+        assert(dt->instance && "detected serializer corruption");
         return dt->instance;
     }
     jl_value_t *v = (jl_value_t*)jl_gc_alloc(s->ptls, 0, NULL);
@@ -2601,24 +2611,20 @@ JL_DLLEXPORT void jl_restore_system_image_data(const char *buf, size_t len)
     JL_SIGATOMIC_END();
 }
 
-JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_method_t *m, jl_code_info_t *code)
+JL_DLLEXPORT jl_value_t *jl_compress_ast(jl_module_t *m, jl_code_info_t *code)
 {
     JL_TIMING(AST_COMPRESS);
-    JL_LOCK(&m->writelock); // protect the roots array (Might GC)
-    assert(jl_is_method(m));
+    assert(jl_is_module(m));
     assert(jl_is_code_info(code));
     ios_t dest;
     ios_mem(&dest, 0);
     int en = jl_gc_enable(0); // Might GC
     size_t i;
 
-    if (m->roots == NULL) {
-        m->roots = jl_alloc_vec_any(0);
-        jl_gc_wb(m, m->roots);
-    }
+    jl_array_t *roots = jl_alloc_vec_any(0);
     jl_serializer_state s = {
         &dest, MODE_AST,
-        m->roots, m->module,
+        roots, m,
         jl_get_ptls_states()
     };
 
@@ -2629,7 +2635,7 @@ JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_method_t *m, jl_code_info_t *code)
     write_uint8(s.s, flags);
 
     size_t nsyms = jl_array_len(code->slotnames);
-    assert(nsyms >= m->nargs && nsyms < INT32_MAX); // required by generated functions
+    assert(nsyms < INT32_MAX);
     write_int32(s.s, nsyms);
     for (i = 0; i < nsyms; i++) {
         jl_sym_t *name = (jl_sym_t*)jl_array_ptr_ref(code->slotnames, i);
@@ -2646,28 +2652,41 @@ JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_method_t *m, jl_code_info_t *code)
 
     ios_putc('\0', s.s);
     ios_flush(s.s);
-    jl_array_t *v = jl_take_buffer(&dest);
+    jl_array_t *compressed = jl_take_buffer(&dest);
     ios_close(s.s);
-    if (jl_array_len(m->roots) == 0) {
-        m->roots = NULL;
-    }
-    JL_GC_PUSH1(&v);
+
+    JL_GC_PUSH2(&roots, &compressed);
     jl_gc_enable(en);
-    JL_UNLOCK(&m->writelock); // Might GC
+    jl_value_t *v;
+    if (jl_array_len(roots) > 0) {
+        roots = jl_add_to_module_roots(m, roots, 1);
+        v = (jl_value_t*)jl_svec2(compressed, roots);
+    }
+    else {
+        v = (jl_value_t*)compressed;
+    }
     JL_GC_POP();
     return v;
 }
 
-JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_method_t *m, jl_array_t *data)
+JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_module_t *m, jl_value_t *ast)
 {
-    if (jl_is_code_info(data))
-        return (jl_code_info_t*)data;
+    if (jl_is_code_info(ast))
+        return (jl_code_info_t*)ast;
     JL_TIMING(AST_UNCOMPRESS);
     jl_ptls_t ptls = jl_get_ptls_states();
     JL_LOCK(&m->writelock); // protect the roots array (Might GC)
-    assert(jl_is_method(m));
+    assert(jl_is_module(m));
+    jl_array_t *data = (jl_array_t*)ast;
+    jl_array_t *roots = NULL;
+    if (jl_is_svec(ast)) {
+        assert(jl_svec_len(ast) == 2);
+        data = (jl_array_t*)jl_svecref(ast, 0);
+        roots = (jl_array_t*)jl_svecref(ast, 1);
+    }
     assert(jl_typeis(data, jl_array_uint8_type));
     assert(jl_array_len(data) > 2 && ((uint8_t*)data->data)[jl_array_len(data) - 1] == 0);
+    assert(roots == NULL || jl_is_array(roots));
     size_t i;
     ios_t src;
     ios_mem(&src, 0);
@@ -2676,7 +2695,7 @@ JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_method_t *m, jl_array_t *data)
     int en = jl_gc_enable(0); // Might GC
     jl_serializer_state s = {
         &src, MODE_AST,
-        m->roots, m->module,
+        roots, m,
         jl_get_ptls_states()
     };
 
@@ -2716,41 +2735,56 @@ JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_method_t *m, jl_array_t *data)
     return code;
 }
 
-JL_DLLEXPORT uint8_t jl_ast_flag_inferred(jl_array_t *data)
+JL_DLLEXPORT uint8_t jl_ast_flag_inferred(jl_value_t *code)
 {
-    if (jl_is_code_info(data))
-        return ((jl_code_info_t*)data)->inferred;
+    if (jl_is_code_info(code))
+        return ((jl_code_info_t*)code)->inferred;
+    jl_array_t *data = (jl_array_t*)code;
+    if (jl_is_svec(code)) {
+        assert(jl_svec_len(code) == 2);
+        data = (jl_array_t*)jl_svecref(code, 0);
+    }
     assert(jl_typeis(data, jl_array_uint8_type));
     assert(jl_array_len(data) > 2 && ((uint8_t*)data->data)[jl_array_len(data) - 1] == 0);
     uint8_t flags = ((uint8_t*)data->data)[0];
     return !!(flags & (1 << 3));
 }
 
-JL_DLLEXPORT uint8_t jl_ast_flag_inlineable(jl_array_t *data)
+JL_DLLEXPORT uint8_t jl_ast_flag_inlineable(jl_value_t *code)
 {
-    if (jl_is_code_info(data))
-        return ((jl_code_info_t*)data)->inlineable;
+    if (jl_is_code_info(code))
+        return ((jl_code_info_t*)code)->inlineable;
+    jl_array_t *data = (jl_array_t*)code;
+    if (jl_is_svec(code)) {
+        assert(jl_svec_len(code) == 2);
+        data = (jl_array_t*)jl_svecref(code, 0);
+    }
     assert(jl_typeis(data, jl_array_uint8_type));
     assert(jl_array_len(data) > 2 && ((uint8_t*)data->data)[jl_array_len(data) - 1] == 0);
     uint8_t flags = ((uint8_t*)data->data)[0];
     return !!(flags & (1 << 2));
 }
 
-JL_DLLEXPORT uint8_t jl_ast_flag_pure(jl_array_t *data)
+JL_DLLEXPORT uint8_t jl_ast_flag_pure(jl_value_t *code)
 {
-    if (jl_is_code_info(data))
-        return ((jl_code_info_t*)data)->pure;
+    if (jl_is_code_info(code))
+        return ((jl_code_info_t*)code)->pure;
+    jl_array_t *data = (jl_array_t*)code;
+    if (jl_is_svec(code)) {
+        assert(jl_svec_len(code) == 2);
+        data = (jl_array_t*)jl_svecref(code, 0);
+    }
     assert(jl_typeis(data, jl_array_uint8_type));
     assert(jl_array_len(data) > 2 && ((uint8_t*)data->data)[jl_array_len(data) - 1] == 0);
     uint8_t flags = ((uint8_t*)data->data)[0];
     return !!(flags & (1 << 0));
 }
 
-JL_DLLEXPORT void jl_fill_argnames(jl_array_t *data, jl_array_t *names)
+JL_DLLEXPORT void jl_fill_argnames(jl_value_t *code, jl_array_t *names)
 {
     size_t i, nargs = jl_array_len(names);
-    if (jl_is_code_info(data)) {
-        jl_code_info_t *func = (jl_code_info_t*)data;
+    if (jl_is_code_info(code)) {
+        jl_code_info_t *func = (jl_code_info_t*)code;
         assert(jl_array_len(func->slotnames) >= nargs);
         for (i = 0; i < nargs; i++) {
             jl_value_t *name = jl_array_ptr_ref(func->slotnames, i);
@@ -2758,6 +2792,13 @@ JL_DLLEXPORT void jl_fill_argnames(jl_array_t *data, jl_array_t *names)
         }
     }
     else {
+        jl_array_t *data = (jl_array_t*)code;
+        if (jl_is_svec(code)) {
+            assert(jl_svec_len(code) == 2);
+            data = (jl_array_t*)jl_svecref(code, 0);
+        }
+        assert(jl_typeis(data, jl_array_uint8_type));
+        assert(jl_array_len(data) > 2 && ((uint8_t*)data->data)[jl_array_len(data) - 1] == 0);
         uint8_t *d = (uint8_t*)data->data;
 #ifndef NDEBUG
         assert(jl_typeis(data, jl_array_uint8_type));

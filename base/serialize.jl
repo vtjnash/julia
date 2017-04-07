@@ -2,7 +2,7 @@
 
 module Serializer
 
-import Base: GMP, Bottom, unsafe_convert, uncompressed_ast, datatype_pointerfree
+import Base: GMP, Bottom, unsafe_convert, datatype_pointerfree
 import Core: svec
 using Base: ViewIndex, Slice, index_lengths, unwrap_unionall
 
@@ -340,6 +340,16 @@ function object_number(l::ANY)
     return ln::UInt64
 end
 
+# get an AST that has no external offset pointers
+standalone_ast(m::Module, code::CodeInfo) = code
+standalone_ast(m::Module, code::Vector{UInt8}) = code
+function standalone_ast(m::Module, code::SimpleVector)
+    idxs = code[2]
+    isa(idxs, Vector{Any}) && return code
+    roots = ccall(:jl_get_module_roots, Any, (Any, Any), m, idxs)
+    return svec(code[1], roots)
+end
+
 function serialize(s::AbstractSerializer, meth::Method)
     serialize_cycle(s, meth) && return
     writetag(s.io, METHOD_TAG)
@@ -354,7 +364,8 @@ function serialize(s::AbstractSerializer, meth::Method)
     serialize(s, meth.nargs)
     serialize(s, meth.isva)
     serialize(s, meth.isstaged)
-    serialize(s, uncompressed_ast(meth, meth.source))
+    serialize(s, meth.pure)
+    serialize(s, standalone_ast(meth.module, meth.source))
     nothing
 end
 
@@ -658,7 +669,8 @@ function deserialize(s::AbstractSerializer, ::Type{Method})
     nargs = deserialize(s)::Int32
     isva = deserialize(s)::Bool
     isstaged = deserialize(s)::Bool
-    template = deserialize(s)::CodeInfo
+    pure = deserialize(s)::Bool
+    template = deserialize(s)
     if makenew
         meth.module = mod
         meth.name = name
@@ -670,9 +682,9 @@ function deserialize(s::AbstractSerializer, ::Type{Method})
         meth.isstaged = isstaged
         meth.nargs = nargs
         meth.isva = isva
-        # TODO: compress template
+        # TODO: add template roots to module (jl_add_to_module_roots)
         meth.source = template
-        meth.pure = template.pure
+        meth.pure = pure
         if isstaged
             linfo = ccall(:jl_new_method_instance_uninit, Ref{Core.MethodInstance}, ())
             linfo.specTypes = Tuple

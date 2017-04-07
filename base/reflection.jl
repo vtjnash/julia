@@ -641,7 +641,7 @@ isempty(mt::MethodTable) = (mt.defs === nothing)
 
 uncompressed_ast(m::Method) = uncompressed_ast(m, m.source)
 uncompressed_ast(m::Method, s::CodeInfo) = s
-uncompressed_ast(m::Method, s::Array{UInt8,1}) = ccall(:jl_uncompress_ast, Any, (Any, Any), m, s)::CodeInfo
+uncompressed_ast(m::Method, s::SimpleVector) = ccall(:jl_uncompress_ast, Any, (Any, Any), m, s)::CodeInfo
 
 # this type mirrors jl_cghooks_t (documented in julia.h)
 struct CodegenHooks

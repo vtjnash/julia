@@ -732,11 +732,11 @@ static size_t jl_static_show_x_(JL_STREAM *out, jl_value_t *v, jl_datatype_t *vt
     }
     else if (vt == jl_quotenode_type) {
         jl_value_t *qv = *(jl_value_t**)v;
-        if (!jl_is_symbol(qv)) {
+        if (!qv || !jl_is_symbol(qv)) {
             n += jl_printf(out, "quote ");
         }
         n += jl_static_show_x(out, qv, depth);
-        if (!jl_is_symbol(qv)) {
+        if (!qv || !jl_is_symbol(qv)) {
             n += jl_printf(out, " end");
         }
     }

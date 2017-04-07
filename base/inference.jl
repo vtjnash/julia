@@ -276,10 +276,9 @@ mutable struct InferenceState
 end
 
 # create copies of the CodeInfo definition, and any fields that type-inference might modify
-# TODO: post-inference see if we can swap back to the original arrays
 function get_source(li::MethodInstance)
-    if isa(li.def.source, Array{UInt8,1})
-        src = ccall(:jl_uncompress_ast, Any, (Any, Any), li.def, li.def.source)
+    if !isa(li.def.source, CodeInfo)
+        src = ccall(:jl_uncompress_ast, Any, (Any, Any), li.def.module, li.def.source)
     else
         src = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), li.def.source)
         src.code = copy_exprargs(src.code)
@@ -3048,7 +3047,7 @@ function finish(me::InferenceState)
                         inferred_result = nothing
                     else
                         # compress code for non-toplevel thunks
-                        inferred_result = ccall(:jl_compress_ast, Any, (Any, Any), me.linfo.def, inferred_result)
+                        inferred_result = ccall(:jl_compress_ast, Any, (Any, Any), me.linfo.def.module, inferred_result)
                     end
                 end
             end
@@ -3973,7 +3972,7 @@ function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::Inference
         src = inferred
         ast = copy_exprargs(inferred.code)
     else
-        src = ccall(:jl_uncompress_ast, Any, (Any, Any), method, inferred)::CodeInfo
+        src = ccall(:jl_uncompress_ast, Any, (Any, Any), method.module, inferred)::CodeInfo
         ast = src.code
     end
     ast = ast::Array{Any,1}
