@@ -1929,11 +1929,12 @@ void jl_init_types(void)
     jl_method_instance_type =
         jl_new_datatype(jl_symbol("MethodInstance"),
                         jl_any_type, jl_emptysvec,
-                        jl_svec(16,
+                        jl_svec(17,
                                 jl_symbol("specTypes"),
                                 jl_symbol("rettype"),
                                 jl_symbol("sparam_vals"),
                                 jl_symbol("backedges"),
+                                jl_symbol("broken_edges"),
                                 jl_symbol("inferred"),
                                 jl_symbol("inferred_const"),
                                 jl_symbol("def"),
@@ -1945,10 +1946,11 @@ void jl_init_types(void)
                                 jl_symbol("fptr"),
                                 jl_symbol("unspecialized_ducttape"),
                                 jl_symbol(""), jl_symbol("")),
-                        jl_svec(16,
+                        jl_svec(17,
                                 jl_any_type,
                                 jl_any_type,
                                 jl_simplevector_type,
+                                jl_any_type,
                                 jl_any_type,
                                 jl_any_type,
                                 jl_any_type,
@@ -2030,10 +2032,10 @@ void jl_init_types(void)
     jl_svecset(jl_methtable_type->types, 8, jl_int32_type); // uint32_t
     jl_svecset(jl_method_type->types, 11, jl_method_instance_type);
     jl_svecset(jl_method_type->types, 12, jl_method_instance_type);
-    jl_svecset(jl_method_instance_type->types, 12, jl_voidpointer_type);
     jl_svecset(jl_method_instance_type->types, 13, jl_voidpointer_type);
     jl_svecset(jl_method_instance_type->types, 14, jl_voidpointer_type);
     jl_svecset(jl_method_instance_type->types, 15, jl_voidpointer_type);
+    jl_svecset(jl_method_instance_type->types, 16, jl_voidpointer_type);
 
     jl_compute_field_offsets(jl_datatype_type);
     jl_compute_field_offsets(jl_typename_type);

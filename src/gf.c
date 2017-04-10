@@ -427,6 +427,19 @@ JL_DLLEXPORT jl_method_instance_t* jl_set_method_inferred(
     return li;
 }
 
+JL_DLLEXPORT void jl_set_method_valid(
+        jl_method_instance_t *li, size_t max_world)
+{
+    jl_(li);
+    struct set_world update;
+    update.replaced = li;
+    update.world = max_world;
+    JL_LOCK(&li->def->writelock);
+    li->max_world = max_world;
+    jl_typemap_visitor(li->def->specializations, set_max_world2, (void*)&update);
+    JL_UNLOCK(&li->def->writelock);
+}
+
 static int get_spec_unspec_list(jl_typemap_entry_t *l, void *closure)
 {
     if (jl_is_method_instance(l->func.value) && !jl_is_rettype_inferred(l->func.linfo))
@@ -1238,13 +1251,34 @@ static void update_max_args(jl_methtable_t *mt, jl_value_t *type)
         mt->max_args = na;
 }
 
-static int JL_DEBUG_METHOD_INVALIDATION = 0;
+// record a broken edge from callee to caller
+static void add_broken_edge(jl_method_instance_t *caller, jl_method_instance_t *callee)
+{
+    JL_LOCK(&caller->def->writelock);
+    if (caller->broken_edges == jl_true) {
+        // already need to do full re-inference
+    }
+    else if (!callee) {
+        caller->broken_edges = jl_true;
+    }
+    else if (!caller->broken_edges || caller->broken_edges == jl_false) {
+        // lazy-init the broken_edges array
+        caller->broken_edges = (jl_value_t*)jl_alloc_vec_any(1);
+        jl_gc_wb(caller, caller->broken_edges);
+        jl_array_ptr_set(caller->broken_edges, 0, callee);
+    }
+    else {
+        jl_array_ptr_1d_push((jl_array_t*)caller->broken_edges, (jl_value_t*)callee);
+    }
+    JL_UNLOCK(&caller->def->writelock);
+}
+
+static int JL_DEBUG_METHOD_INVALIDATION = 1;
 
 // invalidate cached methods that had an edge to a replaced method
 static void invalidate_method_instance(jl_method_instance_t *replaced, size_t max_world, int depth)
 {
     JL_LOCK_NOGC(&replaced->def->writelock);
-    jl_array_t *backedges = replaced->backedges;
     if (replaced->max_world > max_world) {
         // recurse to all backedges to update their valid range also
         assert(replaced->min_world <= max_world && "attempting to set invalid world constraints");
@@ -1257,15 +1291,19 @@ static void invalidate_method_instance(jl_method_instance_t *replaced, size_t ma
         }
         replaced->max_world = max_world;
         update_world_bound(replaced, set_max_world2, max_world);
-        if (backedges) {
-            size_t i, l = jl_array_len(backedges);
-            for (i = 0; i < l; i++) {
-                jl_method_instance_t *replaced = (jl_method_instance_t*)jl_array_ptr_ref(backedges, i);
-                invalidate_method_instance(replaced, max_world, depth + 1);
-            }
-        }
     }
-    replaced->backedges = NULL;
+    jl_array_t *backedges = replaced->backedges;
+    if (backedges) {
+        JL_GC_PUSH1(&backedges);
+        replaced->backedges = NULL;
+        size_t i, l = jl_array_len(backedges);
+        for (i = 0; i < l; i++) {
+            jl_method_instance_t *replaced_back = (jl_method_instance_t*)jl_array_ptr_ref(backedges, i);
+            add_broken_edge(replaced_back, replaced);
+            invalidate_method_instance(replaced_back, max_world, depth + 1);
+        }
+        JL_GC_POP();
+    }
     JL_UNLOCK_NOGC(&replaced->def->writelock);
 }
 
@@ -1296,14 +1334,17 @@ static int invalidate_backedges(jl_typemap_entry_t *oldentry, struct typemap_int
         JL_LOCK_NOGC(&def.replaced->def->writelock);
         jl_array_t *backedges = def.replaced->backedges;
         if (backedges) {
+            JL_GC_PUSH1(&backedges);
+            def.replaced->backedges = NULL;
             size_t i, l = jl_array_len(backedges);
-            jl_method_instance_t **replaced = (jl_method_instance_t**)jl_array_data(backedges);
             for (i = 0; i < l; i++) {
-                invalidate_method_instance(replaced[i], closure->max_world, 0);
+                jl_method_instance_t *replaced_back = (jl_method_instance_t*)jl_array_ptr_ref(backedges, i);
+                add_broken_edge(replaced_back, NULL);
+                invalidate_method_instance(replaced_back, closure->max_world, 0);
             }
+            JL_GC_POP();
         }
         closure->invalidated = 1;
-        def.replaced->backedges = NULL;
         JL_UNLOCK_NOGC(&def.replaced->def->writelock);
     }
     return 1;
@@ -1389,8 +1430,9 @@ JL_DLLEXPORT void jl_method_table_insert(jl_methtable_t *mt, jl_method_t *method
             for (i = 1; i < na; i += 2) {
                 jl_value_t *backedgetyp = backedges[i - 1];
                 if (jl_type_intersection(backedgetyp, (jl_value_t*)type) != (jl_value_t*)jl_bottom_type) {
-                    jl_method_instance_t *backedge = (jl_method_instance_t*)backedges[i];
-                    invalidate_method_instance(backedge, env.max_world, 0);
+                    jl_method_instance_t *replaced_back = (jl_method_instance_t*)backedges[i];
+                    invalidate_method_instance(replaced_back, env.max_world, 0);
+                    add_broken_edge(replaced_back, NULL);
                     env.invalidated = 1;
                 }
                 else {

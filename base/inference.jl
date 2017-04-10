@@ -2437,6 +2437,54 @@ function add_backedge(frame::InferenceState, caller::InferenceState, currpc::Int
     end
 end
 
+
+function try_heal_edges(linfo::MethodInstance, params::InferenceParams)
+    code = code_for_method(linfo.def, linfo.specTypes, linfo.env, caller.params.world - 1)
+    isa(code, MethodInstance) || return
+    isdefined(code, :inferred) || return
+    isdefined(code, :broken_edges) || return
+    edges = code.broken_edges
+    isa(edges, Vector{Any}) || return
+    code.broken_edges = true
+    validated = true
+    max_age = typemax(UInt)
+    for edge in edges
+        edge = edge::MethodInstance
+        if edge.jlcall_api != 2
+            new_edge, _, new_edgetype = typeinf_code(linfo.def, linfo.specTypes, linfo.env, true, true, params)[3]
+            if max_age > new_edge.max_age
+                max_age = new_edge.max_age
+            end
+            if new_edge === nothing || new_edgetype != edge.rettype || new_edge.min_valid > code.max_valid
+                validated = false
+                break
+            end
+        end
+    end
+    if validated
+        # return type is still valid!
+        # expand range from old 'code.max_valid' up to 'params.world'
+        for edge in edges
+            ccall(:jl_method_instance_add_backedge, Void, (Any, Any), edge, code)
+            ccall(:jl_method_instance_add_backedge, Void, (Any, Any), edge, linfo)
+        end
+        ccall(:jl_set_method_valid, Void, (Any, UInt), code, max_valid)
+        if isdefined(code, :inferred_const)
+            inferred_const = code.inferred_const
+            const_flags = (true << 1) | (code.jlcall_api == 2)
+        else
+            inferred_const = nothing
+            const_flags = (false << 1) | (code.jlcall_api == 2)
+        end
+        linfo = ccall(:jl_set_method_inferred, Ref{MethodInstance}, (Any, Any, Any, Any, Int32, UInt, UInt),
+            linfo, code.rettype, inferred_const, code.inferred,
+            const_flags, linfo.min_valid, max_valid)
+        code.broken_edges = false
+        return code
+    end
+    return
+end
+
 # build (and start inferring) the inference frame for the linfo
 function typeinf_frame(linfo::MethodInstance, caller, optimize::Bool, cached::Bool,
                        params::InferenceParams)

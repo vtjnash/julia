@@ -191,6 +191,7 @@ JL_DLLEXPORT jl_method_instance_t *jl_new_method_instance_uninit(void)
     li->rettype = (jl_value_t*)jl_any_type;
     li->sparam_vals = jl_emptysvec;
     li->backedges = NULL;
+    li->broken_edges = NULL;
     li->fptr = NULL;
     li->unspecialized_ducttape = NULL;
     li->jlcall_api = 0;

@@ -269,6 +269,7 @@ typedef struct _jl_method_instance_t {
     jl_value_t *rettype; // return type for fptr
     jl_svec_t *sparam_vals; // static parameter values, indexed by def->sparam_syms
     jl_array_t *backedges;
+    jl_value_t *broken_edges;
     jl_value_t *inferred;  // inferred jl_code_info_t, or value of the function if jlcall_api == 2, or null
     jl_value_t *inferred_const; // inferred constant return value, or null
     jl_method_t *def; // method this is specialized from, null if this is a toplevel thunk

@@ -981,8 +981,9 @@ static void jl_serialize_value_(jl_serializer_state *s, jl_value_t *v, int as_li
         jl_serialize_value(s, li->inferred);
         jl_serialize_value(s, li->inferred_const);
         jl_serialize_value(s, li->rettype);
-        jl_serialize_value(s, (jl_value_t*)li->sparam_vals);
-        jl_serialize_value(s, (jl_value_t*)li->backedges);
+        jl_serialize_value(s, li->sparam_vals);
+        jl_serialize_value(s, li->backedges);
+        jl_serialize_value(s, li->broken_edges);
         if (s->mode != MODE_MODULE) {
             write_int32(s->s, li->min_world);
             write_int32(s->s, li->max_world);
@@ -1743,6 +1744,9 @@ static jl_value_t *jl_deserialize_value_method_instance(jl_serializer_state *s, 
     li->backedges = (jl_array_t*)jl_deserialize_value(s, (jl_value_t**)&li->backedges);
     if (li->backedges)
         jl_gc_wb(li, li->backedges);
+    li->broken_edges = jl_deserialize_value(s, &li->broken_edges);
+    if (li->broken_edges)
+        jl_gc_wb(li, li->broken_edges);
     li->unspecialized_ducttape = NULL;
     if (s->mode != MODE_MODULE) {
         li->min_world = read_int32(s->s);
