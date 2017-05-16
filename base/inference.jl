@@ -304,6 +304,17 @@ function get_staged(li::MethodInstance)
     return ccall(:jl_code_for_staged, Any, (Any,), li)::CodeInfo
 end
 
+
+#### debugging utilities ####
+
+function print_callstack(sv::InferenceState)
+    while sv !== nothing
+        println(sv.linfo)
+        sv = sv.parent
+    end
+end
+
+
 #### helper functions ####
 
 @inline slot_id(s) = isa(s, SlotNumber) ? (s::SlotNumber).id : (s::TypedSlot).id # using a function to ensure we can infer this
@@ -661,7 +672,7 @@ function type_depth(t::ANY)
         if t.var.ub === Any && t.var.lb === Bottom
             return type_depth(t.body)
         end
-        return max(type_depth(t.var.ub)+1, type_depth(t.var.lb)+1, type_depth(t.body))
+        return max(type_depth(t.var.ub) + 1, type_depth(t.var.lb) + 1, type_depth(t.body))
     end
     return 0
 end
@@ -673,8 +684,8 @@ function limit_type_depth(t::ANY, d::Int)
 end
 
 function limit_type_depth(t::ANY, d::Int, cov::Bool, vars::Vector{TypeVar}=TypeVar[])
-    if isa(t,Union)
-        if d > MAX_TYPE_DEPTH
+    if isa(t, Union)
+        if d < 0
             if cov
                 return Any
             else
@@ -683,9 +694,9 @@ function limit_type_depth(t::ANY, d::Int, cov::Bool, vars::Vector{TypeVar}=TypeV
                 return var
             end
         end
-        return Union{limit_type_depth(t.a, d+1, cov, vars),
-                     limit_type_depth(t.b, d+1, cov, vars)}
-    elseif isa(t,UnionAll)
+        return Union{limit_type_depth(t.a, d - 1, cov, vars),
+                     limit_type_depth(t.b, d - 1, cov, vars)}
+    elseif isa(t, UnionAll)
         v = t.var
         if v.ub === Any
             if v.lb === Bottom
@@ -693,9 +704,9 @@ function limit_type_depth(t::ANY, d::Int, cov::Bool, vars::Vector{TypeVar}=TypeV
             end
             ub = Any
         else
-            ub = limit_type_depth(v.ub, d+1, true)
+            ub = limit_type_depth(v.ub, d - 1, true)
         end
-        if v.lb === Bottom || type_depth(v.lb) > MAX_TYPE_DEPTH
+        if v.lb === Bottom || type_depth(v.lb) > d
             # note: lower bounds need to be widened by making them lower
             lb = Bottom
         else
@@ -708,7 +719,7 @@ function limit_type_depth(t::ANY, d::Int, cov::Bool, vars::Vector{TypeVar}=TypeV
     end
     P = t.parameters
     isempty(P) && return t
-    if d > MAX_TYPE_DEPTH
+    if d < 0
         if isvarargtype(t)
             # never replace Vararg with non-Vararg
             return Vararg{limit_type_depth(P[1], d, cov, vars), P[2]}
@@ -726,7 +737,7 @@ function limit_type_depth(t::ANY, d::Int, cov::Bool, vars::Vector{TypeVar}=TypeV
         return var
     end
     stillcov = cov && (t.name === Tuple.name)
-    Q = map(x->limit_type_depth(x, d+1, stillcov, vars), P)
+    Q = map(x -> limit_type_depth(x, d - 1, stillcov, vars), P)
     R = t.name.wrapper{Q...}
     if cov && !stillcov
         for var in vars
@@ -735,6 +746,172 @@ function limit_type_depth(t::ANY, d::Int, cov::Bool, vars::Vector{TypeVar}=TypeV
     end
     return R
 end
+
+function limit_type_size(t::ANY, compare::ANY, source::ANY)
+    source = svec(unwrap_unionall(compare), unwrap_unionall(source))
+    source[1] === source[2] && (source = svec(source[1]))
+    type_more_complex(t, compare, source) || return t
+    r = _limit_type_size(t, compare, source)
+    #@assert !isa(t, Type) || t <: r
+    return r
+end
+
+function type_more_complex(t::ANY, c::ANY, sources::SimpleVector)
+    if isa(c, TypeVar)
+        if isa(t, TypeVar)
+            return type_more_complex(t.ub, c.ub, sources) ||
+                   type_more_complex(t.lb, c.lb, sources);
+        end
+    elseif isa(c, Union)
+        if isa(t, Union)
+            return type_more_complex(t.a, c.a, sources) ||
+                   type_more_complex(t.b, c.b, sources);
+        end
+        return type_more_complex(t, c.a, sources) &&
+               type_more_complex(t, c.b, sources);
+    elseif isa(c, UnionAll)
+        if isa(t, UnionAll)
+            return type_more_complex(t.body, c.body, sources);
+        end
+    elseif isa(t, DataType)
+        if isa(c, DataType)
+            tP = t.parameters
+            isempty(tP) && return false
+            if t.name === c.name
+                cP = c.parameters
+                length(tP) > length(cP) && return true
+                for i = 1:length(tP)
+                    type_more_complex(tP[i], cP[i], sources) && return true
+                end
+            else # allow deviation in the type name, if all of it's parameters came from the sources
+                for i = 1:length(tP)
+                    for s in sources
+                        is_derived_type(tP[i], s) || return true
+                    end
+                end
+            end
+            return false
+        end
+        if isType(t) # allow taking typeof a source type as Type{...}, as long as it isn't nesting Type{Type{...}}
+            tt = unwrap_unionall(t.parameters[1])
+            if isa(tt, DataType) && !isType(tt)
+                for s in sources
+                    is_derived_type(tt, s) && return false
+                end
+            end
+        end
+    elseif t === c
+        return false
+    end
+    return true
+end
+
+function is_derived_type(t::ANY, c::ANY) # try to find `type` somewhere in `comparison` type
+    t === c && return true
+    if isa(c, Union)
+        return is_derived_type(t, c.a) || is_derived_type(t, c.b)
+    elseif isa(c, UnionAll)
+        return is_derived_type(t, c.body)
+    elseif isa(c, DataType)
+        super = supertype(c)
+        while super !== Any
+            t === super && return true
+            super = supertype(super)
+        end
+        cP = c.parameters
+        for p in cP
+            is_derived_type(t, p) && return true
+        end
+    end
+    return false
+end
+
+function _limit_type_size(t::ANY, c::ANY, sources::SimpleVector) # type vs. comparison which was derived from source
+    t === c && return t # quick egal test
+    isa(t, Type) && isa(c, Type) && c <: t && return t # t is already wider than the comparison
+    let baset = unwrap_unionall(t)
+        for s in sources
+            is_derived_type(baset, s) && return t # t isn't something new
+        end
+    end
+    if isa(t, TypeVar)
+        if isa(c, TypeVar)
+            if t.ub === c.ub && t.lb === c.ub
+                return t
+            end
+        end
+    elseif isa(t, Union)
+        if isa(c, Union)
+            a = _limit_type_size(t.a, c.a, sources)
+            b = _limit_type_size(t.b, c.b, sources)
+            return Union{a, b}
+        end
+    elseif isa(t, UnionAll)
+        if isa(c, UnionAll)
+            tv = t.var
+            cv = c.var
+            if tv.ub === cv.ub
+                if tv.lb === cv.lb
+                    return UnionAll(tv, _limit_type_size(t.body, c.body, sources))
+                end
+                ub = tv.ub
+            else
+                ub = _limit_type_size(tv.ub, cv.ub, sources)
+            end
+            if tv.lb === cv.lb
+                lb = tv.lb
+            else
+                # note: lower bounds need to be widened by making them lower
+                lb = Bottom
+            end
+            v2 = TypeVar(tv.name, lb, ub)
+            return UnionAll(v2, _limit_type_size(t{v2}, c{v2}, sources))
+        end
+        tbody = _limit_type_size(t.body, c, sources)
+        tbody === t.body && return t
+        return UnionAll(t.var, tbody)
+    elseif isa(t, DataType)
+        if isa(c, DataType)
+            tP = t.parameters
+            cP = c.parameters
+            isempty(tP) && return t
+            if t.name === c.name && !isempty(cP)
+                if isvarargtype(t)
+                    VaT = _limit_type_size(tP[1], cP[1], sources)
+                    N = tP[2]
+                    if isa(N, TypeVar) || N === cP[2]
+                        return Vararg{VaT, N}
+                    end
+                    return Vararg{VaT}
+                elseif t.name === Tuple.name
+                    # for covariant datatypes (aka Tuple),
+                    # apply type-size limit elementwise
+                    np = min(length(tP), length(cP))
+                    Q = Any[ tP[i] for i in 1:np ]
+                    if length(tP) > np # implies Tuple
+                        # combine tp[np:end] into tP[np] using Vararg
+                        Q[np] = tuple_tail_elem(Bottom, Any[ tP[i] for i in np:length(tP) ])
+                    end
+                    for i = 1:np
+                        Q[i] = _limit_type_size(Q[i], cP[i], sources)
+                    end
+                    return Tuple{Q...}
+                end
+            end
+        end
+        if isType(t) # allow taking typeof as Type{...}, but ensure it doesn't start nesting
+            tt = unwrap_unionall(t.parameters[1])
+            if isa(tt, DataType) && !isType(tt)
+                for s in sources
+                    is_derived_type(tt, s) && return t
+                end
+            end
+        end
+        return t.name.wrapper
+    end
+    return Any
+end
+
 
 const DataType_name_fieldindex = fieldindex(DataType, :name)
 const DataType_parameters_fieldindex = fieldindex(DataType, :parameters)
@@ -839,7 +1016,7 @@ function getfield_tfunc(s00::ANY, name)
         if isempty(s.parameters)
             return R
         end
-        return limit_type_depth(R, 0)
+        return limit_type_depth(R, MAX_TYPE_DEPTH)
     end
     fld = name.val
     if isa(fld,Symbol)
@@ -874,7 +1051,7 @@ function getfield_tfunc(s00::ANY, name)
     # conservatively limit the type depth here,
     # since the UnionAll type bound is otherwise incorrect
     # in the current type system
-    return rewrap_unionall(limit_type_depth(R, 0), s00)
+    return rewrap_unionall(limit_type_depth(R, MAX_TYPE_DEPTH), s00)
 end
 add_tfunc(getfield, 2, 2, (s::ANY, name::ANY) -> getfield_tfunc(s, name))
 add_tfunc(setfield!, 3, 3, (o::ANY, f::ANY, v::ANY) -> v)
@@ -1052,7 +1229,7 @@ function apply_type_tfunc(headtypetype::ANY, args::ANY...)
     if isvarargtype(headtype)
         return Type
     end
-    if uncertain && type_too_complex(appl,0)
+    if uncertain && type_too_complex(appl, MAX_TYPE_DEPTH)
         return Type{<:headtype}
     end
     if istuple
@@ -1356,59 +1533,28 @@ end
 
 function abstract_call_method(method::Method, f::ANY, sig::ANY, sparams::SimpleVector, sv::InferenceState)
     sigtuple = unwrap_unionall(sig)::DataType
-    recomputesvec = false
 
-    # limit argument type tuple growth
-    msig = unwrap_unionall(method.sig)
-    lsig = length(msig.parameters)
-    ls = length(sigtuple.parameters)
-    td = type_depth(sig)
-    mightlimitlength = ls > lsig + 1
-    mightlimitdepth = td > 2
-    limitlength = false
-    if mightlimitlength || mightlimitdepth
-        # TODO: FIXME: this heuristic depends on non-local state making type-inference unpredictable
+    tm = _topmod(sv)
+    if !istopfunction(tm, f, :promote_typeof)
+        # limit argument type tuple growth
+        msig = unwrap_unionall(method.sig)
+        lsig = length(msig.parameters)
+        ls = length(sigtuple.parameters)
+        # look through the parents list to find the topmost
+        # function call to the same method
         cyclei = 0
         infstate = sv
+        topmost = nothing
         while infstate !== nothing
             infstate = infstate::InferenceState
             if isdefined(infstate.linfo, :def) && method === infstate.linfo.def
-                if mightlimitlength && ls > length(unwrap_unionall(infstate.linfo.specTypes).parameters)
-                    limitlength = true
+                if infstate.linfo.specTypes == sig
+                    # avoid widening when detecting self-recursion
+                    # TODO: merge call cycle and return right away
+                    topmost = nothing
+                    break
                 end
-                if mightlimitdepth && td > type_depth(infstate.linfo.specTypes)
-                    # impose limit if we recur and the argument types grow beyond MAX_TYPE_DEPTH
-                    if td > MAX_TYPE_DEPTH
-                        sig = limit_type_depth(sig, 0)
-                        sigtuple = unwrap_unionall(sig)
-                        recomputesvec = true
-                        break
-                    else
-                        p1, p2 = sigtuple.parameters, unwrap_unionall(infstate.linfo.specTypes).parameters
-                        if length(p2) == ls
-                            limitdepth = false
-                            newsig = Vector{Any}(ls)
-                            for i = 1:ls
-                                if p1[i] <: Function && type_depth(p1[i]) > type_depth(p2[i]) &&
-                                    isa(p1[i],DataType)
-                                    # if a Function argument is growing (e.g. nested closures)
-                                    # then widen to the outermost function type. without this
-                                    # inference fails to terminate on do_quadgk.
-                                    newsig[i] = p1[i].name.wrapper
-                                    limitdepth  = true
-                                else
-                                    newsig[i] = limit_type_depth(p1[i], 1)
-                                end
-                            end
-                            if limitdepth
-                                sigtuple = Tuple{newsig...}
-                                sig = rewrap_unionall(sigtuple, sig)
-                                recomputesvec = true
-                                break
-                            end
-                        end
-                    end
-                end
+                topmost === nothing && (topmost = infstate)
             end
             # iterate through the cycle before walking to the parent
             if cyclei < length(infstate.callers_in_cycle)
@@ -1419,35 +1565,57 @@ function abstract_call_method(method::Method, f::ANY, sig::ANY, sparams::SimpleV
                 infstate = infstate.parent
             end
         end
-    end
 
-    # limit length based on size of definition signature.
-    # for example, given function f(T, Any...), limit to 3 arguments
-    # instead of the default (MAX_TUPLETYPE_LEN)
-    if limitlength
-        tm = _topmod(sv)
-        if !istopfunction(tm, f, :promote_typeof)
-            fst = sigtuple.parameters[lsig + 1]
-            allsame = true
-            # allow specializing on longer arglists if all the trailing
-            # arguments are the same, since there is no exponential
-            # blowup in this case.
-            for i = (lsig + 2):ls
-                if sigtuple.parameters[i] != fst
-                    allsame = false
-                    break
+        # TODO: FIXME: this heuristic depends on non-local state making type-inference unpredictable
+        # it also should to be integrated into the cycle resolution and iterated to convergence
+        if topmost !== nothing
+            # impose limit if we recur on the same method and the argument type complexity is growing or is beyond MAX_TYPE_DEPTH
+            newsig = sig
+            if !isempty(topmost.callers_in_cycle)
+                # already discovered this method causes dependent self-recursion
+                # widen fully to avoid making the cycle any larger
+                newsig = method.sig
+            else
+                comparison = topmost.linfo.specTypes
+                if ls > lsig + 1 && ls > length(unwrap_unionall(comparison).parameters)
+                    # limit length based on size of definition signature.
+                    # for example, given function f(T, Any...), limit to 3 arguments
+                    # instead of the default (MAX_TUPLETYPE_LEN)
+                    fst = sigtuple.parameters[lsig + 1]
+                    allsame = true
+                    # allow specializing on longer arglists if all the trailing
+                    # arguments are the same, since there is no exponential
+                    # blowup in this case.
+                    for i = (lsig + 2):ls
+                        if sigtuple.parameters[i] != fst
+                            allsame = false
+                            break
+                        end
+                    end
+                    if !allsame
+                        sigtuple = limit_tuple_type_n(sigtuple, lsig + 1)
+                        newsig = rewrap_unionall(sigtuple, newsig)
+                    end
                 end
+                td = type_depth(newsig)
+                max_type_depth = min(MAX_TYPE_DEPTH, type_depth(comparison))
+                if td > max_type_depth
+                    # limit growth in type depth
+                    newsig = limit_type_depth(newsig, max_type_depth)
+                end
+                # see if the type is still too big, and limit it further if required
+                newsig = limit_type_size(newsig, comparison, sv.linfo.specTypes)
             end
-            if !allsame
-                sigtuple = limit_tuple_type_n(sigtuple, lsig + 1)
-                sig = rewrap_unionall(sigtuple, sig)
-                recomputesvec = true
+            if newsig !== sig
+                sig = newsig
+                sigtuple = unwrap_unionall(sig)
+                sparams = svec()
             end
         end
     end
 
     # if sig changed, may need to recompute the sparams environment
-    if isa(method.sig, UnionAll) && (recomputesvec || isempty(sparams))
+    if isa(method.sig, UnionAll) && isempty(sparams)
         recomputed = ccall(:jl_env_from_type_intersection, Ref{SimpleVector}, (Any, Any), sig, method.sig)
         sig = recomputed[1]
         if !isa(unwrap_unionall(sig), DataType) # probably Union{}
@@ -1508,7 +1676,7 @@ function precise_container_type(arg::ANY, typ::ANY, vtypes::VarTable, sv::Infere
         if isvatuple(tti0) && length(tti0.parameters) == 1
             return Any[Vararg{unwrapva(tti0.parameters[1])}]
         else
-            return tti0.parameters
+            return Any[ p for p in tti0.parameters ]
         end
     elseif tti0 <: Array
         return Any[Vararg{eltype(tti0)}]
@@ -2131,18 +2299,18 @@ function abstract_interpret(e::ANY, vtypes::VarTable, sv::InferenceState)
     return vtypes
 end
 
-function type_too_complex(t::ANY, d)
-    if d > MAX_TYPE_DEPTH
+function type_too_complex(t::ANY, d::Int)
+    if d < 0
         return true
-    elseif isa(t,Union)
-        return type_too_complex(t.a, d+1) || type_too_complex(t.b, d+1)
-    elseif isa(t,TypeVar)
-        return type_too_complex(t.lb,d+1) || type_too_complex(t.ub,d+1)
-    elseif isa(t,UnionAll)
+    elseif isa(t, Union)
+        return type_too_complex(t.a, d - 1) || type_too_complex(t.b, d - 1)
+    elseif isa(t, TypeVar)
+        return type_too_complex(t.lb, d - 1) || type_too_complex(t.ub, d - 1)
+    elseif isa(t, UnionAll)
         return type_too_complex(t.var, d) || type_too_complex(t.body, d)
-    elseif isa(t,DataType)
+    elseif isa(t, DataType)
         for x in (t.parameters)::SimpleVector
-            if type_too_complex(x, d+1)
+            if type_too_complex(x, d - 1)
                 return true
             end
         end
@@ -2247,7 +2415,7 @@ function tmerge(typea::ANY, typeb::ANY)
         end
     end
     u = Union{typea, typeb}
-    if unionlen(u) > MAX_TYPEUNION_LEN || type_too_complex(u, 0)
+    if unionlen(u) > MAX_TYPEUNION_LEN || type_too_complex(u, MAX_TYPE_DEPTH)
         # don't let type unions get too big
         # TODO: something smarter, like a common supertype
         return Any
@@ -2578,6 +2746,7 @@ function typeinf_edge(method::Method, atypes::ANY, sparams::SimpleVector, caller
     frame = frame::InferenceState
     return frame.bestguess, nothing
 end
+
 
 #### entry points for inferring a MethodInstance given a type signature ####
 
