@@ -169,10 +169,10 @@ int main(int argc, char *argv[])
 #if defined(_P64) && defined(JL_DEBUG_BUILD)
 static int is_running_under_wine()
 {
-    static const char * (CDECL *pwine_get_version)(void);
+    static void *pwine_get_version;
     HMODULE hntdll = GetModuleHandle("ntdll.dll");
     assert(hntdll);
-    pwine_get_version = (void *)GetProcAddress(hntdll, "wine_get_version");
+    pwine_get_version = GetProcAddress(hntdll, "wine_get_version");
     return pwine_get_version != 0;
 }
 #endif
@@ -195,7 +195,7 @@ static void lock_low32() {
         if (meminfo.State == MEM_FREE) { // reserve all free pages in the first 4GB of memory
             char *first = (char*)meminfo.BaseAddress;
             char *last = first + meminfo.RegionSize;
-            char *p;
+            void *p;
             if (last > max32addr)
                 last = max32addr;
             // adjust first up to the first allocation granularity boundary
@@ -204,7 +204,7 @@ static void lock_low32() {
             last = (char*)((long long)last & ~(info.dwAllocationGranularity - 1));
             if (last != first) {
                 p = VirtualAlloc(first, last - first, MEM_RESERVE, PAGE_NOACCESS); // reserve all memory in between
-                assert(under_wine || p == first);
+                assert(under_wine || p == (void*)first);
             }
         }
         meminfo.BaseAddress += meminfo.RegionSize;
