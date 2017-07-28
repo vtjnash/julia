@@ -51,11 +51,13 @@ mutable struct BigInt <: Signed
     alloc::Cint
     size::Cint
     d::Ptr{Limb}
+    gc_ptr::String
 
     function BigInt()
-        b = new(zero(Cint), zero(Cint), C_NULL)
-        MPZ.init!(b)
-        finalizer(cglobal((:__gmpz_clear, :libgmp)), b)
+        gc_ptr = Base._string_n(Core.sizeof(Limb) + Core.sizeof(Ptr))
+        ptr = Base.unsafe_convert(Ptr{UInt8}, gc_ptr)
+        b = new(1, 0, ptr + Core.sizeof(Ptr), gc_ptr)
+        unsafe_store!(Ptr{Any}(ptr), b)
         return b
     end
 end
@@ -89,6 +91,54 @@ does not abort on huge allocation and throws OutOfMemoryError instead.
 """
 const ALLOC_OVERFLOW_FUNCTION = Ref(false)
 
+function gmp_malloc(sz::Csize_t)::Ptr{Cvoid}
+    ptr = ccall(:malloc, Ptr{Cvoid}, (Csize_t,), sz + Core.sizeof(Ptr))
+    ptr == C_NULL && throw(OutOfMemoryError())
+    unsafe_store!(Ptr{Ptr{Cvoid}}(ptr), C_NULL)
+    return ptr + Core.sizeof(Ptr)
+end
+
+function gmp_realloc(old::Ptr{Cvoid}, oldsz::Csize_t, newsz::Csize_t)::Ptr{Cvoid}
+    old -= Core.sizeof(Ptr)
+    newsz += Core.sizeof(Ptr)
+    oldsz += Core.sizeof(Ptr)
+    ref = unsafe_load(Ptr{Ptr{Cvoid}}(old))
+    if ref === C_NULL
+        new = ccall(:realloc, Ptr{Cvoid}, (Ptr{Cvoid}, Csize_t,), old, newsz)
+        if new == C_NULL
+            ccall(:free, Cvoid, (Ptr{Cvoid},), old)
+            throw(OutOfMemoryError())
+        end
+        unsafe_store!(Ptr{Ptr{Cvoid}}(new), C_NULL)
+    else
+        b = unsafe_load(Ptr{Any}(old))::BigInt
+        @assert b.d == old + Core.sizeof(Ptr)
+        gc_ptr = Base._string_n(newsz)
+        GC.@preserve gc_ptr begin
+            new = Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, gc_ptr))
+            unsafe_copyto!(Ptr{UInt8}(new), Ptr{UInt8}(old), min(oldsz, newsz))
+        end
+        b.d = C_NULL
+        b.gc_ptr = gc_ptr
+    end
+    return new + Core.sizeof(Ptr)
+end
+
+function gmp_free(old::Ptr{Cvoid}, oldsz::Csize_t)::Cvoid
+    old === C_NULL && return
+    old -= Core.sizeof(Ptr)
+    ref = unsafe_load(Ptr{Ptr{Cvoid}}(old))
+    if ref == C_NULL
+        ccall(:free, Cvoid, (Ptr{Cvoid},), old)
+    else
+        # yuk: need to convert to a gc-finalized impl
+        b = unsafe_load(Ptr{Any}(old))::BigInt
+        b.d == C_NULL
+        finalizer(b, cglobal((:__gmpz_clear, :libgmp)))
+    end
+    nothing
+end
+
 function __init__()
     try
         if version().major != VERSION.major || bits_per_limb() != BITS_PER_LIMB
@@ -99,10 +149,11 @@ function __init__()
         end
 
         ccall((:__gmp_set_memory_functions, :libgmp), Cvoid,
-              (Ptr{Cvoid},Ptr{Cvoid},Ptr{Cvoid}),
-              cglobal(:jl_gc_counted_malloc),
-              cglobal(:jl_gc_counted_realloc_with_old_size),
-              cglobal(:jl_gc_counted_free_with_size))
+              (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}),
+              @cfunction(gmp_malloc, Ptr{Cvoid}, (Csize_t,)),
+              @cfunction(gmp_realloc, Ptr{Cvoid}, (Ptr{Cvoid}, Csize_t, Csize_t,)),
+              @cfunction(gmp_free, Cvoid, (Ptr{Cvoid}, Csize_t,)))
+
         ZERO.alloc, ZERO.size, ZERO.d = 0, 0, C_NULL
         ONE.alloc, ONE.size, ONE.d = 1, 1, pointer(_ONE)
     catch ex
@@ -120,6 +171,7 @@ function __init__()
             rethrow()
         end
     end
+    nothing
 end
 
 
@@ -130,15 +182,12 @@ module MPZ
 # - a method modifying its input has a "!" appendend to its name, according to Julia's conventions
 # - some convenient methods are added (in addition to the pure MPZ ones), e.g. `add(a, b) = add!(BigInt(), a, b)`
 #   and `add!(x, a) = add!(x, x, a)`.
-using .Base.GMP: BigInt, Limb
+using ..GMP: BigInt, Limb
 
 const mpz_t = Ref{BigInt}
 const bitcnt_t = Culong
 
 gmpz(op::Symbol) = (Symbol(:__gmpz_, op), :libgmp)
-
-init!(x::BigInt) = (ccall((:__gmpz_init, :libgmp), Cvoid, (mpz_t,), x); x)
-init2!(x::BigInt, a) = (ccall((:__gmpz_init2, :libgmp), Cvoid, (mpz_t, bitcnt_t), x, a); x)
 
 realloc2!(x, a) = (ccall((:__gmpz_realloc2, :libgmp), Cvoid, (mpz_t, bitcnt_t), x, a); x)
 realloc2(a) = realloc2!(BigInt(), a)
