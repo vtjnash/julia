@@ -34,10 +34,20 @@ if BITS_PER_LIMB == 32
     const Limb = UInt32
     const SLimbMax = Union{Int8, Int16, Int32}
     const ULimbMax = Union{UInt8, UInt16, UInt32}
+    if Sys.WORD_SIZE == 32
+        const INL_LIMBS = 10
+    else
+        const INL_LIMBS = 6
+    end
 elseif BITS_PER_LIMB == 64
     const Limb = UInt64
     const SLimbMax = Union{Int8, Int16, Int32, Int64}
     const ULimbMax = Union{UInt8, UInt16, UInt32, UInt64}
+    if Sys.WORD_SIZE == 32
+        const INL_LIMBS = 5
+    else
+        const INL_LIMBS = 3
+    end
 else
     error("GMP: cannot determine the type mp_limb_t (__gmp_bits_per_limb == $BITS_PER_LIMB)")
 end
@@ -51,16 +61,20 @@ mutable struct BigInt <: Signed
     alloc::Cint
     size::Cint
     d::Ptr{Limb}
-    gc_ptr::String
+    gc_ptr::Any
+    inl_space::Tuple{Ptr{Cvoid}, Vararg{Limb, INL_LIMBS}} # padded out to 64 bytes (including tag)
 
     function BigInt()
-        gc_ptr = Base._string_n(Core.sizeof(Limb) + Core.sizeof(Ptr))
-        ptr = Base.unsafe_convert(Ptr{UInt8}, gc_ptr)
-        b = new(1, 0, ptr + Core.sizeof(Ptr), gc_ptr)
-        unsafe_store!(Ptr{Any}(ptr), b)
+        b = new(INL_LIMBS, 0, C_NULL, nothing, #=uninitialized=#)
+        GC.@preserve b begin
+            ptr = pointer_from_objref(b) + INLSPACE_OFFSET
+            unsafe_store!(Ptr{Any}(ptr), b)
+            b.d = ptr + Core.sizeof(Ptr)
+        end
         return b
     end
 end
+const INLSPACE_OFFSET = fieldoffset(BigInt, something(findfirst(isequal(:inl_space), fieldnames(BigInt))))
 
 """
     BigInt(x)
@@ -110,7 +124,7 @@ function gmp_realloc(old::Ptr{Cvoid}, oldsz::Csize_t, newsz::Csize_t)::Ptr{Cvoid
             throw(OutOfMemoryError())
         end
         unsafe_store!(Ptr{Ptr{Cvoid}}(new), C_NULL)
-    else
+    elseif newsz > Core.sizeof(BigInt) - INLSPACE_OFFSET
         b = unsafe_load(Ptr{Any}(old))::BigInt
         @assert b.d == old + Core.sizeof(Ptr)
         gc_ptr = Base._string_n(newsz)
@@ -120,6 +134,8 @@ function gmp_realloc(old::Ptr{Cvoid}, oldsz::Csize_t, newsz::Csize_t)::Ptr{Cvoid
         end
         b.d = C_NULL
         b.gc_ptr = gc_ptr
+    else
+        new = old
     end
     return new + Core.sizeof(Ptr)
 end
@@ -134,7 +150,10 @@ function gmp_free(old::Ptr{Cvoid}, oldsz::Csize_t)::Cvoid
         # yuk: need to convert to a gc-finalized impl
         b = unsafe_load(Ptr{Any}(old))::BigInt
         b.d == C_NULL
-        finalizer(b, cglobal((:__gmpz_clear, :libgmp)))
+        b.gc_ptr = nothing
+        finalizer(b) do b
+            b.d == C_NULL || ccall(:free, Cvoid, (Ptr{Cvoid},), b.d - Core.sizeof(Ptr))
+        end
     end
     nothing
 end
