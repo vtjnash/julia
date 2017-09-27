@@ -630,28 +630,52 @@ end
 
 ############################################################
 
-struct Broadcasted{F, A1, A<:Tuple, S}
+struct TypeTuple{T, Rest}
+    head::T    # car
+    rest::Rest # cdr
+    TypeTuple(x, rest::TypeTuple) where {} = new{Core.Typeof(x), typeof(rest)}(x, rest) # (cons x rest)
+    TypeTuple(x, rest::Void) where {} = new{Core.Typeof(x), typeof(rest)}(x, rest) # (cons x nil)
+    TypeTuple(x) where {} = new{Core.Typeof(x), Void}(x, nothing) # (list x)
+end
+# (apply list a)
+make_typetuple(a) = TypeTuple(a)
+make_typetuple(a, args...) = TypeTuple(a, make_typetuple(args...))
+# (map f tt)
+Base.map(f, tt::TypeTuple{<:Any, Void}) = (f(tt.head),)
+function Base.map(f, tt::TypeTuple)
+    return (f(tt.head), map(f, tt.rest)...)
+end
+
+mapTypeTuple(f, tt::TypeTuple{<:Any, Void}) = TypeTuple(f(tt.head),)
+function mapTypeTuple(f, tt::TypeTuple)
+    return TypeTuple(f(tt.head), mapTypeTuple(f, tt.rest))
+end
+# Base.length(tt::TypeTuple) = length(map(i -> nothing, tt))
+
+typetuple_broadcast_indices(tt::TypeTuple{<:Any, Void}) = broadcast_indices(tt.head)
+typetuple_broadcast_indices(tt::TypeTuple) = broadcast_shape(broadcast_indices(tt.head), typetuple_broadcast_indices(tt.rest))
+
+struct Broadcasted{F, A<:TypeTuple, S}
     f::F
-    arg1::A1
     args::A
     shape::S
-    Broadcasted{F, A1, A, S}(f::F, a1::A1, args::A, shape::S) where {F, A1, A<:Tuple, S} =
-        new{F, A1, A, S}(f, a1, args, shape)
+    Broadcasted{F, A, S}(f::F, args::A, shape::S) where {F, A<:TypeTuple, S} =
+        new{F, A, S}(f, args, shape)
 end
 Broadcasted(f) = inert(f()) # odd, perhaps, but this is how `broadcast` is defined
-function Broadcasted(f, a1, args...)
-    shape = broadcast_indices(a1, args...)
-    BC = Broadcasted{typeof(f), Core.Typeof(a1), typeof(args), typeof(shape)}
-    return BC(f, a1, args, shape)
+function Broadcasted(f, args::TypeTuple)
+    shape = typetuple_broadcast_indices(args)
+    BC = Broadcasted{typeof(f), typeof(args), typeof(shape)}
+    return BC(f, args, shape)
 end
 function Base.show(io::IO, bc::Broadcasted)
     print(io, "Broadcasted(")
     print(io, bc.f)
-    print(io, ", ")
-    print(io, bc.arg1)
-    for arg in bc.args
+    args = bc.args
+    while args != nothing
         print(io, ", ")
-        print(io, arg)
+        print(io, args.head)
+        args = args.rest
     end
     print(io, ")")
 end
@@ -659,28 +683,13 @@ end
 _broadcast_getindex_eltype(::ScalarType, bc::Broadcasted) = lazy_broadcast_eltype(bc)
 _broadcast_getindex_eltype(::Any, bc::Broadcasted) = lazy_broadcast_eltype(bc)
 function lazy_broadcast_eltype(bc::Broadcasted)
-    return Base._return_type(bc.f, Tuple{_broadcast_getindex_eltype(bc.arg1),
-                                         map(_broadcast_getindex_eltype, bc.args)...})
+    return Base._return_type(bc.f, Tuple{map(_broadcast_getindex_eltype, bc.args)...})
 end
 _containertype(bc::Type{<:Broadcasted}) = Any
-_containertype(bc::Type{<:Broadcasted{F, A1, Tuple{}} where F}) where {A1} = _containertype(A1)
-function _containertype(bc::Type{<:Broadcasted{F, A1, A} where F}) where {A1, A <: Tuple}
-    return promote_containertype(_containertype(A1), lazy_containertype(A))
-end
-lazy_containertype(::Type{Tuple{}}) = throw(ArgumentError("Broadcast container must be non-empty"))
-lazy_containertype(::Type{Tuple{T}}) where {T} = _containertype(T)
-function lazy_containertype(::Type{Tuple{T, S}}) where {T, S}
-    return promote_containertype(_containertype(T), _containertype(S))
-end
-function lazy_containertype(::Type{T}) where (T <: Tuple)
-    R = _containertype(Base.tuple_type_head(T))
-    S = Base.tuple_type_tail(T)
-    T == S || (R = promote_containertype(R, lazy_containertype(S)))
-    return R
-end
-lazy_containertype(::Type{NTuple{N, T} where N}) where {T} = _containertype(T)
-lazy_containertype(::Type{NTuple{N, T}} where N) where {T} = _containertype(T)
-Base.length(bc::Broadcasted) = length(bc.arg1)
+_containertype(bc::Type{<:Broadcasted{F, A} where F}) where {A <: TypeTuple} = lazy_containertype(A)
+lazy_containertype(::Type{TypeTuple{A, R}}) where {A, R} = promote_containertype(_containertype(A), lazy_containertype(R))
+lazy_containertype(::Type{TypeTuple{A, Void}}) where {A} = _containertype(A)
+Base.length(bc::Broadcasted) = length(bc.args.head)
 Base.indices(bc::Broadcasted) = bc.shape
 Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted, I)
     @inline function index_into(a)
@@ -688,42 +697,62 @@ Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted, I)
         i = newindex(I, keep, Idefault)
         return _broadcast_getindex(a, i)
     end
-    arg1 = index_into(bc.arg1)
-    args = map(index_into, bc.args)
-    return bc.f(arg1, args...)
+    args = mapTypeTuple(index_into, bc.args)
+    return apply_typetuple(bc.f, args)
 end
+
 
 isfused(arg) = true
 inert(x) = Ref{typeof(x)}(x)
-make_kwsyntax(f; kwargs...) = inert(f(; kwargs...))
-function make_kwsyntax(f, arg1, args...; kwargs...)
-    if !isfused(arg1) || !all(isfused, args)
+function make_kwsyntax(f, args...; kwargs...)
+    if isempty(args) || !all(isfused, args)
         if isempty(kwargs)
-            return inert(broadcast(f, arg1, args...))
+            return inert(broadcast(f, args...))
         else
-            return inert(broadcast((as...) -> f(as...; kwargs...), arg1, args...))
+            return inert(broadcast((as...) -> f(as...; kwargs...), args...))
         end
     else
-        parevalf, passedargstup = capturescalars(f, kwargs, arg1, args...)
-        if passedargstup === ()
-            return inert(f(arg1, args...; kwargs...)) # nothing to broadcast
+        args′ = make_typetuple(args...)
+        parevalf, passedargstup = capturescalars(f, kwargs, args′)
+        if passedargstup === nothing
+            return inert(f(args...; kwargs...)) # nothing to broadcast
         else
-            return Broadcasted(parevalf, passedargstup...)
+            return Broadcasted(parevalf, passedargstup)
         end
     end
 end
-make(f) = inert(f())
-function make(f, arg1, args...)
+function make(f, args...)
     # optimization when there are syntactically no keywords
-    if !isfused(arg1) || !all(isfused, args)
-        return inert(broadcast(f, arg1, args...))
+    if isempty(args) || !all(isfused, args)
+        return inert(broadcast(f, args...))
     else
-        parevalf, passedargstup = capturescalars(f, (), arg1, args...)
-        if passedargstup === ()
-            return inert(f(arg1, args...)) # nothing to broadcast
+        args′ = make_typetuple(args...)
+        parevalf, passedargstup = capturescalars(f, (), args′)
+        if passedargstup === nothing
+            return inert(f(args...)) # nothing to broadcast
         else
-            return Broadcasted(f, arg1, args...)
+            return Broadcasted(parevalf, passedargstup)
         end
+    end
+end
+
+apply_typetuple(f, tt::Void) = f()
+apply_typetuple(f, tt::TypeTuple{<:Any, Void}) = f(tt.head)
+apply_typetuple(f, tt::TypeTuple{T, TypeTuple{S, Void}} where {T, S}) = f(tt.head, tt.rest.head)
+@generated function apply_typetuple(f, tt::TypeTuple)
+    # implements f(map(identity, tt)...)
+    N = 0
+    let tt = tt
+        while tt !== Void
+            N += 1
+            tt = tt.parameters[2]
+        end
+    end
+    return quote
+        tt_1 = tt
+        @nexprs $N i->(tt_{i+1} = tt_i.rest)
+        @nexprs $N i->(a_i = tt_i.head)
+        @ncall $N f a
     end
 end
 
@@ -732,45 +761,51 @@ end
 # evaluated f) and a reduced argument tuple (passedargstup) containing all non-scalars
 # vectors/matrices in mixedargs in their orginal order, and such that the result of
 # broadcast(parevalf, passedargstup...) is broadcast(f, mixedargs...)
-@inline function capturescalars(f, kwargs, mixedargs...)
-    let makeargs = _capturescalars(mixedargs...),
-        passedsrcargstup = _capturenonscalars(mixedargs...)
+@inline function capturescalars(f, kwargs, mixedargs::TypeTuple)
+    let (passedsrcargstup, makeargs) = _capturescalars(mixedargs)
         if kwargs === ()
-            parevalf = (passed...) -> f(makeargs(passed...)...)
+            parevalf = (passed...) -> apply_typetuple(f, makeargs(passed...))
         else
-            parevalf = (passed...) -> f(makeargs(passed...)...; kwargs...)
+            parevalf = (passed...) -> apply_typetuple((args...) -> f(args...; kwargs...), makeargs(passed...))
         end
         return (parevalf, passedsrcargstup)
     end
 end
 
-@inline _capturenonscalars(nonscalararg, mixedargs...) =
-    (nonscalararg, _capturenonscalars(mixedargs...)...)
-@inline _capturenonscalars(scalararg::Number, mixedargs...) =
-    _capturenonscalars(mixedargs...)
-@inline _capturenonscalars() = ()
+isscalararg(::Number) = true
+isscalararg(::Any) = false
 
-@inline _capturescalars(nonscalararg, mixedargs...) =
-    let f = _capturescalars(mixedargs...)
-        (head, tail...) -> (head, f(tail...)...) # pass-through
+@inline function _capturescalars(::Void)
+    return nothing, () -> nothing
+end
+@inline function _capturescalars(args::TypeTuple)
+    let (rest, f) = _capturescalars(args.rest)
+        let arg = args.head
+            if isscalararg(arg)
+                return rest, (tail...) -> TypeTuple(arg, f(tail...)) # add back scalararg after (in makeargs)
+            else
+                return TypeTuple(arg, rest), (head, tail...) -> TypeTuple(head, f(tail...)) # pass-through to broadcast
+            end
+        end
     end
-@inline _capturescalars(scalararg::Number, mixedargs...) =
-    let f = _capturescalars(mixedargs...)
-        (tail...) -> (scalararg, f(tail...)...) # add scalararg
+end
+@inline function _capturescalars(args::TypeTuple{<:Any, Void})  # this definition is just an optimization (to bottom out the recursion slightly sooner)
+    let arg = args.head
+        if isscalararg(arg)
+            return nothing, () -> TypeTuple(arg,) # add scalararg
+        else
+            return TypeTuple(arg,), (head,) -> TypeTuple(head,) # pass-through
+        end
     end
-@inline _capturescalars(nonscalararg) =
-    (head,) -> (head,) # pass-through
-@inline _capturescalars(scalararg::Number) =
-    () -> (scalararg,) # add scalararg
-@inline _capturescalars() =
-    () -> () # base case
+end
 
 
 execute(bc::Ref) = bc[]
-execute(bc::Broadcasted) = broadcast(bc.f, bc.arg1, bc.args...)
+execute(bc::Broadcasted) = apply_typetuple((args...) -> broadcast(bc.f, args...), bc.args)
 
 execute!(out, bc::Ref) = broadcast!(identity, out, bc[])
-execute!(out, bc::Broadcasted) = broadcast!(bc.f, out, bc.arg1, bc.args...)
+execute!(out, bc::Broadcasted) = apply_typetuple((args...) -> broadcast!(bc.f, out, args...), bc.args)
+
 
 #isfused(arg::CustomArray) = false
 make(f::typeof(+), arg::AbstractRange, inc::Number) = inert(broadcast(+, arg, inc))
