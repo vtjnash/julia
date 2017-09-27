@@ -627,4 +627,153 @@ macro __dot__(x)
     esc(__dot__(x))
 end
 
+
+############################################################
+
+struct Broadcasted{F, A<:Tuple, S, kwsyntax}
+    f::F
+    args::A
+    kwargs::SimpleVector
+    shape::S
+    Broadcasted{F, A, S, kwsyntax}(f::F, args::A, kwargs::SimpleVector, shape::S) where {F, A<:Tuple, S, kwsyntax} =
+        new{F, A, S, kwsyntax::Bool}(f, args, kwargs, shape)
+end
+Broadcasted(f, kwargs) = f(; kwargs...) # odd, perhaps, but this is how `broadcast` is defined
+function Broadcasted(f, kwargs, args...)
+    isempty(args) && throw(ArgumentError("Broadcast container must be non-empty"))
+    shape = broadcast_indices(args...)
+    BC = Broadcasted{typeof(f), typeof(args), typeof(shape), kwargs !== ()}
+    return BC(f, args, Core.svec(kwargs...), shape)
+end
+function Base.show(io::IO, bc::Broadcasted)
+    print(io, "Broadcasted(", bc.f)
+    for arg in bc.args
+        print(io, ", ")
+        print(io, arg)
+    end
+    if !typeof(bc).parameters[4]
+        print(io, "; ")
+        join(io, bc.kwargs, ", ")
+    end
+    print(io, ")")
+end
+
+_broadcast_getindex_eltype(::ScalarType, bc::Broadcasted) = lazy_broadcast_eltype(bc)
+_broadcast_getindex_eltype(::Any, bc::Broadcasted) = lazy_broadcast_eltype(bc)
+function lazy_broadcast_eltype(bc::Broadcasted{F, A, S, kwsyntax} where {F, A<:Tuple, S}) where {kwsyntax}
+    argtypes = map(_broadcast_getindex_eltype, bc.args)
+    if !kwsyntax || isempty(bc.kwargs)
+        return Base._return_type(bc.f, Tuple{argtypes...})
+    else
+        return Base._return_type(Core.kwfunc(bc.f), Tuple{Vector{Any}, Core.Typeof(bc.f), argtypes...})
+    end
+end
+_containertype(bc::Type{<:Broadcasted}) = Any
+_containertype(bc::Type{<:Broadcasted{F, A} where F}) where {A <: Tuple} = lazy_containertype(A)
+lazy_containertype(::Type{Tuple{}}) = throw(ArgumentError("Broadcast container must be non-empty"))
+lazy_containertype(::Type{Tuple{T}}) where {T} = _containertype(T)
+function lazy_containertype(::Type{Tuple{T, S}}) where {T, S}
+    return promote_containertype(_containertype(T), _containertype(S))
+end
+function lazy_containertype(::Type{T}) where (T <: Tuple)
+    R = _containertype(Base.tuple_type_head(T))
+    S = Base.tuple_type_tail(T)
+    T == S || (R = promote_containertype(R, lazy_containertype(S)))
+    return R
+end
+lazy_containertype(::Type{NTuple{N, T} where N}) where {T} = _containertype(T)
+lazy_containertype(::Type{NTuple{N, T}} where N) where {T} = _containertype(T)
+Base.length(bc::Broadcasted) = length(bc.args[1])
+Base.indices(bc::Broadcasted) = bc.shape
+Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted{F, A, S, kwsyntax} where {F, A<:Tuple, S}, I) where {kwsyntax}
+    function index_into(a)
+        keep, Idefault = newindexer(bc.shape, a)
+        i = newindex(I, keep, Idefault)
+        return _broadcast_getindex(a, i)
+    end
+    args = map(index_into, bc.args)
+    if kwsyntax
+        return bc.f(args...; bc.kwargs...)
+    else
+        return bc.f(args...)
+    end
+end
+
+isfused(arg) = true
+#isfused(arg::CustomArray) = false
+inert(x) = Ref{typeof(x)}(x)
+make(f::typeof(+), arg::AbstractRange, inc::Number) = inert(broadcast(+, arg, inc))
+make(f::typeof(+), arg::Number, inc::AbstractRange) = inert(broadcast(+, inc, arg))
+function make_kwsyntax(f, args...; kwargs...)
+    if !all(isfused, args)
+        if isempty(kwargs)
+            return inert(broadcast(f, args...))
+        else
+            return inert(broadcast((as...) -> f(as...; kwargs...), args...))
+        end
+    else
+        parevalf, passedargstup = capturescalars(f, args)
+        if passedargstup === ()
+            return inert(f(args...; kwargs...)) # nothing to broadcast
+        else
+            return Broadcasted(parevalf, kwargs, passedargstup...)
+        end
+    end
+end
+function make(f, args...)
+    # optimization when there are syntactically no keywords
+    if !all(isfused, args)
+        return inert(broadcast(f, args...))
+    else
+        parevalf, passedargstup = capturescalars(f, args)
+        if passedargstup === ()
+            return inert(f(args...)) # nothing to broadcast
+        else
+            return Broadcasted(parevalf, (), passedargstup...)
+        end
+    end
+end
+
+# capturescalars takes a function (f) and a tuple of mixed non-scalars and
+# broadcast scalar arguments (mixedargs), and returns a function (parevalf, i.e. partially
+# evaluated f) and a reduced argument tuple (passedargstup) containing all non-scalars
+# vectors/matrices in mixedargs in their orginal order, and such that the result of
+# broadcast(parevalf, passedargstup...) is broadcast(f, mixedargs...)
+@inline function capturescalars(f, mixedargs)
+    let makeargs = _capturescalars(mixedargs...),
+        passedsrcargstup = _capturenonscalars(mixedargs...)
+        parevalf(passed...; kwargs...) = f(makeargs(passed...)...; kwargs...)
+        parevalf(passed...) = f(makeargs(passed...)...) # explicit optimization required (despite overwrite warning), to prevent kwargs from being allocated
+        return (parevalf, passedsrcargstup)
+    end
+end
+
+@inline _capturenonscalars(nonscalararg, mixedargs...) =
+    (nonscalararg, _capturenonscalars(mixedargs...)...)
+@inline _capturenonscalars(scalararg::Number, mixedargs...) =
+    _capturenonscalars(mixedargs...)
+@inline _capturenonscalars() = ()
+
+@inline _capturescalars(nonscalararg, mixedargs...) =
+    let f = _capturescalars(mixedargs...)
+        (head, tail...) -> (head, f(tail...)...) # pass-through
+    end
+@inline _capturescalars(scalararg::Number, mixedargs...) =
+    let f = _capturescalars(mixedargs...)
+        (tail...) -> (scalararg, f(tail...)...) # add scalararg
+    end
+@inline _capturescalars(nonscalararg) =
+    (head,) -> (head,) # pass-through
+@inline _capturescalars(scalararg::Number) =
+    () -> (scalararg,) # add scalararg
+@inline _capturescalars() =
+    () -> () # base case
+
+
+execute(bc::Ref) = bc[]
+execute(bc::Broadcasted) = broadcast(bc.f, bc.args...)
+
+execute!(out, bc::Ref) = broadcast!(identity, out, bc[])
+execute!(out, bc::Broadcasted) = broadcast!(bc.f, out, bc.args...)
+
 end # module
