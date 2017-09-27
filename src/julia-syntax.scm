@@ -1783,6 +1783,7 @@
             (sk (reverse args) '() '())))
       (let* ((kws+args (split-kwargs args)) ; fusing occurs on positional args only
              (kws (car kws+args))
+             (kws (if (null? kws) kws (list (cons 'parameters kws))))
              (args (map dot-to-fuse (cdr kws+args)))
              (make `(call (|.| (top Broadcast) ,(if (null? kws) ''make ''make_kwsyntax)) ,@kws ,f ,@args)))
         (if top (cons 'fuse make) make)))
