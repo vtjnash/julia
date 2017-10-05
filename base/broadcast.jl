@@ -763,12 +763,14 @@ end
 # broadcast(parevalf, passedargstup...) is broadcast(f, mixedargs...)
 @inline function capturescalars(f, kwargs, mixedargs::TypeTuple)
     let (passedsrcargstup, makeargs) = _capturescalars(mixedargs)
-        if kwargs === ()
-            parevalf = (passed...) -> apply_typetuple(f, makeargs(passed...))
-        else
-            parevalf = (passed...) -> apply_typetuple((args...) -> f(args...; kwargs...), makeargs(passed...))
+        let f = TypeTuple(f) # capture Typeof(f) in the closure
+            if kwargs === ()
+                parevalf = (passed...) -> apply_typetuple(f.head, makeargs(passed...))
+            else
+                parevalf = (passed...) -> apply_typetuple((args...) -> f.head(args...; kwargs...), makeargs(passed...))
+            end
+            return (parevalf, passedsrcargstup)
         end
-        return (parevalf, passedsrcargstup)
     end
 end
 
@@ -784,7 +786,7 @@ end
             if isscalararg(arg)
                 return rest, (tail...) -> TypeTuple(arg, f(tail...)) # add back scalararg after (in makeargs)
             else
-                return TypeTuple(arg, rest), (head, tail...) -> TypeTuple(head, f(tail...)) # pass-through to broadcast
+                return TypeTuple(arg, rest), (arg, tail...) -> TypeTuple(arg, f(tail...)) # pass-through to broadcast
             end
         end
     end
