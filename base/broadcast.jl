@@ -645,6 +645,8 @@ Base.map(f, tt::TypeTuple{<:Any, Void}) = (f(tt.head),)
 function Base.map(f, tt::TypeTuple)
     return (f(tt.head), map(f, tt.rest)...)
 end
+Base.all(f, tt::TypeTuple{<:Any, Void}) = f(tt.head)
+Base.all(f, tt::TypeTuple) = f(tt.head) && all(f, tt.rest)
 
 mapTypeTuple(f, tt::TypeTuple{<:Any, Void}) = TypeTuple(f(tt.head),)
 function mapTypeTuple(f, tt::TypeTuple)
@@ -698,6 +700,17 @@ Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted, I)
         return _broadcast_getindex(a, i)
     end
     args = mapTypeTuple(index_into, bc.args)
+    return apply_typetuple(bc.f, args)
+end
+
+# quasi-support the broken Nullable hack above
+_unsafe_get_eltype(x::Broadcasted) = lazy_nullable_eltype(x)
+function lazy_nullable_eltype(bc::Broadcasted)
+    return Base._return_type(bc.f, Tuple{map(_unsafe_get_eltype, bc.args)...})
+end
+Base.hasvalue(bc::Broadcasted) = all(hasvalue, bc.args)
+Base.@propagate_inbounds function Base.unsafe_get(bc::Broadcasted)
+    args = mapTypeTuple(unsafe_get, bc.args)
     return apply_typetuple(bc.f, args)
 end
 
