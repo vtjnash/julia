@@ -645,8 +645,16 @@ Base.map(f, tt::TypeTuple{<:Any, Void}) = (f(tt.head),)
 function Base.map(f, tt::TypeTuple)
     return (f(tt.head), map(f, tt.rest)...)
 end
+
+Base.any(f, tt::TypeTuple{<:Any, Void}) = f(tt.head)
+Base.any(f, tt::TypeTuple) = f(tt.head) || any(f, tt.rest)
 Base.all(f, tt::TypeTuple{<:Any, Void}) = f(tt.head)
 Base.all(f, tt::TypeTuple) = f(tt.head) && all(f, tt.rest)
+
+Base.start(tt::TypeTuple) = tt
+Base.next(::TypeTuple, tt::TypeTuple) = (tt.head, tt.rest)
+Base.done(::TypeTuple, tt::TypeTuple) = false
+Base.done(::TypeTuple, tt::Void) = true
 
 mapTypeTuple(f, tt::TypeTuple{<:Any, Void}) = TypeTuple(f(tt.head),)
 function mapTypeTuple(f, tt::TypeTuple)
@@ -740,11 +748,16 @@ function make(f, args...)
         return inert(broadcast(f, args...))
     else
         args′ = make_typetuple(args...)
-        parevalf, passedargstup = capturescalars(f, (), args′)
-        if passedargstup === nothing
-            return inert(f(args...)) # nothing to broadcast
+        if !any(isscalararg, args′)
+            return Broadcasted(f, args′)
         else
-            return Broadcasted(parevalf, passedargstup)
+            # wrap args in a capturing lambda
+            parevalf, passedargstup = capturescalars(f, (), args′)
+            if passedargstup === nothing
+                return inert(f(args...)) # nothing to broadcast
+            else
+                return Broadcasted(parevalf, passedargstup)
+            end
         end
     end
 end
@@ -816,10 +829,10 @@ end
 
 
 execute(bc::Ref) = bc[]
-execute(bc::Broadcasted) = apply_typetuple((args...) -> broadcast(bc.f, args...), bc.args)
+execute(bc::Broadcasted) = apply_typetuple(broadcast, TypeTuple(bc.f, bc.args))
 
 execute!(out, bc::Ref) = broadcast!(identity, out, bc[])
-execute!(out, bc::Broadcasted) = apply_typetuple((args...) -> broadcast!(bc.f, out, args...), bc.args)
+execute!(out, bc::Broadcasted) = apply_typetuple(broadcast!, TypeTuple(bc.f, TypeTuple(out, bc.args)))
 
 
 #isfused(arg::CustomArray) = false
