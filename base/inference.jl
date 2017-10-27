@@ -9,7 +9,81 @@ const TUPLE_COMPLEXITY_LIMIT_DEPTH = 3
 
 const MAX_INLINE_CONST_SIZE = 256
 
+const empty_vector = Vector{Any}()
+
+mutable struct InferenceResult
+    linfo::MethodInstance
+    args::Vector{Any}
+    result # ::Type, or InferenceState if WIP
+    src::Union{CodeInfo, Void} # if inferred copy is available
+    function InferenceResult(linfo::MethodInstance)
+        if isdefined(linfo, :inferred_const)
+            result = Const(linfo.inferred_const)
+        else
+            result = linfo.rettype
+        end
+        return new(linfo, empty_vector, result, nothing)
+    end
+end
+
+function get_argtypes(result::InferenceResult)
+    result.args === empty_vector || return result.args # already cached
+    linfo = result.linfo
+    toplevel = !isa(linfo.def, Method)
+    atypes::SimpleVector = unwrap_unionall(linfo.specTypes).parameters
+    nargs::Int = toplevel ? 0 : linfo.def.nargs
+    args = Vector{Any}(nargs)
+    if !toplevel && linfo.def.isva
+        if linfo.specTypes == Tuple
+            if nargs > 1
+                atypes = svec(Any[ Any for i = 1:(nargs - 1) ]..., Tuple.parameters[1])
+            end
+            vararg_type = Tuple
+        else
+            vararg_type = rewrap(tupleparam_tail(atypes, nargs), linfo.specTypes)
+        end
+        args[nargs] = vararg_type
+        nargs -= 1
+    end
+    laty = length(atypes)
+    if laty > 0
+        if laty > nargs
+            laty = nargs
+        end
+        local lastatype
+        atail = laty
+        for i = 1:laty
+            atyp = atypes[i]
+            if i == laty && isvarargtype(atyp)
+                atyp = unwrap_unionall(atyp).parameters[1]
+                atail -= 1
+            end
+            if isa(atyp, TypeVar)
+                atyp = atyp.ub
+            end
+            if isa(atyp, DataType) && isdefined(atyp, :instance)
+                # replace singleton types with their equivalent Const object
+                atyp = Const(atyp.instance)
+            elseif isconstType(atyp)
+                atyp = Const(atyp.parameters[1])
+            else
+                atyp = rewrap_unionall(atyp, linfo.specTypes)
+            end
+            i == laty && (lastatype = atyp)
+            args[i] = atyp
+        end
+        for i = (atail + 1):nargs
+            args[i] = lastatype
+        end
+    else
+        @assert nargs == 0 "invalid specialization of method" # wrong number of arguments
+    end
+    result.args = args
+    return args
+end
+
 struct InferenceParams
+    cache::Vector{InferenceResult}
     world::UInt
 
     # optimization
@@ -18,13 +92,27 @@ struct InferenceParams
     inline_nonleaf_penalty::Int # penalty for dynamic dispatch
     inline_tupleret_bonus::Int  # extra willingness for non-isbits tuple return types
 
-    # parameters limiting potentially-infinite types (configurable)
+    # don't consider more than N methods. this trades off between
+    # compiler performance and generated code performance.
+    # typically, considering many methods means spending lots of time
+    # obtaining poor type information.
+    # It is important for N to be >= the number of methods in the error()
+    # function, so we can still know that error() is always Bottom.
     MAX_METHODS::Int
+    # the maximum number of union-tuples to swap / expand
+    # before computing the set of matching methods
+    MAX_UNION_SPLITTING::Int
+    # the maximum number of union-tuples to swap / expand
+    # when inferring a call to _apply
+    MAX_APPLY_UNION_ENUM::Int
+
+    # parameters limiting large types
     MAX_TUPLETYPE_LEN::Int
     MAX_TUPLE_DEPTH::Int
+
+    # when attempting to inlining _apply, abort the optimization if the tuple
+    # contains more than this many elements
     MAX_TUPLE_SPLAT::Int
-    MAX_UNION_SPLITTING::Int
-    MAX_APPLY_UNION_ENUM::Int
 
     # reasonable defaults
     function InferenceParams(world::UInt;
@@ -38,9 +126,10 @@ struct InferenceParams
                     tuple_splat::Int = 16,
                     union_splitting::Int = 4,
                     apply_union_enum::Int = 8)
-        return new(world, inlining, inline_cost_threshold, inline_nonleaf_penalty,
-                   inline_tupleret_bonus, max_methods, tupletype_len,
-                   tuple_depth, tuple_splat, union_splitting, apply_union_enum)
+        return new(Vector{InferenceResult}(),
+                   world, inlining, inline_cost_threshold, inline_nonleaf_penalty,
+                   inline_tupleret_bonus, max_methods, union_splitting, apply_union_enum,
+                   tupletype_len, tuple_depth, tuple_splat)
     end
 end
 
@@ -113,13 +202,14 @@ function rewrap(@nospecialize(t), @nospecialize(u))
 end
 
 mutable struct InferenceState
+    params::InferenceParams # describes how to compute the result
+    result::InferenceResult # remember where to put the result
+    linfo::MethodInstance # used here for the tuple (specTypes, env, Method) and world-age validity
     sp::SimpleVector     # static parameters
     mod::Module
     currpc::LineNum
 
     # info on the state of inference and the linfo
-    params::InferenceParams
-    linfo::MethodInstance # used here for the tuple (specTypes, env, Method) and world-age validity
     src::CodeInfo
     min_valid::UInt
     max_valid::UInt
@@ -148,18 +238,17 @@ mutable struct InferenceState
     const_api::Bool
     const_ret::Bool
 
-    # TODO: put these in InferenceParams (depends on proper multi-methodcache support)
+    # TODO: move these to InferenceResult / InferenceParams?
     optimize::Bool
     cached::Bool
     limited::Bool
-
     inferred::Bool
-
     dont_work_on_me::Bool
 
     # src is assumed to be a newly-allocated CodeInfo, that can be modified in-place to contain intermediate results
-    function InferenceState(linfo::MethodInstance, src::CodeInfo,
+    function InferenceState(result::InferenceResult, src::CodeInfo,
                             optimize::Bool, cached::Bool, params::InferenceParams)
+        linfo = result.linfo
         code = src.code::Array{Any,1}
         toplevel = !isa(linfo.def, Method)
 
@@ -167,7 +256,7 @@ mutable struct InferenceState
             # linfo is unspecialized
             sp = Any[]
             sig = linfo.def.sig
-            while isa(sig,UnionAll)
+            while isa(sig, UnionAll)
                 push!(sp, sig.var)
                 sig = sig.body
             end
@@ -185,66 +274,24 @@ mutable struct InferenceState
 
         # initial types
         nslots = length(src.slotnames)
-        s_types[1] = Any[ VarState(Bottom, true) for i = 1:nslots ]
-        src.slottypes = Any[ Bottom for i = 1:nslots ]
-
-        atypes = unwrap_unionall(linfo.specTypes)
-        nargs::Int = toplevel ? 0 : linfo.def.nargs
-        la = nargs
+        argtypes = get_argtypes(result)
         vararg_type_container = nothing
-        if la > 0
-            if linfo.def.isva
-                if atypes == Tuple
-                    if la > 1
-                        atypes = Tuple{Any[Any for i = 1:(la - 1)]..., Tuple.parameters[1]}
-                    end
-                    vararg_type = Tuple
-                else
-                    vararg_type_container = limit_tuple_depth(params, tupleparam_tail(atypes.parameters, la))
+        nargs = length(argtypes)
+        s_argtypes = VarTable(nslots)
+        src.slottypes = Vector{Any}(nslots)
+        for i in 1:nslots
+            at = (i > nargs) ? Bottom : argtypes[i]
+            if !toplevel && linfo.def.isva && i == nargs
+                if !(at == Tuple) # would just be a no-op
+                    vararg_type_container = limit_tuple_depth(params, unwrap_unionall(at)) # TODO: should be limiting tuple depth much earlier than here
                     vararg_type = tuple_tfunc(vararg_type_container) # returns a Const object, if applicable
-                    vararg_type = rewrap(vararg_type, linfo.specTypes)
+                    at = rewrap(vararg_type, linfo.specTypes)
                 end
-                s_types[1][la] = VarState(vararg_type, false)
-                src.slottypes[la] = vararg_type
-                la -= 1
             end
+            s_argtypes[i] = VarState(at, i > nargs)
+            src.slottypes[i] = at
         end
-
-        laty = length(atypes.parameters)
-        if laty > 0
-            if laty > la
-                laty = la
-            end
-            local lastatype
-            atail = laty
-            for i = 1:laty
-                atyp = atypes.parameters[i]
-                if i == laty && isvarargtype(atyp)
-                    atyp = unwrap_unionall(atyp).parameters[1]
-                    atail -= 1
-                end
-                if isa(atyp, TypeVar)
-                    atyp = atyp.ub
-                end
-                if isa(atyp, DataType) && isdefined(atyp, :instance)
-                    # replace singleton types with their equivalent Const object
-                    atyp = Const(atyp.instance)
-                elseif isconstType(atyp)
-                    atyp = Const(atyp.parameters[1])
-                else
-                    atyp = rewrap_unionall(atyp, linfo.specTypes)
-                end
-                i == laty && (lastatype = atyp)
-                s_types[1][i] = VarState(atyp, false)
-                src.slottypes[i] = atyp
-            end
-            for i = (atail + 1):la
-                s_types[1][i] = VarState(lastatype, false)
-                src.slottypes[i] = lastatype
-            end
-        else
-            @assert la == 0 # wrong number of arguments
-        end
+        s_types[1] = s_argtypes
 
         ssavalue_uses = find_ssavalue_uses(code, nssavalues)
         ssavalue_defs = find_ssavalue_defs(code, nssavalues)
@@ -272,8 +319,9 @@ mutable struct InferenceState
             max_valid = typemin(UInt)
         end
         frame = new(
-            sp, inmodule, 0, params,
-            linfo, src, min_valid, max_valid,
+            params, result, linfo,
+            sp, inmodule, 0,
+            src, min_valid, max_valid,
             nargs, s_types, s_edges,
             Union{}, W, 1, n,
             cur_hand, handler_at, n_handlers,
@@ -282,26 +330,32 @@ mutable struct InferenceState
             Vector{InferenceState}(), # callers_in_cycle
             #=parent=#nothing,
             false, false, optimize, cached, false, false, false)
+        result.result = frame
+        cached && push!(params.cache, result)
         return frame
     end
 end
 
 function InferenceState(linfo::MethodInstance,
                         optimize::Bool, cached::Bool, params::InferenceParams)
+    return InferenceState(InferenceResult(linfo), optimize, cached, params)
+end
+function InferenceState(result::InferenceResult,
+                        optimize::Bool, cached::Bool, params::InferenceParams)
     # prepare an InferenceState object for inferring lambda
-    src = retrieve_code_info(linfo)
+    src = retrieve_code_info(result.linfo)
     src === nothing && return nothing
     if JLOptions().debug_level == 2
         # this is a debug build of julia, so let's validate linfo
-        errors = validate_code(linfo, src)
+        errors = validate_code(result.linfo, src)
         if !isempty(errors)
             for e in errors
                 println(STDERR, "WARNING: Encountered invalid lowered code for method ",
-                        linfo.def, ": ", e)
+                        result.linfo, ": ", e)
             end
         end
     end
-    return InferenceState(linfo, src, optimize, cached, params)
+    return InferenceState(result, src, optimize, cached, params)
 end
 
 function get_staged(li::MethodInstance)
@@ -380,6 +434,7 @@ function print_callstack(sv::InferenceState)
     while sv !== nothing
         print(sv.linfo)
         sv.limited && print("  [limited]")
+        !sv.cached && print("  [uncached]")
         println()
         for cycle in sv.callers_in_cycle
             print(' ', cycle.linfo)
@@ -1803,17 +1858,10 @@ function _switchtupleunion(t::Vector{Any}, i::Int, tunion::Vector{Any}, @nospeci
     return tunion
 end
 
-function abstract_call_gf_by_type(@nospecialize(f), @nospecialize(atype), sv::InferenceState)
-    # don't consider more than N methods. this trades off between
-    # compiler performance and generated code performance.
-    # typically, considering many methods means spending lots of time
-    # obtaining poor type information.
-    # It is important for N to be >= the number of methods in the error()
-    # function, so we can still know that error() is always Bottom.
-    # here I picked 4.
-    argtype = limit_tuple_type(atype, sv.params)
-    argtypes = unwrap_unionall(argtype).parameters
-    ft = unwrap_unionall(argtypes[1]) # TODO: ccall jl_first_argument_datatype here
+function abstract_call_gf_by_type(@nospecialize(f), argtypes::Vector{Any}, @nospecialize(atype), sv::InferenceState)
+    atype = limit_tuple_type(atype, sv.params)
+    atype_params = unwrap_unionall(atype).parameters
+    ft = unwrap_unionall(atype_params[1]) # TODO: ccall jl_first_argument_datatype here
     isa(ft, DataType) || return Any # the function being called is unknown. can't properly handle this backedge right now
     ftname = ft.name
     isdefined(ftname, :mt) || return Any # not callable. should be Bottom, but can't track this backedge right now
@@ -1831,9 +1879,9 @@ function abstract_call_gf_by_type(@nospecialize(f), @nospecialize(atype), sv::In
     end
     min_valid = UInt[typemin(UInt)]
     max_valid = UInt[typemax(UInt)]
-    splitunions = 1 < countunionsplit(argtypes) <= sv.params.MAX_UNION_SPLITTING
+    splitunions = 1 < countunionsplit(atype_params) <= sv.params.MAX_UNION_SPLITTING
     if splitunions
-        splitsigs = switchtupleunion(argtype)
+        splitsigs = switchtupleunion(atype)
         applicable = Any[]
         for sig_n in splitsigs
             xapplicable = _methods_by_ftype(sig_n, sv.params.MAX_METHODS, sv.params.world, min_valid, max_valid)
@@ -1841,7 +1889,7 @@ function abstract_call_gf_by_type(@nospecialize(f), @nospecialize(atype), sv::In
             append!(applicable, xapplicable)
         end
     else
-        applicable = _methods_by_ftype(argtype, sv.params.MAX_METHODS, sv.params.world, min_valid, max_valid)
+        applicable = _methods_by_ftype(atype, sv.params.MAX_METHODS, sv.params.world, min_valid, max_valid)
         if applicable === false
             # this means too many methods matched
             # (assume this will always be true, so we don't compute / update valid age in this case)
@@ -1852,6 +1900,7 @@ function abstract_call_gf_by_type(@nospecialize(f), @nospecialize(atype), sv::In
     applicable = applicable::Array{Any,1}
     napplicable = length(applicable)
     rettype = Bottom
+    edgecycle = false
     for i in 1:napplicable
         match = applicable[i]::SimpleVector
         method = match[3]::Method
@@ -1863,18 +1912,29 @@ function abstract_call_gf_by_type(@nospecialize(f), @nospecialize(atype), sv::In
         if splitunions
             splitsigs = switchtupleunion(sig)
             for sig_n in splitsigs
-                rt = abstract_call_method(method, f, sig_n, svec(), sv)
+                rt, edgecycle1 = abstract_call_method(method, sig_n, svec(), sv)
+                edgecycle |= edgecycle1::Bool
                 rettype = tmerge(rettype, rt)
                 rettype === Any && break
             end
             rettype === Any && break
         else
-            rt = abstract_call_method(method, f, sig, match[2]::SimpleVector, sv)
+            rt, edgecycle = abstract_call_method(method, sig, match[2]::SimpleVector, sv)
             rettype = tmerge(rettype, rt)
             rettype === Any && break
         end
     end
-    if !(rettype === Any)
+    if napplicable == 1 && !edgecycle && isa(rettype, Type)
+        # if there's a possibility we could constant-propagate a better result
+        # (hopefully without doing too much work), try to do that now
+        # TODO: it feels like this could be better integrated into abstract_call_method / typeinf_edge
+        const_rettype = abstract_call_method_with_const_args(argtypes, applicable[1]::SimpleVector, sv)
+        if const_rettype ⊑ rettype
+            # use the better result, if it's a refinement of rettype
+            rettype = const_rettype
+        end
+    end
+    if !(rettype === Any) # adding a new method couldn't refine (widen) this type
         fullmatch = false
         for i in napplicable:-1:1
             match = applicable[i]::SimpleVector
@@ -1894,7 +1954,77 @@ function abstract_call_gf_by_type(@nospecialize(f), @nospecialize(atype), sv::In
     return rettype
 end
 
-function abstract_call_method(method::Method, @nospecialize(f), @nospecialize(sig), sparams::SimpleVector, sv::InferenceState)
+function abstract_call_method_with_const_args(argtypes::Vector{Any}, match::SimpleVector, sv::InferenceState)
+    method = match[3]::Method
+    nargs::Int = method.nargs
+    method.isva && (nargs -= 1)
+    length(argtypes) >= nargs || return Any # probably limit_tuple_type made this non-matching method apparently match
+    haveconst = false
+    for i in 1:nargs
+        a = argtypes[i]
+        if isa(a, Const) && !isdefined(typeof(a.val), :instance)
+            if !isleaftype(a.val) # alternately: !isa(a.val, DataType) || !isconstType(Type{a.val})
+                # have new information from argtypes that wasn't available from the signature
+                haveconst = true
+                break
+            end
+        end
+    end
+    haveconst || return Any
+    sig = match[1]
+    sparams = match[2]::SimpleVector
+    code = code_for_method(method, sig, sparams, sv.params.world)
+    code === nothing && return Any
+    code = code::MethodInstance
+    inf_result = nothing
+    for cache_code in sv.params.cache
+        # try to search cache first
+        cache_args = cache_code.args
+        if cache_code.linfo === code && length(cache_args) >= nargs
+            cache_match = true
+            for i in (nargs + 1):length(cache_args)
+                if isa(cache_args[i], Const)
+                    cache_match = false
+                    break
+                end
+            end
+            if cache_match
+                for i in 1:nargs
+                    a = argtypes[i]
+                    ca = cache_args[i]
+                    if !(isa(a, Const) && isa(ca, Const) && ca.val === a.val)
+                        cache_match = false
+                        break
+                    end
+                end
+                if cache_match
+                    inf_result = cache_code
+                    break
+                end
+            end
+        end
+    end
+    if inf_result === nothing
+        inf_result = InferenceResult(code)
+        atypes = get_argtypes(inf_result)
+        for i in 1:nargs
+            a = argtypes[i]
+            if a isa Const
+                atypes[i] = a # inject Const argtypes into inference
+            end
+        end
+        frame = InferenceState(inf_result, #=optimize=#false, #=cache=#false, sv.params)
+        frame.limited = true
+        frame.parent = sv
+        push!(sv.params.cache, inf_result)
+        typeinf(frame)
+    end
+    result = inf_result.result
+    isa(result, InferenceState) && return Any # TODO: is this recursive constant inference?
+    return result
+end
+
+function abstract_call_method(method::Method, @nospecialize(sig), sparams::SimpleVector, sv::InferenceState)
     topmost = nothing
     # Limit argument type tuple growth of functions:
     # look through the parents list to see if there's a call to the same method
@@ -1902,6 +2032,7 @@ function abstract_call_method(method::Method, @nospecialize(f), @nospecialize(si
     # Returns the topmost occurrence of that repeated edge.
     cyclei = 0
     infstate = sv
+    edgecycle = false
     while !(infstate === nothing)
         infstate = infstate::InferenceState
         if method === infstate.linfo.def
@@ -1909,6 +2040,7 @@ function abstract_call_method(method::Method, @nospecialize(f), @nospecialize(si
                 # avoid widening when detecting self-recursion
                 # TODO: merge call cycle and return right away
                 topmost = nothing
+                edgecycle = true
                 break
             end
             if topmost === nothing
@@ -1921,6 +2053,7 @@ function abstract_call_method(method::Method, @nospecialize(f), @nospecialize(si
                     # all items in here are mutual parents of all others
                     if parent.linfo.def === sv.linfo.def
                         topmost = infstate
+                        edgecycle = true
                         break
                     end
                 end
@@ -1930,6 +2063,7 @@ function abstract_call_method(method::Method, @nospecialize(f), @nospecialize(si
                         parent = parent::InferenceState
                         if parent.cached && parent.linfo.def === sv.linfo.def
                             topmost = infstate
+                            edgecycle = true
                         end
                     end
                 end
@@ -1991,8 +2125,12 @@ function abstract_call_method(method::Method, @nospecialize(f), @nospecialize(si
     end
 
     rt, edge = typeinf_edge(method, sig, sparams, sv)
-    edge !== nothing && add_backedge!(edge::MethodInstance, sv)
-    return rt
+    if edge === nothing
+        edgecycle = true
+    else
+        add_backedge!(edge::MethodInstance, sv)
+    end
+    return rt, edgecycle
 end
 
 # determine whether `ex` abstractly evals to constant `c`
@@ -2132,7 +2270,7 @@ function abstract_apply(@nospecialize(aft), fargs::Vector{Any}, aargtypes::Vecto
             rt = abstract_call(aft.parameters[1], (), ct, vtypes, sv)
         else
             astype = argtypes_to_type(ct)
-            rt = abstract_call_gf_by_type(nothing, astype, sv)
+            rt = abstract_call_gf_by_type(nothing, ct, astype, sv)
         end
         res = tmerge(res, rt)
         if res === Any
@@ -2145,7 +2283,7 @@ end
 # TODO: this function is a very buggy and poor model of the return_type function
 # since abstract_call_gf_by_type is a very inaccurate model of _method and of typeinf_type,
 # while this assumes that it is a precisely accurate and exact model of both
-function return_type_tfunc(@nospecialize(argtypes), vtypes::VarTable, sv::InferenceState)
+function return_type_tfunc(argtypes::Vector{Any}, vtypes::VarTable, sv::InferenceState)
     if length(argtypes) == 3
         tt = argtypes[3]
         if isa(tt, Const) || (isType(tt) && !has_free_typevars(tt))
@@ -2161,7 +2299,7 @@ function return_type_tfunc(@nospecialize(argtypes), vtypes::VarTable, sv::Infere
                     elseif isconstType(aft)
                         rt = abstract_call(aft.parameters[1], (), argtypes_vec, vtypes, sv)
                     else
-                        rt = abstract_call_gf_by_type(nothing, astype, sv)
+                        rt = abstract_call_gf_by_type(nothing, argtypes_vec, astype, sv)
                     end
                     if isa(rt, Const)
                         # output was computed to be constant
@@ -2183,7 +2321,7 @@ function return_type_tfunc(@nospecialize(argtypes), vtypes::VarTable, sv::Infere
     return NF
 end
 
-function pure_eval_call(@nospecialize(f), @nospecialize(argtypes), @nospecialize(atype), sv::InferenceState)
+function pure_eval_call(@nospecialize(f), argtypes::Vector{Any}, @nospecialize(atype), sv::InferenceState)
     for i = 2:length(argtypes)
         a = argtypes[i]
         if !(isa(a,Const) || isconstType(a))
@@ -2376,7 +2514,7 @@ function abstract_call(@nospecialize(f), fargs::Union{Tuple{},Vector{Any}}, argt
     elseif length(fargs) == 2 && istopfunction(tm, f, :!)
         aty = argtypes[2]
         if isa(aty, Conditional)
-            abstract_call_gf_by_type(f, Tuple{typeof(f), Bool}, sv) # make sure we've inferred `!(::Bool)`
+            abstract_call_gf_by_type(f, Any[Const(f), Bool], Tuple{typeof(f), Bool}, sv) # make sure we've inferred `!(::Bool)`
             return Conditional(aty.var, aty.elsetype, aty.vtype)
         end
     elseif length(fargs) == 3 && istopfunction(tm, f, :!==)
@@ -2449,11 +2587,11 @@ function abstract_call(@nospecialize(f), fargs::Union{Tuple{},Vector{Any}}, argt
             if a1 ⊑ basenumtype
                 ftimes = Main.Base.:*
                 ta1 = widenconst(a1)
-                abstract_call_gf_by_type(ftimes, Tuple{typeof(ftimes), ta1, ta1}, sv)
+                abstract_call_gf_by_type(ftimes, Any[ftimes, a1, a1], Tuple{typeof(ftimes), ta1, ta1}, sv)
             end
         end
     end
-    return abstract_call_gf_by_type(f, atype, sv)
+    return abstract_call_gf_by_type(f, argtypes, atype, sv)
 end
 
 function abstract_eval_call(e::Expr, vtypes::VarTable, sv::InferenceState)
@@ -2478,7 +2616,7 @@ function abstract_eval_call(e::Expr, vtypes::VarTable, sv::InferenceState)
             end
             # non-constant function, but type is known
             if (isleaftype(ft) || ft <: Type) && !(ft <: Builtin) && !(ft <: IntrinsicFunction)
-                return abstract_call_gf_by_type(nothing, argtypes_to_type(argtypes), sv)
+                return abstract_call_gf_by_type(nothing, argtypes, argtypes_to_type(argtypes), sv)
             end
             return Any
         end
@@ -3106,20 +3244,24 @@ end
 # returned instead.
 function resolve_call_cycle!(linfo::MethodInstance, parent::InferenceState)
     frame = parent
+    uncached = false
     while isa(frame, InferenceState)
+        uncached |= !frame.cached # ensure we never add an uncached frame to a cycle
         if frame.linfo === linfo
+            uncached && return true
             merge_call_chain!(parent, frame, frame)
             return frame
         end
         for caller in frame.callers_in_cycle
             if caller.linfo === linfo
+                uncached && return true
                 merge_call_chain!(parent, frame, caller)
                 return caller
             end
         end
         frame = frame.parent
     end
-    return nothing
+    return false
 end
 
 # build (and start inferring) the inference frame for the linfo
@@ -3153,15 +3295,16 @@ function typeinf_edge(method::Method, @nospecialize(atypes), sparams::SimpleVect
     if !caller.cached && caller.parent === nothing
         # this caller exists to return to the user
         # (if we asked resolve_call_cyle, it might instead detect that there is a cycle that it can't merge)
-        frame = nothing
+        frame = false
     else
         frame = resolve_call_cycle!(code, caller)
     end
-    if frame === nothing
+    if frame === false
         # completely new
         code.inInference = true
         frame = InferenceState(code, #=optimize=#true, #=cached=#true, caller.params) # always optimize and cache edge targets
         if frame === nothing
+            # can't get the source for this, so we know nothing
             code.inInference = false
             return Any, nothing
         end
@@ -3170,6 +3313,9 @@ function typeinf_edge(method::Method, @nospecialize(atypes), sparams::SimpleVect
         end
         typeinf(frame)
         return frame.bestguess, frame.inferred ? frame.linfo : nothing
+    elseif frame === true
+        # unresolvable cycle
+        return Any, nothing
     end
     frame = frame::InferenceState
     return frame.bestguess, nothing
@@ -3260,7 +3406,8 @@ function typeinf_ext(linfo::MethodInstance, world::UInt)
     else
         # toplevel lambda - infer directly
         ccall(:jl_typeinf_begin, Void, ())
-        frame = InferenceState(linfo, linfo.inferred::CodeInfo,
+        result = InferenceResult(linfo)
+        frame = InferenceState(result, linfo.inferred::CodeInfo,
                                true, true, InferenceParams(world))
         typeinf(frame)
         ccall(:jl_typeinf_end, Void, ())
@@ -3467,6 +3614,7 @@ function typeinf(frame::InferenceState)
             @assert !(caller.dont_work_on_me)
             caller.dont_work_on_me = true
         end
+        # complete the computation of the src optimizations
         for caller in frame.callers_in_cycle
             optimize(caller)
             if frame.min_valid < caller.min_valid
@@ -3476,6 +3624,7 @@ function typeinf(frame::InferenceState)
                 frame.max_valid = caller.max_valid
             end
         end
+        # update and store in the global cache
         for caller in frame.callers_in_cycle
             caller.min_valid = frame.min_valid
         end
@@ -3543,7 +3692,7 @@ function optimize(me::InferenceState)
 
     # run optimization passes on fulltree
     force_noinline = true
-    if me.limited && me.parent !== nothing
+    if me.limited && me.cached && me.parent !== nothing
         # a top parent will be cached still, but not this intermediate work
         me.cached = false
         me.linfo.inInference = false
@@ -3716,10 +3865,17 @@ function finish(me::InferenceState)
             if cache !== me.linfo
                 me.linfo.inInference = false
                 me.linfo = cache
+                me.result.linfo = cache
             end
         end
         me.linfo.inInference = false
     end
+
+    # finish updating the result struct
+    if me.src.inlineable
+        me.result.src = me.src # stash a copy of the code (for inlining)
+    end
+    me.result.result = me.bestguess # record type, and that wip is done and me.linfo can be used as a backedge
 
     # update all of the callers with real backedges by traversing the temporary list of backedges
     for (i, _) in me.backedges
@@ -4616,8 +4772,9 @@ function inlineable(@nospecialize(f), @nospecialize(ft), e::Expr, atypes::Vector
         # as we'll be able to fix that up at the end of inlinable when we verify the return type.
         # But `next` and `indexed_next` make tuples which would end up burying some of that information in the AST
         # where we can't easily correct it afterwards.
-        frame = InferenceState(linfo, #=optimize=#true, #=cache=#false, sv.params)
-        frame.stmt_types[1][3] = VarState(atypes[3], false)
+        inf_result = InferenceResult(linfo)
+        get_argtypes(inf_result)[3] = atypes[3] # inject Const into atypes[3]
+        frame = InferenceState(inf_result, #=optimize=#true, #=cache=#false, sv.params)
         typeinf(frame)
     else
         if isdefined(linfo, :inferred) && linfo.inferred !== nothing
