@@ -52,9 +52,9 @@ function run_test_server(srv, text)
         try
             sock = accept(srv)
             try
-                write(sock,text)
+                write(sock, text)
             catch e
-                if typeof(e) != Base.UVError
+                if !(isa(e, Base.UVError) && e.code == Base.UV_EPIPE)
                     rethrow(e)
                 end
             finally

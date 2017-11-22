@@ -22,9 +22,9 @@ struct Cmd <: AbstractCmd
                  detach::Bool = 0 != cmd.flags & UV_PROCESS_DETACHED,
                  windows_verbatim::Bool = 0 != cmd.flags & UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS,
                  windows_hide::Bool = 0 != cmd.flags & UV_PROCESS_WINDOWS_HIDE)
-        flags = detach*UV_PROCESS_DETACHED |
-                windows_verbatim*UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS |
-                windows_hide*UV_PROCESS_WINDOWS_HIDE
+        flags = detach * UV_PROCESS_DETACHED |
+                windows_verbatim * UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS |
+                windows_hide * UV_PROCESS_WINDOWS_HIDE
         new(cmd.exec, ignorestatus, flags, byteenv(env),
             dir === cmd.dir ? dir : cstr(dir))
     end
@@ -145,18 +145,14 @@ struct FileRedirect
     end
 end
 
-uvhandle(::DevNullStream) = C_NULL
-uvtype(::DevNullStream) = UV_STREAM
+rawhandle(::DevNullStream) = C_NULL
+rawhandle(x::OS_HANDLE) = x
+if OS_HANDLE !== RawFD
+    rawhandle(x::RawFD) = Libc._get_osfhandle(x)
+end
 
-uvhandle(x::Ptr) = x
-uvtype(::Ptr) = UV_STREAM
-
-# Not actually a pointer, but that's how we pass it through the C API so it's fine
-uvhandle(x::RawFD) = convert(Ptr{Void}, x.fd % UInt)
-uvtype(x::RawFD) = UV_RAW_FD
-
-const Redirectable = Union{IO, FileRedirect, RawFD}
-const StdIOSet = NTuple{3, Union{Redirectable, Ptr{Void}}} # XXX: remove Ptr{Void} once libuv is refactored to use upstream release
+const Redirectable = Union{IO, FileRedirect, RawFD, OS_HANDLE}
+const StdIOSet = NTuple{3, Redirectable}
 
 struct CmdRedirect <: AbstractCmd
     cmd::AbstractCmd
@@ -347,22 +343,32 @@ end
 pipe_reader(p::ProcessChain) = p.out
 pipe_writer(p::ProcessChain) = p.in
 
-function _jl_spawn(cmd, argv, loop::Ptr{Void}, pp::Process,
-                   in, out, err)
+function _jl_spawn(file, argv, cmd::Cmd, stdio)
+    loop = eventloop()
+    handles = Tuple{Cint, UInt}[ # assuming little-endian layout
+        let h = rawhandle(io)
+            h === C_NULL    && return (0x00, UInt(0))
+            h isa OS_HANDLE && return (0x02, UInt(cconvert(@static(Sys.iswindows() ? Ptr{Void} : Cint), h)))
+            h isa Ptr{Void} && return (0x04, UInt(h))
+            error("invalid spawn handle $h from $io")
+        end
+        for io in stdio]
     proc = Libc.malloc(_sizeof_uv_process)
     disassociate_julia_struct(proc)
     error = ccall(:jl_spawn, Int32,
-        (Cstring, Ptr{Cstring}, Ptr{Void}, Ptr{Void}, Any, Int32,
-         Ptr{Void}, Int32, Ptr{Void}, Int32, Ptr{Void}, Int32, Ptr{Cstring}, Cstring, Ptr{Void}),
-        cmd, argv, loop, proc, pp, uvtype(in),
-        uvhandle(in), uvtype(out), uvhandle(out), uvtype(err), uvhandle(err),
-        pp.cmd.flags, pp.cmd.env === nothing ? C_NULL : pp.cmd.env, isempty(pp.cmd.dir) ? C_NULL : pp.cmd.dir,
+              (Cstring, Ptr{Cstring}, Ptr{Void}, Ptr{Void},
+               Ptr{Tuple{Cint, UInt}}, Int,
+               UInt32, Ptr{Cstring}, Cstring, Ptr{Void}),
+        file, argv, loop, proc,
+        handles, length(handles),
+        cmd.flags,
+        cmd.env === nothing ? C_NULL : cmd.env,
+        isempty(cmd.dir) ? C_NULL : cmd.dir,
         uv_jl_return_spawn::Ptr{Void})
     if error != 0
         ccall(:jl_forceclose_uv, Void, (Ptr{Void},), proc)
-        throw(UVError("could not spawn "*string(pp.cmd), error))
+        throw(UVError("could not spawn " * string(cmd), error))
     end
-    associate_julia_struct(proc, pp)
     return proc
 end
 
@@ -400,71 +406,59 @@ function spawn(redirect::CmdRedirect, stdios::StdIOSet; chain::Union{ProcessChai
 end
 
 function spawn(cmds::OrCmds, stdios::StdIOSet; chain::Union{ProcessChain, Void}=nothing)
-    out_pipe = Libc.malloc(_sizeof_uv_named_pipe)
-    in_pipe = Libc.malloc(_sizeof_uv_named_pipe)
-    link_pipe(in_pipe, false, out_pipe, false)
     if chain === nothing
         chain = ProcessChain(stdios)
     end
+    in_pipe, out_pipe = link_pipe(false, false)
     try
         spawn(cmds.a, (stdios[1], out_pipe, stdios[3]), chain=chain)
         spawn(cmds.b, (in_pipe, stdios[2], stdios[3]), chain=chain)
     finally
         close_pipe_sync(out_pipe)
         close_pipe_sync(in_pipe)
-        Libc.free(out_pipe)
-        Libc.free(in_pipe)
     end
-    chain
+    return chain
 end
 
 function spawn(cmds::ErrOrCmds, stdios::StdIOSet; chain::Union{ProcessChain, Void}=nothing)
-    out_pipe = Libc.malloc(_sizeof_uv_named_pipe)
-    in_pipe = Libc.malloc(_sizeof_uv_named_pipe)
-    link_pipe(in_pipe, false, out_pipe, false)
     if chain === nothing
         chain = ProcessChain(stdios)
     end
+    in_pipe, out_pipe = link_pipe(false, false)
     try
         spawn(cmds.a, (stdios[1], stdios[2], out_pipe), chain=chain)
         spawn(cmds.b, (in_pipe, stdios[2], stdios[3]), chain=chain)
     finally
         close_pipe_sync(out_pipe)
         close_pipe_sync(in_pipe)
-        Libc.free(out_pipe)
-        Libc.free(in_pipe)
     end
-    chain
+    return chain
 end
 
-function setup_stdio(stdio::PipeEndpoint, readable::Bool)
-    closeafter = false
+function setup_stdio(stdio::PipeEndpoint, child_readable::Bool)
     if stdio.status == StatusUninit
-        if readable
-            link_pipe(io, false, stdio, true)
-        else
-            link_pipe(stdio, true, io, false)
-        end
-        closeafter = true
+        rd, wr = link_pipe(!child_readable, child_readable)
+        open_pipe!(stdio, child_readable ? wr : rd)
+        return (child_readable ? rd : wr, true)
     end
-    return (stdio.handle, closeafter)
+    return (stdio, false)
 end
 
-function setup_stdio(stdio::Pipe, readable::Bool)
-    if stdio.in.status == StatusUninit && stdio.out.status == StatusUninit
-        link_pipe(stdio)
+function setup_stdio(stdio::Pipe, child_readable::Bool)
+    if stdio.in.status == StatusInit && stdio.out.status == StatusInit
+        link_pipe!(stdio)
     end
-    io = readable ? stdio.out : stdio.in
+    io = child_readable ? stdio.out : stdio.in
     return (io, false)
 end
 
-function setup_stdio(stdio::IOStream, readable::Bool)
-    io = Filesystem.File(RawFD(fd(stdio)))
+function setup_stdio(stdio::IOStream, child_readable::Bool)
+    io = RawFD(fd(stdio))
     return (io, false)
 end
 
-function setup_stdio(stdio::FileRedirect, readable::Bool)
-    if readable
+function setup_stdio(stdio::FileRedirect, child_readable::Bool)
+    if child_readable
         attr = JL_O_RDONLY
         perm = zero(S_IRUSR)
     else
@@ -476,60 +470,64 @@ function setup_stdio(stdio::FileRedirect, readable::Bool)
     return (io, true)
 end
 
-function setup_stdio(io, readable::Bool)
+function setup_stdio(io, child_readable::Bool)
     # if there is no specialization,
-    # assume that uvhandle and uvtype are defined for it
-    return io, false
+    # assume that rawhandle is defined for it
+    return (io, false)
 end
 
-function setup_stdio(stdio::Ptr{Void}, readable::Bool)
-    return (stdio, false)
-end
-
-function close_stdio(stdio::Ptr{Void})
-    close_pipe_sync(stdio)
-    Libc.free(stdio)
-end
-
-function close_stdio(stdio)
-    close(stdio)
-end
+close_stdio(stdio::OS_HANDLE) = close_pipe_sync(stdio)
+close_stdio(stdio::Void) = nothing
+close_stdio(stdio) = close(stdio)
 
 function setup_stdio(anon::Function, stdio::StdIOSet)
     in, close_in = setup_stdio(stdio[1], true)
-    out, close_out = setup_stdio(stdio[2], false)
-    err, close_err = setup_stdio(stdio[3], false)
-    anon(in, out, err)
-    close_in  && close_stdio(in)
-    close_out && close_stdio(out)
-    close_err && close_stdio(err)
+    try
+        out, close_out = setup_stdio(stdio[2], false)
+        try
+            err, close_err = setup_stdio(stdio[3], false)
+            try
+                anon((in, out, err))
+            catch e
+                close_err && close_stdio(err)
+                rethrow(e)
+            end
+        catch e
+            close_out && close_stdio(out)
+            rethrow(e)
+        end
+    catch e
+        close_in && close_stdio(in)
+        rethrow(e)
+    end
+    nothing
 end
 
 function spawn(cmd::Cmd, stdios::StdIOSet; chain::Union{ProcessChain, Void}=nothing)
     if isempty(cmd.exec)
         throw(ArgumentError("cannot spawn empty command"))
     end
-    loop = eventloop()
     pp = Process(cmd, C_NULL, stdios[1], stdios[2], stdios[3])
-    setup_stdio(stdios) do in, out, err
-        pp.handle = _jl_spawn(cmd.exec[1], cmd.exec, loop, pp,
-                              in, out, err)
+    setup_stdio(stdios) do stdios
+        handle = _jl_spawn(cmd.exec[1], cmd.exec, cmd, stdios)
+        associate_julia_struct(handle, pp)
+        pp.handle = handle
     end
     if chain !== nothing
         push!(chain.processes, pp)
     end
-    pp
+    return pp
 end
 
 function spawn(cmds::AndCmds, stdios::StdIOSet; chain::Union{ProcessChain, Void}=nothing)
     if chain === nothing
         chain = ProcessChain(stdios)
     end
-    setup_stdio(stdios) do in, out, err
-        spawn(cmds.a, (in,out,err), chain=chain)
-        spawn(cmds.b, (in,out,err), chain=chain)
+    setup_stdio(stdios) do stdios
+        spawn(cmds.a, stdios, chain=chain)
+        spawn(cmds.b, stdios, chain=chain)
     end
-    chain
+    return chain
 end
 
 # INTERNAL

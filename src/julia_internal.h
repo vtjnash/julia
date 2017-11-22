@@ -459,10 +459,6 @@ jl_fptr_t jl_get_builtin_fptr(jl_value_t *b);
 
 extern uv_loop_t *jl_io_loop;
 
-JL_DLLEXPORT void jl_uv_associate_julia_struct(uv_handle_t *handle,
-                                               jl_value_t *data);
-JL_DLLEXPORT int jl_uv_fs_result(uv_fs_t *f);
-
 typedef struct _typeenv {
     jl_tvar_t *var;
     jl_value_t *val;
