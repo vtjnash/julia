@@ -521,8 +521,6 @@ JL_DLLEXPORT jl_datatype_t *jl_new_datatype(
     t->mutabl = mutabl;
     t->ninitialized = ninitialized;
     t->instance = NULL;
-    t->struct_decl = NULL;
-    t->ditype = NULL;
     t->size = 0;
 
     t->name = NULL;
