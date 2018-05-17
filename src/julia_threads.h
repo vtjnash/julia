@@ -44,6 +44,8 @@ typedef struct {
 } jl_ucontext_t;
 #endif
 #if defined(JL_HAVE_UCONTEXT) || defined(JL_HAVE_UNW_CONTEXT)
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
 typedef ucontext_t jl_ucontext_t;
 #endif
 #endif

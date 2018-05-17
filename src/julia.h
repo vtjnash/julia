@@ -28,8 +28,6 @@
 #  else
 #    define MAX_ALIGN sizeof(void*)
 #  endif
-#  define UNW_LOCAL_ONLY
-#  include <libunwind.h>
 #else
 #  include "win32_ucontext.h"
 #  define jl_jmp_buf jmp_buf

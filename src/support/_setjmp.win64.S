@@ -8,7 +8,7 @@
 #define CNAME jl_setjmp
 #include "ENTRY.amd64.h"
     mov    rdx,QWORD PTR [rsp] // rta
-    mov    QWORD PTR gs:[0],rax // SEH
+    mov    rax,QWORD PTR gs:[0] // SEH
     mov    QWORD PTR [rcx+0],rax
     mov    QWORD PTR [rcx+8],rbx
     mov    QWORD PTR [rcx+16],rsp
@@ -59,7 +59,7 @@
     movaps xmm13,XMMWORD PTR [rcx+208]
     movaps xmm14,XMMWORD PTR [rcx+224]
     movaps xmm15,XMMWORD PTR [rcx+240]
-    mov    rax,QWORD PTR gs:[0]
+    mov    QWORD PTR gs:[0],rax
     mov    eax,edx // move arg2 to return
     test   eax,eax
     jne    a
