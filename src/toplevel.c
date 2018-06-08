@@ -580,6 +580,8 @@ static jl_module_t *eval_import_from(jl_module_t *m, jl_expr_t *ex, const char *
 jl_value_t *jl_toplevel_eval_flex(jl_module_t *m, jl_value_t *e, int fast, int expanded)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
+    if (jl_generating_output())
+        fast = 0;
     if (!jl_is_expr(e)) {
         if (jl_is_linenode(e)) {
             jl_lineno = jl_linenode_line(e);
@@ -829,9 +831,7 @@ JL_DLLEXPORT jl_value_t *jl_load(jl_module_t *module, const char *fname)
 {
     if (module->istopmod) {
         jl_printf(JL_STDOUT, "%s\r\n", fname);
-#ifdef _OS_WINDOWS_
         jl_uv_flush(JL_STDOUT);
-#endif
     }
     uv_stat_t stbuf;
     if (jl_stat(fname, (char*)&stbuf) != 0 || (stbuf.st_mode & S_IFMT) != S_IFREG) {
