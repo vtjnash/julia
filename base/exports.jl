@@ -808,6 +808,7 @@ export
     skipchars,
     take!,
     truncate,
+    truncate_text,
     unmark,
     unsafe_read,
     unsafe_write,
