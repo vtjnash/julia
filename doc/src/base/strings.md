@@ -11,7 +11,6 @@ Base.:^(::AbstractString, ::Integer)
 Base.string
 Base.repeat(::AbstractString, ::Integer)
 Base.repeat(::AbstractChar, ::Integer)
-Base.repr(::Any)
 Core.String(::AbstractString)
 Base.SubString
 Base.transcode

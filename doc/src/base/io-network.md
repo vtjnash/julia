@@ -8,6 +8,7 @@ Base.stderr
 Base.stdin
 Base.open
 Base.IOBuffer
+Base.PipeBuffer
 Base.take!(::Base.GenericIOBuffer)
 Base.fdio
 Base.flush
@@ -32,7 +33,6 @@ Base.isreadonly
 Base.iswritable
 Base.isreadable
 Base.isopen
-Base.Grisu.print_shortest
 Base.fd
 Base.redirect_stdout
 Base.redirect_stdout(::Function, ::Any)
@@ -42,25 +42,29 @@ Base.redirect_stdin
 Base.redirect_stdin(::Function, ::Any)
 Base.readchomp
 Base.truncate
-Base.truncate_text
-Base.skipchars
-Base.countlines
-Base.PipeBuffer
 Base.readavailable
-Base.IOContext
-Base.IOContext(::IO, ::Pair)
-Base.IOContext(::IO, ::IOContext)
+Base.bytesavailable
+Base.bytesavailable_until_text
 ```
 
 ## Text I/O
+
+These text-based IO methods are useful for emitting and parsing streams of data.
+Often, they form the basis for incrementally building or consuming strings.
+In this role, the [`IOBuffer`](@ref) and [`IOFormatBuffer`](@ref) types are especially useful,
+as are the functions that use them, such as the utility methods [`sprint`](@ref) and [`with_format`](@ref),
+and the constructor [`IOBuffer("string")`](@ref `IOBuffer`).
+
+These IO methods are all based on UTF-8, identical to the primary [`String`](@ref) type for Julia.
 
 ```@docs
 Base.show(::Any)
 Base.summary
 Base.print
 Base.println
-Base.printstyled
+Base.Grisu.print_shortest
 Base.sprint
+Base.repr(::Any)
 Base.showerror
 Base.dump
 Meta.@dump
@@ -68,7 +72,32 @@ Base.readline
 Base.readuntil
 Base.readlines
 Base.eachline
+Base.countlines
+Base.skipchars
+Base.truncate_text
+Base.bytesavailable_until_text
+Base.textwidth(::IO)
 Base.displaysize
+Base.IOContext
+Base.IOContext(::IO, ::Pair)
+Base.IOContext(::IO, ::IOContext)
+```
+
+## Rich-text (formatted) I/O
+
+Some output contains structural information that may be of particular interest to the user.
+While [`IOContext`](@ref) gives the caller some control over the content of the output,
+propagation and observance of that contextual information is strictly optional.
+By contrast, the [`IOFormatBuffer`](@ref) allows the caller to take strict control over the output.
+
+That control can take the form of adding specific sequences of formatting annotations (such as ANSI or HTML),
+or could take the form of truncating and abbreviating and reformatting the output to fit the output device,
+or could be some other arbitrary metadata that the callee wanted to reflect.
+
+```@docs
+Base.printstyled
+Base.with_format
+Base.IOFormatBuffer
 ```
 
 ## Multimedia I/O
@@ -125,9 +154,9 @@ Base.Multimedia.istextmime
 
 ## Network I/O
 
+Most networking-related code is in the [`Sockets`](@ref) module.
+
 ```@docs
-Base.bytesavailable
-Base.bytesavailable_until_text
 Base.ntoh
 Base.hton
 Base.ltoh

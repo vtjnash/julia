@@ -100,15 +100,20 @@ struct IOFormatBuffer <: AbstractPipe
         buf.seekable = false
         return new(buf, Symbol[], Int[], Int[])
     end
+    # global function copy(io::IOFormatBuffer) =
+    #    new(ntuple(i -> copy(getindex(io, i)), Val(nfields(io)))...) # TODO: new doesn't allow ...
+    global function copy(io::IOFormatBuffer)
+        return new(copy(io.buf), copy(io.annotation), copy(io.starts), copy(io.ends))
+    end
 end
 
 pipe_writer(io::IOFormatBuffer) = io.buf
-pipe_reader(io::IOFormatBuffer) = error("IOFormatBuffer not readable")
+pipe_reader(io::IOFormatBuffer) = throw(ArgumentError("IOFormatBuffer not readable"))
 
 """
     bytesavailable(io::IOFormatBuffer)
 
-Return the amount of data (number of bytes) in the IOFormatBuffer.
+Return the amount of data (number of bytes) in the IOFormatBuffer before formatting.
 """
 bytesavailable(io::IOFormatBuffer) = io.buf.size
 
@@ -151,12 +156,12 @@ function truncate(io::IOFormatBuffer, n::Integer)
         empty!(io.starts)
         empty!(io.ends)
         seekend(io.buf)
-    elseif n < bytesavailable(io)
+    elseif n < bytesavailable(io.buf)
         io.buf.size = n
         io.buf.ptr = 1
         for id in 1:length(io.annotation)
-            io.starts[id] > n && (io.starts[id] = n)
-            io.ends[id] >= n && (io.ends[id] = n - 1)
+            io.starts[id] > n && (io.starts[id] = n + 1)
+            io.ends[id] > n && (io.ends[id] = n)
         end
     end
     return io
@@ -180,6 +185,13 @@ function with_format(f::Function, color::Union{Int, Symbol}, buf::IOContext{IOFo
     end
 end
 
+"""
+    with_format(f::Function, io::IO, args...)
+
+Call `f(IO, args...)`, then render the result to `io`
+with formatting marks, as dictated by the structure of `with_format`
+calls applied to the IO argument.
+"""
 function with_format(f::Function, io::IO, args...)
     buf = IOContext(IOFormatBuffer(), io)
     try
@@ -192,6 +204,7 @@ end
 
 function with_format(f::Function, buf::IOContext{IOFormatBuffer}, args...)
     f(buf, args...)
+    # TODO: should we make sure here that `pop` was correctly balanced?
     nothing
 end
 
@@ -289,9 +302,6 @@ function apply_ansi_format(mark_io::IOFormatBuffer)
                 pop!(color) # === fmt
                 newcolor = (isempty(color) ? :default : color[end])
                 if newcolor !== fmt
-                    if !(newcolor === :default && fmt === :normal)
-                        emptyline || append!(copy, codeunits(text_colors[newcolor]))
-                    end
                     if fmt === :normal
                         # when clearing `normal` need to recompute the `format` list
                         # since we cleared it above
@@ -304,6 +314,9 @@ function apply_ansi_format(mark_io::IOFormatBuffer)
                                 format[is_fmt] += 1
                             end
                         end
+                        emptyline = true
+                    else
+                        emptyline || append!(copy, codeunits(text_colors[newcolor]))
                     end
                 end
             else
