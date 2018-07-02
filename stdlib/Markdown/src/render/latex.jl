@@ -24,7 +24,8 @@ function latex(io::IO, content::Vector)
     end
 end
 
-function latex(io::IO, header::Header{l}) where l
+function latex(io::IO, header::Header)
+    l = header.level
     tag = l < 4 ? "sub"^(l-1) * "section" : "sub"^(l-4) * "paragraph"
     wrapinline(io, tag) do
         latexinline(io, header.text)

@@ -96,17 +96,19 @@ end
 const _header_underlines = collect("≡=–-⋅ ")
 # TODO settle on another option with unicode e.g. "≡=≃–∼⋅" ?
 
-function term(io::IO, md::Header{l}, columns) where l
-    underline = _header_underlines[l]
-    _term_header(io, md, underline, columns)
+function term(io::IO, md::Header)
+    underline = get(_header_underlines, header.level, ' ')
+    _term_header(io, md, underline)
 end
 
 function term(io::IO, md::Code, columns)
     with_format(:cyan, io) do io
         L = lines(md.code)
-        for i in eachindex(L)
-            print(io, ' '^margin, L[i])
-            i < lastindex(L) && println(io)
+        first = true
+        pre = ' '^margin
+        for ln in L
+            first ? (first = false) : println(io)
+            print(io, pre, l)
         end
     end
 end
@@ -154,9 +156,10 @@ end
 terminline(io::IO, f::Footnote) = with_format(terminline, :bold, io, "[^$(f.id)]")
 
 function terminline(io::IO, md::Link)
-    url = !Base.startswith(md.url, "@ref") ? " ($(md.url))" : ""
-    text = terminline_string(io, md.text)
-    terminline(io, text, url)
+    terminline(io, md.text)
+    if !Base.startswith(md.url, "@ref")
+        terminline(io, " ($(md.url))")
+    end
 end
 
 function terminline(io::IO, code::Code)

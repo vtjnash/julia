@@ -13,7 +13,8 @@ end
 
 rst(io::IO, md::MD) = rst(io, md.content)
 
-function rst(io::IO, header::Header{l}) where l
+function rst(io::IO, header::Header)
+    l = header.level
     s = rstinline(header.text)
     println(io, s)
     println(io, string("*=-~:.^"[l])^length(s))

@@ -40,12 +40,12 @@ end
 # Headers
 # –––––––
 
-mutable struct Header{level}
+mutable struct Header
     text
+    level::Int
+    Header(s, level::Int=1) = new(s, level)
 end
 
-Header(s, level::Int) = Header{level}(s)
-Header(s) = Header(s, 1)
 
 @breaking true ->
 function hashheader(stream::IO, md::MD)
