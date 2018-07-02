@@ -137,7 +137,7 @@ function rst(io::IO, md::Table)
     end
 end
 
-function term(io::IO, md::Table, columns)
+function term(io::IO, md::Table)
     cells = mapmap(x -> terminline_string(io, x), md.rows)
     padcells!(cells, md.align, len = ansi_length)
     for i = 1:length(cells)

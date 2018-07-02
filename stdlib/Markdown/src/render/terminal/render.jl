@@ -3,36 +3,34 @@
 include("formatting.jl")
 
 const margin = 2
-cols(io) = displaysize(io)[2]
 
-function term(io::IO, content::Vector, cols)
-    isempty(content) && return
-    for md in content[1:end-1]
-        term(io, md, cols)
-        print(io, '\n', '\n')
+function term(io::IO, content::Vector)
+    first = true
+    for md in content
+        first ? (first = false) : print(io, "\n\n")
+        term(io, md)
     end
-    term(io, content[end], cols)
 end
 
-term(io::IO, md::MD, columns = cols(io)) = term(io, md.content, columns)
+term(io::IO, md::MD) = term(io, md.content)
 
-function term(io::IO, md::Paragraph, columns)
-    print(io, ' '^margin)
-    print_wrapped(io, width = columns-2margin, pre = ' '^margin) do io
+function term(io::IO, md::Paragraph)
+    pre = ' '^margin
+    print(io, pre)
+    with_format(:wordwrap => (pre, margin), io) do io
         terminline(io, md.content)
     end
 end
 
-function term(io::IO, md::BlockQuote, columns)
-    s = sprint(term, md.content, columns - 10; context=io)
-    lines = split(rstrip(s), '\n')
-    print(io, ' '^margin, '│', lines[1])
-    for i = 2:length(lines)
-        print(io, '\n', ' '^margin, '│', lines[i])
+function term(io::IO, md::BlockQuote)
+    pre = (' '^margin) * '│'
+    print(pre)
+    with_format(:wordwrap => (pre, 9 - margin), io) do io
+        term(io, md.content)
     end
 end
 
-function term(io::IO, md::Admonition, columns)
+function term(io::IO, md::Admonition)
     col = :default
     # If the types below are modified, the page manual/documentation.md must be updated accordingly.
     if lowercase(md.title) == "danger"
@@ -44,52 +42,36 @@ function term(io::IO, md::Admonition, columns)
     elseif lowercase(md.title) == "tip"
         col = :green
     end
-    printstyled(io, ' '^margin, "│ "; color=col, bold=true)
-    printstyled(io, isempty(md.title) ? md.category : md.title; color=col, bold=true)
-    printstyled(io, '\n', ' '^margin, '│', '\n'; color=col, bold=true)
-    s = sprint(term, md.content, columns - 10; context=io)
-    lines = split(rstrip(s), '\n')
-    for i in eachindex(lines)
-        printstyled(io, ' '^margin, '│'; color=col, bold=true)
-        print(io, lines[i])
-        i < lastindex(lines) && println(io)
+    with_format(col, io; bold=true) do io
+        pre = (' '^margin) * "│ "
+        print(io, pre)
+        print(io, isempty(md.title) ? md.category : md.title)
+        print(io, '\n', pre)
+        with_format(:wordwrap => (pre, 8 - margin), io) do io
+            term(io, md.content)
+        end
     end
 end
 
-function term(io::IO, f::Footnote, columns)
-    print(io, ' '^margin, "│ ")
+function term(io::IO, f::Footnote)
+    pre = (' '^margin) * "│ "
+    print(io, pre)
     printstyled(io, "[^$(f.id)]", bold=true)
-    println(io, '\n', ' '^margin, '│')
-    s = sprint(term, f.text, columns - 10; context=io)
-    lines = split(rstrip(s), '\n')
-    for i in eachindex(lines)
-        print(io, ' '^margin, '│', lines[i])
-        i < lastindex(lines) && println(io)
+    print(io, '\n', pre)
+    with_format(:wordwrap => (pre, 8 - margin), io) do io
+        term(io, f.text)
     end
 end
 
-function term(io::IO, md::List, columns)
-    for (i, point) in enumerate(md.items)
-        print(io, ' '^2margin, isordered(md) ? "$(i + md.ordered - 1). " : "•  ")
-        print_wrapped(io, width = columns-(4margin+2), pre = ' '^(2margin+2),
-                          i = 2margin+2) do io
-            term(io, point, columns - 10)
+function term(io::IO, md::List)
+    pre = 2margin + 2
+    post = 2margin
+    with_format(:wordwrap => (pre, post), io) do io
+        for (i, point) in enumerate(md.items)
+            i == 1 || print(io, "\n\n")
+            print(io, ' '^2margin, isordered(md) ? "$(i + md.ordered - 1). " : "•  ")
+            term(io, point)
         end
-        i < lastindex(md.items) && print(io, '\n', '\n')
-    end
-end
-
-function _term_header(io::IO, md, char, columns)
-    text = terminline_string(io, md.text)
-    with_format(:bold, io) do io
-        print(io, ' '^margin)
-        line_no, lastline_width = print_wrapped(io, text,
-                                                width=columns - 4margin; pre=" ")
-        line_width = min(1 + lastline_width, columns)
-        if line_no > 1
-            line_width = max(line_width, div(columns, 3))
-        end
-        char != ' ' && print(io, '\n', ' '^(margin), char^line_width)
     end
 end
 
@@ -98,10 +80,19 @@ const _header_underlines = collect("≡=–-⋅ ")
 
 function term(io::IO, md::Header)
     underline = get(_header_underlines, header.level, ' ')
-    _term_header(io, md, underline)
+    pre = 1
+    post = 4margin - pre
+    with_format(:wordwrap => (pre, post), io) do io
+        print(io, ' '^margin)
+        with_format(:border => ("", "", underline, ""), io) do io # top, right, bottom, and left
+            with_format(:bold, io) do io
+                terminline(io, md.text)
+            end
+        end
+    end
 end
 
-function term(io::IO, md::Code, columns)
+function term(io::IO, md::Code)
     with_format(:cyan, io) do io
         L = lines(md.code)
         first = true
@@ -113,19 +104,22 @@ function term(io::IO, md::Code, columns)
     end
 end
 
-term(io::IO, br::LineBreak, columns) = nothing # line breaks already printed between subsequent elements
+term(io::IO, br::LineBreak) = nothing # line breaks already printed between subsequent elements
 
-function term(io::IO, br::HorizontalRule, columns)
-   print(io, ' '^margin, '─'^(columns - 2margin))
+function term(io::IO, br::HorizontalRule)
+    with_format(:wordwrap => (margin, margin), io) do io # add padding
+        with_format(:border => ("", "", '─', ""), io) do io
+            # no text -> boarder will make a full-width line (minus padding)
+            println(io)
+        end
+    end
 end
 
-term(io::IO, x, _) = show(io, MIME"text/plain"(), x)
+term(io::IO, x) = show(io, MIME"text/plain"(), x)
 
 # Inline Content
 
 terminline_string(io::IO, md) = sprint(terminline, md; context=io)
-
-terminline(io::IO, content...) = terminline(io, collect(content))
 
 function terminline(io::IO, content::Vector)
     for md in content
@@ -169,4 +163,4 @@ end
 terminline(io::IO, x) = show(io, MIME"text/plain"(), x)
 
 # Show in terminal
-Base.show(io::IO, ::MIME"text/plain", md::MD) = (term(io, md); nothing)
+Base.show(io::IO, ::MIME"text/plain", md::MD) = with_format(term, io, md)

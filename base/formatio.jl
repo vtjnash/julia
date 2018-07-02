@@ -2,6 +2,23 @@
 
 ## printing with color ##
 
+#using Base: AnyDict, AbstractPipe
+#import Base:
+#    pipe_writer,
+#    pipe_reader,
+#    bytesavailable,
+#    mark,
+#    reset,
+#    unmark,
+#    ismarked,
+#    seekend,
+#    truncate,
+#    bytesavailable_until_text,
+#    write,
+#    push!,
+#    pop!,
+#    textwidth
+
 const ansi_reset = "\033[0m"
 const ansi_formats = (:bold, :underline, :blink, :reverse, :hidden)
 
@@ -167,7 +184,7 @@ function truncate(io::IOFormatBuffer, n::Integer)
     return io
 end
 
-function with_format(f::Function, color::Union{Int, Symbol}, io::IO, args...; bold::Bool = false)
+function with_format(f::Function, color::Union{Int, Symbol, Pair{Symbol}}, io::IO, args...; bold::Bool = false)
     buf = IOContext(IOFormatBuffer(), io)
     try
         with_format(f, color, buf, args...; bold = bold)
@@ -177,7 +194,7 @@ function with_format(f::Function, color::Union{Int, Symbol}, io::IO, args...; bo
     nothing
 end
 
-function with_format(f::Function, color::Union{Int, Symbol}, buf::IOContext{IOFormatBuffer}, args...; bold::Bool = false)
+function with_format(f::Function, color::Union{Int, Symbol, Pair{Symbol}}, buf::IOContext{IOFormatBuffer}, args...; bold::Bool = false)
     let id = push!(buf.io, color)
         bold && push!(buf.io, :bold)
         f(buf, args...)
@@ -210,7 +227,7 @@ end
 
 # record the start position for the region `fmt`
 # return a token for `pop!`
-@noinline function push!(io::IOFormatBuffer, fmt::Symbol)
+@noinline function push!(io::IOFormatBuffer, fmt::Union{Int, Symbol, Pair{Symbol}})
     ismarked(io.buf) && unmark(io.buf)
     push!(io.annotation, fmt)
     push!(io.starts, bytesavailable(io.buf) + 1)
@@ -231,36 +248,236 @@ end
     nothing
 end
 
+function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
+    out = IOBuffer(mark_io.buf.data)
+    insert_pos = Int[]
+    insert_str = String[]
+    stack = Int[]
+    pre = Int[0]
+    post = Int[0]
+    insert_wrap = String["\n"]
+    maxwidth = Int[0]
+    borders_start = Int[]
+    borders_right = String[]
+    borders_top = String[]
+    borders_bottom = String[]
+    nextid = id
+    wordwrap = 0
+    wordwidth = 0
+    linewidth = 0
+    skip = 0
+    wordstart = mark_io.starts[id]
+    seek(out, wordstart - 1)
+    for i in wordstart:mark_io.ends[id]
+        while nextid <= length(mark_io.starts) && mark_io.starts[nextid] == i
+            if mark_io.ends[nextid] >= i
+                fmt = mark_io.annotation[nextid]
+                if fmt isa Pair
+                    if fmt.first === :border
+                        top, right, bottom, left = fmt.second::Tuple{Any, Any, Any, Any}
+                    elseif fmt.first === :wordwrap
+                        left, right = fmt.second::Tuple{Any, Any}
+                        wordwrap += 1
+                    else
+                        continue
+                    end
+                    let left = (left isa Number ? left : textwidth(left)),
+                        right = (right isa Number ? right : textwidth(right))
+                        if wordwidth > 0
+                            # push the last word onto the line
+                            linewidth += wordwidth
+                            wordstart = i + skip
+                            wordwidth = 0
+                        end
+                        # TODO: if linewidth != 0, we should ensure alignment here
+                        push!(pre, pre[end] + left)
+                        push!(post, post[end] + right)
+                        maxcols -= left + right
+                    end
+                    let left = (left isa Number ? ' '^left : left),
+                        right = (right isa Number ? ' '^right : right)
+                        wrapline = insert_wrap[end]
+                        if fmt.first === :border
+                            push!(borders_top, top)
+                            push!(borders_right, right)
+                            push!(borders_bottom, bottom)
+                            if !isempty(top)
+                                push!(insert_pos, i)
+                                push!(insert_str, "") # will insert this later (when we compute bottom)
+                                push!(borders_start, length(insert_str)) # this is how we know where to insert at
+                                push!(insert_pos, i)
+                                push!(insert_str, wrapline)
+                            end
+                            push!(insert_pos, i)
+                            push!(insert_str, left)
+                            push!(maxwidth, 0)
+                        end
+                        push!(insert_wrap, string(right, wrapline, left))
+                    end
+                    push!(stack, nextid)
+                end # fmt isa Pair
+            end
+            nextid += 1
+        end
+        # determine effect of current character
+        if skip > 0
+            skip -= 1
+        else
+            byte = read(out, Char)
+            skip = position(out) - i
+            newline = (byte == '\n')
+            wordwidth += newline ? 0 : textwidth(byte)
+            if newline || wordwrap == 0 || byte == ' ' || byte == '\t'
+                # handle white space (or no-word-wrap) by extending the current line
+                linewidth += wordwidth
+                wordstart = i + skip + 1
+                wordwidth = 0
+                if newline
+                    rightalign = maxcols - linewidth
+                    if rightalign > 0
+                        push!(insert_pos, i)
+                        push!(insert_str, ' '^rightalign)
+                    end
+                    maxwidth[end] = max(maxwidth[end], maxcols)
+                    linewidth = 0
+                    push!(insert_pos, -i)
+                    push!(insert_str, insert_wrap[end])
+                end
+            end
+            if linewidth + wordwidth >= maxcols
+                # if current line is getting too long, insert a line break at the start of the current word
+                if !isempty(insert_pos) && insert_pos[end] == wordstart
+                    # allow the line to grow too long to contain the whole word
+                    # when this is the only content on the line
+                    # rather than inserting newlines for every character
+                else
+                    rightalign = maxcols - linewidth
+                    if rightalign > 0
+                        push!(insert_pos, wordstart)
+                        push!(insert_str, ' '^rightalign)
+                        linewidth = maxcols
+                    end
+                    push!(insert_pos, wordstart)
+                    push!(insert_str, insert_wrap[end])
+                    maxwidth[end] = max(maxwidth[end], linewidth)
+                    linewidth = 0
+                end
+            end
+        end
+
+        # terminate all of the spans that end on this byte
+        while !isempty(stack) && (mark_io.ends[stack[end]] == i)
+            fmt = mark_io.annotation[pop!(stack)]
+            # determine the reverse or end operation
+            if fmt isa Pair
+                if fmt.first === :border
+                elseif fmt.first === :wordwrap
+                    wordwrap -= 1
+                else
+                    continue
+                end
+                if wordwidth > 0
+                    # push the last word onto the line
+                    linewidth += wordwidth
+                    wordstart = i + skip + 1
+                    wordwidth = 0
+                end
+                if fmt.first === :border
+                    nchar = min(max(pop!(maxwidth), linewidth), max(maxcols, 0))
+                    nchar == 0 && (nchar = maxcols) # implies no content, make border full-width
+                    width_left = pre[end] - (length(pre) > 1 ? pre[end - 1] : 0) # == textwidth(borders_left[end])
+                    width_right = post[end] - (length(post) > 1 ? post[end - 1] : 0) # == textwidth(borders_right[end])
+                    linewidth += width_left + width_right # TODO: skip this only on the first/last line of :wordwrap
+                    nchar += width_left + width_right
+                    maxwidth[end] = nchar
+                    pop!(insert_wrap)
+                    let top = pop!(borders_top)
+                        if !isempty(top)
+                            insert_str[pop!(borders_start)] = top^max(nchar ÷ textwidth(top), 1)
+                        end
+                    end
+                    let right = pop!(borders_right)
+                        if !isempty(right)
+                            rightalign = nchar - linewidth
+                            if rightalign > 0
+                                push!(insert_pos, wordstart)
+                                push!(insert_str, ' '^rightalign)
+                            end
+                            push!(insert_pos, wordstart)
+                            push!(insert_str, right)
+                            linewidth = nchar
+                        end
+                    end
+                    let bottom = pop!(borders_bottom)
+                        if !isempty(bottom)
+                            push!(insert_pos, wordstart)
+                            push!(insert_str, insert_wrap[end])
+                            push!(insert_pos, wordstart)
+                            bottom_width = textwidth(bottom)
+                            bottom_nchars = max(nchar ÷ bottom_width, 1)
+                            push!(insert_str, bottom^bottom_nchars)
+                            linewidth = bottom_width * bottom_nchars
+                        end
+                    end
+                end
+                maxcols += pop!(pre) + pop!(post)
+            end
+        end
+    end
+    return insert_pos => insert_str
+end
+
 # render `mark_io` and return the annotated buffer
-function apply_ansi_format(mark_io::IOFormatBuffer)
+function apply_ansi_format(mark_io::IOFormatBuffer, hascolor::Bool, maxcols::Int)
     pop!(mark_io, 1)
     out = mark_io.buf.data
     copy = UInt8[]
     sizehint!(copy, length(out) + length(mark_io.annotation) * length(ansi_reset) * 2)
     nextid = 1
     stack = Int[]
+    insert_pos = Int[]
+    insert_str = String[]
     color = []
     format = zeros(length(ansi_formats))
+    wordwrap = 0
     emptyline = true
     for i in 1:length(out)
         # record all of the spans that start on this byte
         while nextid <= length(mark_io.starts) && mark_io.starts[nextid] == i
-            fmt = mark_io.annotation[nextid]
-            if mark_io.ends[nextid] >= i && haskey(text_colors, fmt)
-                # determine what effect this formatting command will have
-                is_fmt = findfirst(isequal(fmt), ansi_formats)
-                if is_fmt === nothing
-                    if fmt === :normal
-                        fill!(format, 0)
+            if mark_io.ends[nextid] >= i
+                fmt = mark_io.annotation[nextid]
+                if fmt isa Pair
+                    if isempty(insert_pos)
+                        insert_pos, insert_str = format_lookahead(mark_io, nextid, maxcols)
                     end
-                    push!(color, fmt)
-                else
-                    format[is_fmt] += 1
+                elseif hascolor && haskey(text_colors, fmt)
+                    # determine what effect this formatting command will have
+                    is_fmt = findfirst(isequal(fmt), ansi_formats)
+                    if is_fmt === nothing
+                        if fmt === :normal
+                            fill!(format, 0)
+                        end
+                        push!(color, fmt)
+                    else
+                        format[is_fmt] += 1
+                    end
+                    emptyline || append!(copy, codeunits(text_colors[fmt]))
+                    push!(stack, nextid)
                 end
-                emptyline || append!(copy, codeunits(text_colors[fmt]))
-                push!(stack, nextid)
             end
             nextid += 1
+        end
+        skipcopy = false
+        while !isempty(insert_pos) && abs(insert_pos[1]) == i
+            skipcopy = popfirst!(insert_pos) < 0
+            let insert = popfirst!(insert_str)
+                if !emptyline && '\n' in insert
+                    # disable formatting before inserting text
+                    append!(copy, codeunits(ansi_reset))
+                    emptyline = true
+                end
+                append!(copy, codeunits(insert))
+            end
         end
         # around newlines, reset then reapply the current format
         byte = out[i]
@@ -280,6 +497,7 @@ function apply_ansi_format(mark_io::IOFormatBuffer)
         if !emptyline && newline
             # disable formatting formatting before the newline
             # if we printed anything
+            # alternatively: append!(copy, codeunits(ansi_reset))
             for fmt in 1:length(ansi_formats)
                 if format[fmt] > 0
                     append!(copy, codeunits(disable_text_style[ansi_formats[fmt]]))
@@ -288,42 +506,57 @@ function apply_ansi_format(mark_io::IOFormatBuffer)
             if !isempty(color) && color[end] ∉ (:default, :normal)
                 append!(copy, codeunits(text_colors[:default]))
             end
-            # alternatively: append!(copy, codeunits(ansi_reset))
         end
-        push!(copy, byte)
+        skipcopy || push!(copy, byte)
         emptyline = newline
         # terminate all of the spans that end on this byte
         while !isempty(stack) && (mark_io.ends[stack[end]] == i)
             fmt = mark_io.annotation[pop!(stack)]
-            # determine the reverse operation
-            is_fmt = findfirst(isequal(fmt), ansi_formats)
-            if is_fmt === nothing
-                # for colors: re-apply the previous color from the stack
-                pop!(color) # === fmt
-                newcolor = (isempty(color) ? :default : color[end])
-                if newcolor !== fmt
-                    if fmt === :normal
-                        # when clearing `normal` need to recompute the `format` list
-                        # since we cleared it above
-                        for active in stack
-                            fmt = mark_io.annotation[active]
-                            is_fmt = findfirst(isequal(fmt), ansi_formats)
-                            if fmt === :normal
-                                fill!(format, 0)
-                            elseif is_fmt !== nothing
-                                format[is_fmt] += 1
+            # determine the reverse or end operation
+            if fmt isa Pair
+            elseif hascolor
+                is_fmt = findfirst(isequal(fmt), ansi_formats)
+                if is_fmt === nothing
+                    # for colors: re-apply the previous color from the stack
+                    pop!(color) # === fmt
+                    newcolor = (isempty(color) ? :default : color[end])
+                    if newcolor !== fmt
+                        if fmt === :normal
+                            # when clearing `normal` need to recompute the `format` list
+                            # since we cleared it above
+                            for active in stack
+                                fmt = mark_io.annotation[active]
+                                if !(fmt isa Pair)
+                                    is_fmt = findfirst(isequal(fmt), ansi_formats)
+                                    if fmt === :normal
+                                        fill!(format, 0)
+                                    elseif is_fmt !== nothing
+                                        format[is_fmt] += 1
+                                    end
+                                end
                             end
+                            emptyline = true
+                        else
+                            emptyline || append!(copy, codeunits(text_colors[newcolor]))
                         end
-                        emptyline = true
-                    else
-                        emptyline || append!(copy, codeunits(text_colors[newcolor]))
+                    end
+                else
+                    if (format[is_fmt] -= 1) == 0
+                        emptyline || append!(copy, codeunits(disable_text_style[fmt]))
                     end
                 end
-            else
-                if (format[is_fmt] -= 1) == 0
-                    emptyline || append!(copy, codeunits(disable_text_style[fmt]))
-                end
             end
+        end
+    end
+    while !isempty(insert_pos)
+        popfirst!(insert_pos)
+        let insert = popfirst!(insert_str)
+            if !emptyline && '\n' in insert
+                # disable formatting before inserting text
+                append!(copy, codeunits(ansi_reset))
+                emptyline = true
+            end
+            append!(copy, codeunits(insert))
         end
     end
     return copy
@@ -333,8 +566,10 @@ end
 function write(io::IO, mark_io::IOFormatBuffer)
     fmt = mark_io.buf.data
     resize!(fmt, mark_io.buf.size)
-    if get(io, :color, false)
-        fmt = apply_ansi_format(mark_io)
+    hascolor = get(io, :color, false)
+    if hascolor || any(x -> x isa Pair, mark_io.annotation)
+        maxcols = displaysize(io)[2]
+        fmt = apply_ansi_format(mark_io, hascolor, maxcols)
     end
     truncate(mark_io, 0)
     return write(io, fmt)
