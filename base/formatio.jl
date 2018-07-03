@@ -249,9 +249,13 @@ end
 end
 
 function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
-    out = IOBuffer(mark_io.buf.data)
+    # output partially-rendered annotations index
+    # if pos < 0, should also skips outputting that byte
     insert_pos = Int[]
     insert_str = String[]
+    # create a read-only IO view of the data
+    out = IOBuffer(mark_io.buf.data)
+    # stacks of different properties that are currently nested
     stack = Int[]
     pre = Int[0]
     post = Int[0]
@@ -261,14 +265,17 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
     borders_right = String[]
     borders_top = String[]
     borders_bottom = String[]
-    nextid = id
     wordwrap = 0
+    # character line IO state
     wordwidth = 0
     linewidth = 0
     skip = 0
     wordstart = mark_io.starts[id]
     seek(out, wordstart - 1)
+    nextid = id
     for i in wordstart:mark_io.ends[id]
+        # find all of the spans that start on this byte
+        # and record their effects
         while nextid <= length(mark_io.starts) && mark_io.starts[nextid] == i
             if mark_io.ends[nextid] >= i
                 fmt = mark_io.annotation[nextid]
@@ -290,16 +297,18 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                             wordwidth = 0
                         end
                         # TODO: if linewidth != 0, we should ensure alignment here
-                        push!(pre, pre[end] + left)
-                        push!(post, post[end] + right)
-                        maxcols -= left + right
+                        push!(pre, left)
+                        push!(post, right)
                     end
+                    maxcols -= pre[end] + post[end]
+                    wrapline = insert_wrap[end]
                     let left = (left isa Number ? ' '^left : left),
                         right = (right isa Number ? ' '^right : right)
-                        wrapline = insert_wrap[end]
+                        if post[end] != 0
+                            push!(borders_right, right)
+                        end
                         if fmt.first === :border
                             push!(borders_top, top)
-                            push!(borders_right, right)
                             push!(borders_bottom, bottom)
                             if !isempty(top)
                                 push!(insert_pos, i)
@@ -315,10 +324,13 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                         push!(insert_wrap, string(right, wrapline, left))
                     end
                     push!(stack, nextid)
+                else
+                    # TODO: handle color computation of border elements
                 end # fmt isa Pair
             end
             nextid += 1
         end
+
         # determine effect of current character
         if skip > 0
             skip -= 1
@@ -333,15 +345,16 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                 wordstart = i + skip + 1
                 wordwidth = 0
                 if newline
-                    rightalign = maxcols - linewidth
-                    if rightalign > 0
-                        push!(insert_pos, i)
-                        push!(insert_str, ' '^rightalign)
-                    end
-                    maxwidth[end] = max(maxwidth[end], maxcols)
-                    linewidth = 0
+                    #rightalign = maxcols - linewidth
+                    #if rightalign > 0
+                    #    push!(insert_pos, i)
+                    #    push!(insert_str, ' '^rightalign)
+                    #    linewidth = maxcols
+                    #end
                     push!(insert_pos, -i)
                     push!(insert_str, insert_wrap[end])
+                    maxwidth[end] = max(maxwidth[end], linewidth)
+                    linewidth = 0
                 end
             end
             if linewidth + wordwidth >= maxcols
@@ -351,12 +364,12 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                     # when this is the only content on the line
                     # rather than inserting newlines for every character
                 else
-                    rightalign = maxcols - linewidth
-                    if rightalign > 0
-                        push!(insert_pos, wordstart)
-                        push!(insert_str, ' '^rightalign)
-                        linewidth = maxcols
-                    end
+                    #rightalign = maxcols - linewidth
+                    #if rightalign > 0
+                    #    push!(insert_pos, wordstart)
+                    #    push!(insert_str, ' '^rightalign)
+                    #    linewidth = maxcols
+                    #end
                     push!(insert_pos, wordstart)
                     push!(insert_str, insert_wrap[end])
                     maxwidth[end] = max(maxwidth[end], linewidth)
@@ -382,11 +395,12 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                     wordstart = i + skip + 1
                     wordwidth = 0
                 end
+                width_left = pop!(pre) # == textwidth(borders_left[end])
+                width_right = pop!(post) # == textwidth(borders_right[end])
+                right = (width_right > 0) ? pop!(borders_right) : ""
                 if fmt.first === :border
                     nchar = min(max(pop!(maxwidth), linewidth), max(maxcols, 0))
                     nchar == 0 && (nchar = maxcols) # implies no content, make border full-width
-                    width_left = pre[end] - (length(pre) > 1 ? pre[end - 1] : 0) # == textwidth(borders_left[end])
-                    width_right = post[end] - (length(post) > 1 ? post[end - 1] : 0) # == textwidth(borders_right[end])
                     linewidth += width_left + width_right # TODO: skip this only on the first/last line of :wordwrap
                     nchar += width_left + width_right
                     maxwidth[end] = nchar
@@ -396,17 +410,15 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                             insert_str[pop!(borders_start)] = top^max(nchar ÷ textwidth(top), 1)
                         end
                     end
-                    let right = pop!(borders_right)
-                        if !isempty(right)
-                            rightalign = nchar - linewidth
-                            if rightalign > 0
-                                push!(insert_pos, wordstart)
-                                push!(insert_str, ' '^rightalign)
-                            end
-                            push!(insert_pos, wordstart)
-                            push!(insert_str, right)
-                            linewidth = nchar
-                        end
+                    if isempty(right)
+                        #rightalign = nchar - linewidth
+                        #if rightalign > 0
+                        #    push!(insert_pos, wordstart)
+                        #    push!(insert_str, ' '^rightalign)
+                        #end
+                        push!(insert_pos, wordstart)
+                        push!(insert_str, right)
+                        linewidth = nchar
                     end
                     let bottom = pop!(borders_bottom)
                         if !isempty(bottom)
@@ -419,8 +431,10 @@ function format_lookahead(mark_io::IOFormatBuffer, id::Int, maxcols::Int)
                             linewidth = bottom_width * bottom_nchars
                         end
                     end
+                else
+                    linewidth += width_left + width_right # TODO: this is a bit of an over-approximation
                 end
-                maxcols += pop!(pre) + pop!(post)
+                maxcols += width_left + width_right
             end
         end
     end
@@ -439,7 +453,6 @@ function apply_ansi_format(mark_io::IOFormatBuffer, hascolor::Bool, maxcols::Int
     insert_str = String[]
     color = []
     format = zeros(length(ansi_formats))
-    wordwrap = 0
     emptyline = true
     for i in 1:length(out)
         # record all of the spans that start on this byte
