@@ -314,6 +314,68 @@ end
 
 Base.show(io::IO, code::IRCode) = show_ir(io, code)
 
+
+function DILineInfoPrinter(linetable::Vector)
+    context = LineInfoNode[]
+    indent(s::String) = s^(max(length(context), 1) - 1)
+    function emit_lineinfo_update(io::IO, linestart::String, lineidx::Int32)
+        lineidx == 0 && return # just skip over lines with no debug info at all
+        DI = LineInfoNode[]
+        while lineidx != 0
+            entry = linetable[lineidx]::LineInfoNode
+            push!(DI, entry)
+            lineidx = entry.inlined_at
+        end
+        nframes = length(DI)
+        nctx = length(context)
+        # look for a matching prefix in the inlining information stack
+        if nctx > nframes
+            resize!(context, nframes)
+        end
+        update_line_only = false
+        for i = 1:length(context)
+            CtxLine = context[i]
+            FrameLine = DI[nframes - i + 1]
+            if CtxLine !== FrameLine
+                if CtxLine.file == FrameLine.file &&
+                        CtxLine.method == FrameLine.method &&
+                        CtxLine.mod == FrameLine.mod
+                    update_line_only = true
+                end
+                resize!(context, i - 1)
+                break
+            end
+        end
+        npops = nctx - length(context) - update_line_only
+        if npops > 0
+            print(io, linestart, indent("│"))
+            update_line_only && print(io, "│")
+            print(io, "┘"^npops, "\n")
+        end
+        if update_line_only
+            frame = DI[nframes - length(context)]
+            push!(context, frame)
+            if frame.line != typemax(frame.line) && frame.line != 0
+                print(io, linestart, indent("│"), " @ ", frame.file, ":", frame.line, " within `", frame.method, "'\n")
+            end
+        end
+        for i = length(context):(nframes - 1)
+            frame = DI[nframes - i]
+            print(io, linestart, indent("│"))
+            push!(context, frame)
+            i != 0 && print(io, "┌")
+            print(io, " @ ", frame.file)
+            if frame.line != typemax(frame.line) && frame.line != 0
+                print(io, ":", frame.line)
+            end
+            print(io, " within `", frame.method, "'\n")
+        end
+        nothing
+    end
+    return emit_lineinfo_update, indent
+end
+
+
 function show_ir(io::IO, code::IRCode, expr_type_printer=default_expr_type_printer; verbose_linetable=false)
     cols = displaysize(io)[2]
     used = BitSet()
@@ -327,7 +389,7 @@ function show_ir(io::IO, code::IRCode, expr_type_printer=default_expr_type_print
     bb_idx = 1
     new_nodes = code.new_nodes
     if any(i -> !isassigned(code.new_nodes, i), 1:length(code.new_nodes))
-        printstyled(io, :red, "ERROR: New node array has unset entry\n")
+        printstyled(io, "ERROR: New node array has unset entry\n", color=:red)
         new_nodes = new_nodes[filter(i -> isassigned(code.new_nodes, i), 1:length(code.new_nodes))]
     end
     for nn in new_nodes
@@ -354,7 +416,7 @@ function show_ir(io::IO, code::IRCode, expr_type_printer=default_expr_type_print
         if !isassigned(stmts, idx)
             # This is invalid, but do something useful rather
             # than erroring, to make debugging easier
-            printstyled(io, :red, "#UNDEF\n")
+            printstyled(io, "#UNDEF\n", color=:red)
             continue
         end
         stmt = stmts[idx]
@@ -465,7 +527,7 @@ function show_ir(io::IO, code::IRCode, expr_type_printer=default_expr_type_print
     end
 end
 
-function show_ir(io::IO, code::CodeInfo, expr_type_printer=default_expr_type_printer; verbose_linetable=false)
+function show_ir(io::IO, code::CodeInfo, expr_type_printer=default_expr_type_printer)
     cols = displaysize(io)[2]
     used = BitSet()
     stmts = code.code
@@ -483,78 +545,30 @@ function show_ir(io::IO, code::CodeInfo, expr_type_printer=default_expr_type_pri
         maxused = maximum(used)
         maxlength_idx = length(string(maxused))
     end
-    if !verbose_linetable
-        (loc_annotations, loc_methods, loc_lineno) = compute_ir_line_annotations(code)
-        max_loc_width = maximum(length(str) for str in loc_annotations)
-        max_lineno_width = maximum(length(str) for str in loc_lineno)
-        max_method_width = maximum(length(str) for str in loc_methods)
-    end
-    max_depth = maximum(compute_inlining_depth(code.linetable, line) for line in code.codelocs)
-    last_stack = []
+    emit_lineinfo, line_indent = DILineInfoPrinter(code.linetable)
     for idx in eachindex(stmts)
         if !isassigned(stmts, idx)
             # This is invalid, but do something useful rather
             # than erroring, to make debugging easier
-            printstyled(io, :red, "#UNDEF\n")
+            printstyled(io, "#UNDEF\n", color=:red)
             continue
         end
         stmt = stmts[idx]
-        # Compute BB guard rail
         bbrange = cfg.blocks[bb_idx].stmts
         bbrange = bbrange.first:bbrange.last
-        bb_idx_str = string(bb_idx)
-        bb_pad = max_bb_idx_size - length(bb_idx_str)
-        bb_type = length(cfg.blocks[bb_idx].preds) <= 1 ? "─" : "┄"
-        bb_start_str = string(bb_idx_str, " ", bb_type, "─"^bb_pad, " ")
-        bb_guard_rail_cont = string("│  ", " "^max_bb_idx_size)
+        # Print line info update
+        linestart = idx == first(bbrange) ? "   " : sprint(io -> printstyled(io, "│  ", color=:light_black), context=io)
+        emit_lineinfo(io, linestart, code.codelocs[idx])
+        # Compute BB guard rail
         if idx == first(bbrange)
-            bb_guard_rail = bb_start_str
+            bb_idx_str = string(bb_idx)
+            bb_pad = max_bb_idx_size - length(bb_idx_str)
+            bb_type = length(cfg.blocks[bb_idx].preds) <= 1 ? "─" : "┄"
+            printstyled(io, bb_idx_str, " ", bb_type, "─"^bb_pad, " ", color=:light_black)
+        elseif idx == last(bbrange) # print separator
+            printstyled(io, "└", "─"^(1 + max_bb_idx_size), " ", color=:light_black)
         else
-            bb_guard_rail = bb_guard_rail_cont
-        end
-        # Print linetable information
-        if verbose_linetable
-            stack = compute_loc_stack(code.linetable, code.codelocs[idx])
-            # We need to print any stack frames that did not exist in the last stack
-            ndepth = max(1, length(stack))
-            rail = string(" "^(max_depth+1-ndepth), "│"^ndepth)
-            start_column = cols - max_depth - 10
-            for (i, x) in enumerate(stack)
-                if i > length(last_stack) || last_stack[i] != x
-                    entry = code.linetable[x]
-                    printstyled(io, "\e[$(start_column)G$(rail)\e[1G", color = :light_black)
-                    print(io, bb_guard_rail)
-                    ssa_guard = " "^(maxlength_idx + 4 + (i - 1))
-                    entry_label = "$(ssa_guard)$(entry.method) at $(entry.file):$(entry.line) "
-                    hline = string("─"^(start_column-length(entry_label)-length(bb_guard_rail)+max_depth-i), "┐")
-                    printstyled(io, string(entry_label, hline), "\n"; color=:light_black)
-                    bb_guard_rail = bb_guard_rail_cont
-                end
-            end
-            printstyled(io, "\e[$(start_column)G$(rail)\e[1G", color = :light_black)
-            last_stack = stack
-        else
-            annotation = loc_annotations[idx]
-            loc_method = loc_methods[idx]
-            lineno = loc_lineno[idx]
-            # Print location information right aligned. If the line below is too long, it'll overwrite this,
-            # but that's what we want.
-            if get(io, :color, false)
-                method_start_column = cols - max_method_width - max_loc_width - 2
-                filler = " "^(max_loc_width-length(annotation))
-                printstyled(io, "\e[$(method_start_column)G$(annotation)$(filler)$(loc_method)\e[1G", color = :light_black)
-            end
-            printstyled(io, lineno, " "^(max_lineno_width-length(lineno)+1); color = :light_black)
-        end
-        idx != last(bbrange) && print(io, bb_guard_rail)
-        if idx == last(bbrange) # print separator
-            if idx == first(bbrange)
-                print(io, bb_start_str)
-            elseif idx == last(bbrange)
-                print(io, "└", "─"^(1 + max_bb_idx_size), " ")
-            else
-                print(io, "│  ", " "^max_bb_idx_size)
-            end
+            printstyled(io, "│  ", " "^max_bb_idx_size, color=:light_black)
         end
         if idx == last(bbrange)
             bb_idx += 1
