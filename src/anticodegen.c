@@ -18,8 +18,9 @@ JL_DLLEXPORT void jl_clear_malloc_data(void) UNAVAILABLE
 JL_DLLEXPORT void jl_extern_c(jl_function_t *f, jl_value_t *rt, jl_value_t *argt, char *name) UNAVAILABLE
 JL_DLLEXPORT void *jl_function_ptr(jl_function_t *f, jl_value_t *rt, jl_value_t *argt) UNAVAILABLE
 JL_DLLEXPORT jl_value_t *jl_dump_method_asm(jl_method_instance_t *linfo, size_t world, int raw_mc, char getwrapper, const char* asm_variant, const jl_cgparams_t params) UNAVAILABLE
-JL_DLLEXPORT const jl_value_t *jl_dump_function_ir(void *f, uint8_t strip_ir_metadata, uint8_t dump_module) UNAVAILABLE
 JL_DLLEXPORT void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, char getwrapper, char optimize, const jl_cgparams_t params) UNAVAILABLE
+JL_DLLEXPORT const jl_value_t *jl_dump_llvm_ir(void *f, uint8_t strip_ir_metadata, uint8_t dump_module) UNAVAILABLE
+JL_DLLEXPORT const jl_value_t *jl_dump_llvm_asm(void *f, const char *asm_variant, int optlevel) UNAVAILABLE
 
 
 JL_DLLEXPORT void *jl_LLVMCreateDisasm(const char *TripleName, void *DisInfo, int TagType, void *GetOpInfo, void *SymbolLookUp) UNAVAILABLE

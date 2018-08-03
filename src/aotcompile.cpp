@@ -41,11 +41,13 @@
 #include <llvm/Bitcode/BitcodeWriterPass.h>
 #include "llvm/Object/ArchiveWriter.h"
 #include <llvm/IR/IRPrintingPasses.h>
+#include <llvm/IR/DIBuilder.h>
 #include <llvm/CodeGen/AsmPrinter.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetPassConfig.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCStreamer.h>
+#include "llvm/Support/YAMLTraits.h"
 #if JL_LLVM_VERSION < 50000
 #include <llvm/CodeGen/Passes.h>
 #endif
@@ -771,7 +773,7 @@ void jl_add_optimization_passes(LLVMPassManagerRef PM, int opt_level) {
 // --- native code info, and dump function to IR and ASM ---
 // Get pointer to llvm::Function instance, compiling if necessary
 // for use in reflection from Julia.
-// this is paired with jl_dump_function_ir, jl_dump_method_asm, jl_dump_llvm_asm in particular ways:
+// this is paired with jl_dump_llvm_ir and jl_dump_llvm_asm in particular ways:
 // misuse will leak memory or cause read-after-free
 extern "C" JL_DLLEXPORT
 void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, char getwrapper, char optimize, const jl_cgparams_t params)
@@ -904,28 +906,51 @@ addPassesToGenerateCode(LLVMTargetMachine *TM, PassManagerBase &PM) {
 #endif
 
 void jl_strip_llvm_debug(Module *m);
+std::string jl_annotate_llvm_ir(Function *f, StringRef filename);
 
 
 // get a native assembly for llvm::Function
 extern "C" JL_DLLEXPORT
-jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant)
+jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
 {
     // precise printing via IR assembler
     SmallVector<char, 4096> ObjBufferSV;
+    SmallVector<char, 4096> RemarksBufferSV;
+    std::string ir;
     { // scope block
         Function *f = (Function*)F;
-        llvm::raw_svector_ostream asmfile(ObjBufferSV);
         assert(!f->isDeclaration());
         std::unique_ptr<Module> m(f->getParent());
         for (auto &f2 : m->functions()) {
             if (f != &f2 && !f->isDeclaration())
                 f2.deleteBody();
         }
-        jl_strip_llvm_debug(m.get());
+        //// eliminate all line info, since it prints extra output noise
+        //jl_strip_llvm_debug(m.get());
+        //
+        //// strip inlining line info, since the debug printing
+        //// and annotation YAML pass aren't able to handle it well
+        //for (auto &BB : *f) {
+        //    for (auto &I : BB) {
+        //        DILocation *DI = I.getDebugLoc();
+        //        if (DI && DI->getInlinedAt()) {
+        //            while (DI->getInlinedAt())
+        //                DI = DI->getInlinedAt();
+        //            I.setDebugLoc(DI);
+        //        }
+        //    }
+        //}
+        //
+        //// convert line numbers from source to IR form
+        ir = jl_annotate_llvm_ir(f, "llvmir.ll");
         legacy::PassManager PM;
+        addTargetPasses(&PM, jl_TargetMachine);
+        addOptimizationPasses(&PM, optlevel < 0 ? jl_options.opt_level : optlevel);
         LLVMTargetMachine *TM = static_cast<LLVMTargetMachine*>(jl_TargetMachine);
         MCContext *Context = addPassesToGenerateCode(TM, PM);
         if (Context) {
+            llvm::raw_svector_ostream asmfile(ObjBufferSV);
+            llvm::raw_svector_ostream diagnostics_remarks(RemarksBufferSV);
 #if JL_LLVM_VERSION >= 60000
             const MCSubtargetInfo &STI = *TM->getMCSubtargetInfo();
 #endif
@@ -951,15 +976,26 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant)
             auto FOut = llvm::make_unique<formatted_raw_ostream>(asmfile);
             MCCodeEmitter *MCE = nullptr;
             std::unique_ptr<MCStreamer> S(TM->getTarget().createAsmStreamer(
-                *Context, std::move(FOut), true,
-                true, InstPrinter, MCE, MAB, false));
+                *Context, std::move(FOut), /*iIsVerboseAsm*/true,
+                /*UseDwarfDirectory*/true, InstPrinter, MCE, MAB, /*ShowInst*/false));
             AsmPrinter *Printer =
                 TM->getTarget().createAsmPrinter(*TM, std::move(S));
             if (Printer) {
                 PM.add(Printer);
+                f->getContext().setDiagnosticsOutputFile(llvm::make_unique<yaml::Output>(diagnostics_remarks));
                 PM.run(*m);
+                f->getContext().setDiagnosticsOutputFile(nullptr);
             }
         }
     }
-    return jl_pchar_to_string(ObjBufferSV.data(), ObjBufferSV.size());
+    jl_value_t *obj_ir = NULL;
+    jl_value_t *obj_asm = NULL;
+    jl_value_t *remarks_yaml = NULL;
+    JL_GC_PUSH3(&obj_asm, &obj_ir, &remarks_yaml);
+    obj_ir = jl_pchar_to_string(ir.data(), ir.size());
+    obj_asm = jl_pchar_to_string(ObjBufferSV.data(), ObjBufferSV.size());
+    remarks_yaml = jl_pchar_to_string(RemarksBufferSV.data(), RemarksBufferSV.size());
+    jl_value_t *analysis = (jl_value_t*)jl_svec(3, obj_asm, obj_ir, remarks_yaml);
+    JL_GC_POP();
+    return analysis;
 }

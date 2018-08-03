@@ -565,8 +565,8 @@ JL_DLLEXPORT jl_value_t *jl_dump_method_asm(jl_method_instance_t *linfo, size_t 
         int raw_mc, char getwrapper, const char* asm_variant);
 JL_DLLEXPORT void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, char getwrapper, char optimize, const jl_cgparams_t params);
 JL_DLLEXPORT jl_value_t *jl_dump_fptr_asm(uint64_t fptr, int raw_mc, const char* asm_variant);
-JL_DLLEXPORT jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant);
-JL_DLLEXPORT jl_value_t *jl_dump_function_ir(void *f, char strip_ir_metadata, char dump_module);
+JL_DLLEXPORT jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel);
+JL_DLLEXPORT jl_value_t *jl_dump_llvm_ir(void *f, char strip_ir_metadata, char dump_module);
 
 void *jl_create_native(jl_array_t *methods);
 void jl_dump_native(void *native_code,

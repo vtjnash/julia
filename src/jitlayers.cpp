@@ -323,7 +323,7 @@ jl_value_t *jl_dump_method_asm(jl_method_instance_t *linfo, size_t world,
     // whatever, that didn't work - use the assembler output instead
     if (raw_mc) // this flag doesn't really work anyways
         return (jl_value_t*)jl_pchar_to_array("", 0);
-    return jl_dump_llvm_asm(jl_get_llvmf_defn(linfo, world, getwrapper, true, jl_default_cgparams), asm_variant);
+    return jl_svecref(jl_dump_llvm_asm(jl_get_llvmf_defn(linfo, world, getwrapper, false, jl_default_cgparams), asm_variant, -1), 0);
 }
 
 // ------------------------ TEMPORARILY COPIED FROM LLVM -----------------

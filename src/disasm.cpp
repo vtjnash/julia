@@ -61,6 +61,7 @@
 #include "llvm/Support/FormattedStream.h"
 #include <llvm/ExecutionEngine/JITEventListener.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/DIBuilder.h>
 #include <llvm/DebugInfo/DIContext.h>
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include <llvm/IR/DebugInfo.h>
@@ -204,16 +205,28 @@ void DILineInfoPrinter::emit_lineinfo(raw_ostream &Out, std::vector<DILineInfo> 
 
 // adaptor class for printing line numbers before llvm IR lines
 class LineNumberAnnotatedWriter : public AssemblyAnnotationWriter {
+    // avoid updating the LinePrinter if obviously nothing changed
     DILocation *InstrLoc = nullptr;
+    // this tracks the state of the line number printing
     DILineInfoPrinter LinePrinter{"; ", false};
-    DenseMap<const Instruction *, DILocation *> DebugLoc;
+    // this stores the Function -> Subprogram mapping before we cleared it
     DenseMap<const Function *, DISubprogram *> Subprogram;
+    // this stores the Instruction -> DebugInfo mapping before we cleared it
+    DenseMap<const Instruction *, DILocation *> DebugLoc;
+    // this (when reversed) allows mapping from line numbers in the output file back to the originating Instruction,
+    // as if our input was just parsed from the file we are outputting
+    DenseMap<const Value *, unsigned> OutputLineNo;
 public:
     LineNumberAnnotatedWriter() {}
     virtual void emitFunctionAnnot(const Function *, formatted_raw_ostream &);
     virtual void emitInstructionAnnot(const Instruction *, formatted_raw_ostream &);
     virtual void emitBasicBlockEndAnnot(const BasicBlock *, formatted_raw_ostream &);
     // virtual void printInfoComment(const Value &, formatted_raw_ostream &) {}
+
+    unsigned getOutputLine(const Value *I) const {
+        auto it = OutputLineNo.find(I);
+        return it == OutputLineNo.end() ? 0 : it->second;
+    }
 
     void addSubprogram(const Function *F, DISubprogram *SP)
     {
@@ -244,6 +257,8 @@ void LineNumberAnnotatedWriter::emitFunctionAnnot(
         DI.Line = FuncLoc->getLine();
         LinePrinter.emit_lineinfo(Out, DIvec);
     }
+    Out.flush();
+    OutputLineNo[F] = Out.getLine();
 }
 
 void LineNumberAnnotatedWriter::emitInstructionAnnot(
@@ -271,6 +286,8 @@ void LineNumberAnnotatedWriter::emitInstructionAnnot(
         LinePrinter.emit_lineinfo(Out, DIvec);
     }
     Out << LinePrinter.inlining_indent(" ");
+    Out.flush();
+    OutputLineNo[I] = Out.getLine();
 }
 
 void LineNumberAnnotatedWriter::emitBasicBlockEndAnnot(
@@ -339,37 +356,87 @@ void jl_strip_llvm_debug(Module *m)
 // print an llvm IR acquired from jl_get_llvmf
 // warning: this takes ownership of, and destroys, f->getParent()
 extern "C" JL_DLLEXPORT
-jl_value_t *jl_dump_function_ir(void *f, char strip_ir_metadata, char dump_module)
+jl_value_t *jl_dump_llvm_ir(void *f, char strip_ir_metadata, char dump_module)
 {
-    std::string code;
-    llvm::raw_string_ostream stream(code);
-
     Function *llvmf = dyn_cast_or_null<Function>((Function*)f);
     if (!llvmf || (!llvmf->isDeclaration() && !llvmf->getParent()))
-        jl_error("jl_dump_function_ir: Expected Function* in a temporary Module");
+        jl_error("jl_dump_llvm_ir: Expected Function* in a temporary Module");
 
     JL_LOCK(&codegen_lock); // Might GC
-    LineNumberAnnotatedWriter AAW;
-    if (!llvmf->getParent()) {
-        // print the function declaration as-is
-        llvmf->print(stream, &AAW);
-        delete llvmf;
-    }
-    else {
-        Module *m = llvmf->getParent();
-        if (strip_ir_metadata)
-            jl_strip_llvm_debug(m, true, &AAW);
-        if (dump_module) {
-            m->print(stream, &AAW);
+    std::string code;
+    { // scope block
+        llvm::raw_string_ostream stream(code);
+        LineNumberAnnotatedWriter AAW;
+        if (!llvmf->getParent()) {
+            // print the function declaration as-is
+            llvmf->print(stream, &AAW);
+            delete llvmf;
         }
         else {
-            llvmf->print(stream, &AAW);
+            Module *m = llvmf->getParent();
+            if (strip_ir_metadata)
+                jl_strip_llvm_debug(m, true, &AAW);
+            if (dump_module) {
+                m->print(stream, &AAW);
+            }
+            else {
+                llvmf->print(stream, &AAW);
+            }
+            delete m;
         }
-        delete m;
     }
     JL_UNLOCK(&codegen_lock); // Might GC
 
-    return jl_pchar_to_string(stream.str().data(), stream.str().size());
+    return jl_pchar_to_string(code.data(), code.size());
+}
+
+//std::tuple<std::string, DenseMap<Instruction *, unsigned>>
+std::string jl_annotate_llvm_ir(Function *f, StringRef filename)
+{
+    std::string code;
+    LineNumberAnnotatedWriter AAW;
+    JL_LOCK(&codegen_lock); // Might GC
+    { // scope block
+        llvm::raw_string_ostream stream(code);
+        Module &M = *f->getParent();
+        jl_strip_llvm_debug(&M, false, &AAW);
+        M.print(stream, &AAW);
+        for (auto &F : M) {
+            if (F.isDeclaration())
+                continue;
+            // TODO: actually should make a new DISubprogram
+            DIBuilder dbuilder(M);
+            DISubroutineType *jl_di_func_null_sig = dbuilder.createSubroutineType(
+                dbuilder.getOrCreateTypeArray(None));
+            DIFile *difile = dbuilder.createFile(filename, ".");
+            DICompileUnit *CU = dbuilder.createCompileUnit(0x01, difile, "julia", true, "", 0);
+            unsigned line = AAW.getOutputLine(&F);
+            DISubprogram *FuncLoc = dbuilder.createFunction(
+                    CU,
+                    f->getName(),     // Name
+                    f->getName(),     // LinkageName
+                    difile,           // File
+                    line,             // LineNo
+                    jl_di_func_null_sig, // Ty
+                    false,            // isLocalToUnit
+                    true,             // isDefinition
+                    line,             // ScopeLine
+                    DINode::FlagZero, // Flags
+                    true,             // isOptimized
+                    nullptr);         // Template Parameters
+            F.setSubprogram(FuncLoc);
+            dbuilder.finalize();
+            for (auto &BB : F) {
+                for (auto &I : BB) {
+                    unsigned line = AAW.getOutputLine(&I);
+                    assert(line && "Instruction missing from output!");
+                    I.setDebugLoc(DebugLoc::get(line, 0, FuncLoc, NULL));
+                }
+            }
+        }
+    }
+    JL_UNLOCK(&codegen_lock); // Might GC
+    return code;
 }
 
 static void jl_dump_asm_internal(

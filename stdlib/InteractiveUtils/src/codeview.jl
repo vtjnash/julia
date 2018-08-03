@@ -65,7 +65,8 @@ function _dump_function(@nospecialize(f), @nospecialize(t), native::Bool, wrappe
     linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, ti, env, world)
     # get the code for it
     if native
-        str = _dump_function_linfo_native(linfo, world, wrapper, syntax)
+        #str = _dump_function_linfo_native(linfo, world, wrapper, syntax)
+        str = _dump_function_linfo_asm(linfo, world, wrapper, syntax, params)
     else
         str = _dump_function_linfo_llvm(linfo, world, wrapper, strip_ir_metadata, dump_module, optimize, params)
     end
@@ -78,8 +79,8 @@ function _dump_function_linfo_native(linfo::Core.MethodInstance, world::UInt, wr
     if syntax != :att && syntax != :intel
         throw(ArgumentError("'syntax' must be either :intel or :att"))
     end
-    str = ccall(:jl_dump_method_asm, Ref{String},
-                (Any, UInt, Cint, Bool, Ptr{UInt8}), linfo, world, 0, wrapper, syntax)
+    str = ccall(:jl_dump_method_asm, Any, (Any, UInt, Cint, Bool, Ptr{UInt8}),
+        linfo, world, 0, wrapper, syntax)::String
     return str
 end
 
@@ -89,10 +90,27 @@ function _dump_function_linfo_llvm(
         optimize::Bool=true, params::CodegenParams=CodegenParams())
     llvmf = ccall(:jl_get_llvmf_defn, Ptr{Cvoid}, (Any, UInt, Bool, Bool, CodegenParams), linfo, world, wrapper, optimize, params)
     llvmf == C_NULL && error("could not compile the specified method")
-    str = ccall(:jl_dump_function_ir, Ref{String},
-                (Ptr{Cvoid}, Bool, Bool), llvmf, strip_ir_metadata, dump_module)
+    str = ccall(:jl_dump_llvm_ir, Any, (Ptr{Cvoid}, Bool, Bool),
+        llvmf, strip_ir_metadata, dump_module)::String
     return str
 end
+
+function _dump_function_linfo_asm(
+        linfo::Core.MethodInstance, world::UInt, wrapper::Bool,
+        syntax::Symbol, params::CodegenParams=CodegenParams())
+    if syntax != :att && syntax != :intel
+        throw(ArgumentError("'syntax' must be either :intel or :att"))
+    end
+    llvmf = ccall(:jl_get_llvmf_defn, Ptr{Cvoid}, (Any, UInt, Bool, Bool, CodegenParams), linfo, world, wrapper, false, params)
+    llvmf == C_NULL && error("could not compile the specified method")
+    asm, ir, comments = ccall(:jl_dump_llvm_asm, Any, (Ptr{Cvoid}, Ptr{UInt8}, Cint),
+        llvmf, syntax, -1)::Core.SimpleVector
+    println(ir)
+    println(comments)
+    println(asm)
+    return ""
+end
+
 
 """
     code_llvm([io=stdout,], f, types)
