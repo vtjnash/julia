@@ -960,7 +960,6 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant)
                 PM.run(*m);
             }
         }
-        delete f;
     }
     return jl_pchar_to_string(ObjBufferSV.data(), ObjBufferSV.size());
 }
