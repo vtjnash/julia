@@ -254,8 +254,7 @@ function isdefined_tfunc(@nospecialize(args...))
     end
     a1 = unwrap_unionall(a1)
     if isa(a1, DataType) && !a1.abstract
-        if a1 <: Array # TODO update when deprecation is removed
-        elseif a1 === Module
+        if a1 === Module
             length(args) == 2 || return Bottom
             sym = args[2]
             Symbol <: widenconst(sym) || return Bottom
@@ -289,8 +288,8 @@ function isdefined_tfunc(@nospecialize(args...))
     end
     Bool
 end
-# TODO change INT_INF to 2 when deprecation is removed
-add_tfunc(isdefined, 1, INT_INF, isdefined_tfunc, 1)
+
+add_tfunc(isdefined, 1, 2, isdefined_tfunc, 1)
 function sizeof_nothrow(@nospecialize(x))
     if isa(x, Const)
         if !isa(x, Type)
@@ -329,16 +328,11 @@ function sizeof_tfunc(@nospecialize(x),)
     return Int
 end
 add_tfunc(Core.sizeof, 1, 1, sizeof_tfunc, 0)
-old_nfields(@nospecialize x) = length((isa(x, DataType) ? x : typeof(x)).types)
 add_tfunc(nfields, 1, 1,
     function (@nospecialize(x),)
-        isa(x, Const) && return Const(old_nfields(x.val))
-        isa(x, Conditional) && return Const(old_nfields(Bool))
-        if isType(x)
-            # TODO: remove with deprecation in builtins.c for nfields(::Type)
-            p = x.parameters[1]
-            issingletontype(p) && return Const(old_nfields(p))
-        elseif isa(x, DataType) && !x.abstract && !(x.name === Tuple.name && isvatuple(x)) && x !== DataType
+        isa(x, Const) && return Const(nfields(x.val))
+        isa(x, Conditional) && return Const(0)
+        if isa(x, DataType) && !x.abstract && !(x.name === Tuple.name && isvatuple(x))
             if !(x.name === _NAMEDTUPLE_NAME && !isconcretetype(x))
                 return Const(length(x.types))
             end

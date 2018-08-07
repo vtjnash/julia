@@ -468,12 +468,19 @@ static void jl_method_set_source(jl_method_t *m, jl_code_info_t *src)
     uint8_t j;
     uint8_t called = 0;
     int gen_only = 0;
-    for (j = 1; j < m->nargs && j <= 8; j++) {
+    for (j = 1; j < m->nargs && j <= sizeof(m->nospecialize) * 8; j++) {
         jl_value_t *ai = jl_array_ptr_ref(src->slotnames, j);
-        if (ai == (jl_value_t*)unused_sym)
+        if (ai == (jl_value_t*)unused_sym) {
+            // TODO: enable this. currently it triggers a bug on arguments like
+            // ::Type{>:Missing}
+            //int sn = j-1;
+            //m->nospecialize |= (1 << sn);
             continue;
-        if (jl_array_uint8_ref(src->slotflags, j) & 64)
-            called |= (1 << (j - 1));
+        }
+        if (j <= 8) {
+            if (jl_array_uint8_ref(src->slotflags, j) & 64)
+                called |= (1 << (j - 1));
+        }
     }
     m->called = called;
     m->pure = src->pure;
@@ -754,18 +761,6 @@ JL_DLLEXPORT void jl_method_def(jl_svec_t *argdata,
     jl_value_t *argtype = NULL;
     JL_GC_PUSH3(&f, &m, &argtype);
     size_t i, na = jl_svec_len(atypes);
-    int32_t nospec = 0;
-    for (i = 1; i < na; i++) {
-        jl_value_t *ti = jl_svecref(atypes, i);
-        if (ti == jl_ANY_flag ||
-            (jl_is_vararg_type(ti) && jl_tparam0(jl_unwrap_unionall(ti)) == jl_ANY_flag)) {
-            jl_depwarn("`x::ANY` is deprecated, use `@nospecialize(x)` instead.",
-                       (jl_value_t*)jl_symbol("ANY"));
-            if (i <= 32)
-                nospec |= (1 << (i - 1));
-            jl_svecset(atypes, i, jl_substitute_var(ti, (jl_tvar_t*)jl_ANY_flag, (jl_value_t*)jl_any_type));
-        }
-    }
 
     argtype = (jl_value_t*)jl_apply_tuple_type(atypes);
     for (i = jl_svec_len(tvars); i > 0; i--) {
@@ -792,7 +787,6 @@ JL_DLLEXPORT void jl_method_def(jl_svec_t *argdata,
         f = jl_new_code_info_from_ast((jl_expr_t*)f);
     }
     m = jl_new_method(f, name, module, (jl_tupletype_t*)argtype, nargs, isva, tvars);
-    m->nospecialize |= nospec;
 
     if (jl_has_free_typevars(argtype)) {
         jl_exceptionf(jl_argumenterror_type,

@@ -55,14 +55,7 @@ julia> A
   0.0       0.0  -2.0  0.0  0.0
 ```
 """
-function svd!(A::StridedMatrix{T}; full::Bool = false, thin::Union{Bool,Nothing} = nothing) where T<:BlasFloat
-    # DEPRECATION TODO: remove deprecated thin argument and associated logic after 0.7
-    if thin != nothing
-        Base.depwarn(string("the `thin` keyword argument in `svd!(A; thin = $(thin))` has ",
-            "been deprecated in favor of `full`, which has the opposite meaning, ",
-            "e.g. `svd!(A; full = $(!thin))`."), :svd!)
-        full::Bool = !thin
-    end
+function svd!(A::StridedMatrix{T}; full::Bool = false) where T<:BlasFloat
     m,n = size(A)
     if m == 0 || n == 0
         u,s,vt = (Matrix{T}(I, m, full ? m : n), real(zeros(T,0)), Matrix{T}(I, n, n))
@@ -109,35 +102,14 @@ julia> F.U * Diagonal(F.S) * F.Vt
  0.0  2.0  0.0  0.0  0.0
 ```
 """
-function svd(A::StridedVecOrMat{T}; full::Bool = false, thin::Union{Bool,Nothing} = nothing) where T
-    # DEPRECATION TODO: remove deprecated thin argument and associated logic after 0.7
-    if thin != nothing
-        Base.depwarn(string("the `thin` keyword argument in `svd(A; thin = $(thin))` has ",
-            "been deprecated in favor of `full`, which has the opposite meaning, ",
-            "e.g. `svd(A; full = $(!thin))`."), :svd)
-        full::Bool = !thin
-    end
+function svd(A::StridedVecOrMat{T}; full::Bool = false) where T
     svd!(copy_oftype(A, eigtype(T)), full = full)
 end
-function svd(x::Number; full::Bool = false, thin::Union{Bool,Nothing} = nothing)
-    # DEPRECATION TODO: remove deprecated thin argument and associated logic after 0.7
-    if thin != nothing
-        Base.depwarn(string("the `thin` keyword argument in `svd(A; thin = $(thin))` has ",
-            "been deprecated in favor of `full`, which has the opposite meaning, ",
-            "e.g. `svd(A; full = $(!thin))`."), :svd)
-        full::Bool = !thin
-    end
-    return SVD(x == 0 ? fill(one(x), 1, 1) : fill(x/abs(x), 1, 1), [abs(x)], fill(one(x), 1, 1))
+function svd(x::Number; full::Bool = false)
+    SVD(x == 0 ? fill(one(x), 1, 1) : fill(x/abs(x), 1, 1), [abs(x)], fill(one(x), 1, 1))
 end
-function svd(x::Integer; full::Bool = false, thin::Union{Bool,Nothing} = nothing)
-    # DEPRECATION TODO: remove deprecated thin argument and associated logic after 0.7
-    if thin != nothing
-        Base.depwarn(string("the `thin` keyword argument in `svd(A; thin = $(thin))` has ",
-            "been deprecated in favor of `full`, which has the opposite meaning, ",
-            "e.g. `svd(A; full = $(!thin))`."), :svd)
-        full::Bool = !thin
-    end
-    return svd(float(x), full = full)
+function svd(x::Integer; full::Bool = false)
+    svd(float(x), full = full)
 end
 function svd(A::Adjoint; full::Bool = false)
     s = svd(A.parent, full = full)
@@ -223,6 +195,9 @@ function ldiv!(A::SVD{T}, B::StridedVecOrMat) where T
     k = searchsortedlast(A.S, eps(real(T))*A.S[1], rev=true)
     view(A.Vt,1:k,:)' * (view(A.S,1:k) .\ (view(A.U,:,1:k)' * B))
 end
+
+size(A::SVD, dim::Integer) = dim == 1 ? size(A.U, dim) : size(A.Vt, dim)
+size(A::SVD) = (size(A, 1), size(A, 2))
 
 # Generalized svd
 struct GeneralizedSVD{T,S} <: Factorization{T}

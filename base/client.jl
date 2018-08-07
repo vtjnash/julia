@@ -90,12 +90,6 @@ function ip_matches_func(ip, func::Symbol)
 end
 
 function display_error(io::IO, er, bt)
-    if !isempty(bt)
-        st = stacktrace(bt)
-        if !isempty(st)
-            io = redirect(io, log_error_to, st[1])
-        end
-    end
     printstyled(io, "ERROR: "; bold=true, color=Base.error_color())
     # remove REPL-related frames from interactive printing
     eval_ind = findlast(addr->ip_matches_func(addr, :eval), bt)
@@ -162,10 +156,6 @@ function parse_input_line(s::String; filename::String="none", depwarn=true)
             ccall(:jl_parse_input_line, Any, (Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t),
                   s, sizeof(s), filename, sizeof(filename))
         end
-    end
-    if ex isa Symbol && all(isequal('_'), string(ex))
-        # remove with 0.7 deprecation
-        Meta.lower(Main, ex)  # to get possible warning about using _ as an rvalue
     end
     return ex
 end
@@ -397,7 +387,6 @@ end
 baremodule MainInclude
 include(fname::AbstractString) = Main.Base.include(Main, fname)
 eval(x) = Core.eval(Main, x)
-Main.Base.@deprecate eval(m, x) Core.eval(m, x)
 end
 
 """

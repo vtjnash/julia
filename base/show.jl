@@ -186,8 +186,7 @@ end
 
 convert(::Type{IOContext}, io::IO) = IOContext(unwrapcontext(io)...)
 
-# rename to IOContext when deprecation of `IOContext(io::IO; kws...)` is removed
-_IOContext(io::IO) = convert(IOContext, io)
+IOContext(io::IO) = convert(IOContext, io)
 
 function IOContext(io::IO, KV::Pair)
     io0, d = unwrapcontext(io)
@@ -564,6 +563,7 @@ function show(io::IO, tn::Core.TypeName)
 end
 
 show(io::IO, ::Nothing) = print(io, "nothing")
+print(io::IO, ::Nothing) = throw(ArgumentError("`nothing` should not be printed; use `show`, `repr`, or custom output instead."))
 show(io::IO, b::Bool) = print(io, b ? "true" : "false")
 show(io::IO, n::Signed) = (write(io, string(n)); nothing)
 show(io::IO, n::Unsigned) = print(io, "0x", string(n, pad = sizeof(n)<<1, base = 16))
@@ -761,7 +761,7 @@ const uni_ops = Set{Symbol}([:(+), :(-), :(!), :(¬), :(~), :(<:), :(>:), :(√)
 const expr_infix_wide = Set{Symbol}([
     :(=), :(+=), :(-=), :(*=), :(/=), :(\=), :(^=), :(&=), :(|=), :(÷=), :(%=), :(>>>=), :(>>=), :(<<=),
     :(.=), :(.+=), :(.-=), :(.*=), :(./=), :(.\=), :(.^=), :(.&=), :(.|=), :(.÷=), :(.%=), :(.>>>=), :(.>>=), :(.<<=),
-    :(&&), :(||), :(<:), :($=), :(⊻=)]) # `$=` should be removed after deprecation is removed, issue #18977
+    :(&&), :(||), :(<:), :($=), :(⊻=)])
 const expr_infix = Set{Symbol}([:(:), :(->), Symbol("::")])
 const expr_infix_any = union(expr_infix, expr_infix_wide)
 const expr_calls  = Dict(:call => ('(',')'), :calldecl => ('(',')'),
@@ -1401,7 +1401,7 @@ function show_unquoted(io::IO, ex::Expr, indent::Int, prec::Int)
         parens && print(io, ")")
 
     # transpose
-    elseif (head === Symbol('\'') || head === Symbol(".'")) && length(args) == 1
+    elseif head === Symbol('\'') && length(args) == 1
         if isa(args[1], Symbol)
             show_unquoted(io, args[1])
         else

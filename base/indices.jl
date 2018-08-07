@@ -231,8 +231,7 @@ indexing behaviors. This must return either an `Int` or an `AbstractArray` of
 `Int`s.
 """
 to_index(i::Integer) = convert(Int,i)::Int
-# TODO: Enable this new definition after the deprecations introduced in 0.7 are removed
-# to_index(i::Bool) = throw(ArgumentError("invalid index: $i of type $(typeof(i))"))
+to_index(i::Bool) = throw(ArgumentError("invalid index: $i of type $(typeof(i))"))
 to_index(I::AbstractArray{Bool}) = LogicalIndex(I)
 to_index(I::AbstractArray) = I
 to_index(I::AbstractArray{<:Union{AbstractArray, Colon}}) =
@@ -390,11 +389,11 @@ function getindex(iter::LinearIndices, i::AbstractRange{<:Integer})
 end
 # More efficient iteration — predominantly for non-vector LinearIndices
 # but one-dimensional LinearIndices must be special-cased to support OffsetArrays
-iterate(iter::LinearIndices{1}, s...) = iterate(iter.indices[1], s...)
+iterate(iter::LinearIndices{1}, s...) = iterate(axes1(iter.indices[1]), s...)
 iterate(iter::LinearIndices, i=1) = i > length(iter) ? nothing : (i, i+1)
 
 # Needed since firstindex and lastindex are defined in terms of LinearIndices
 first(iter::LinearIndices) = 1
-first(iter::LinearIndices{1}) = (@_inline_meta; first(iter.indices[1]))
+first(iter::LinearIndices{1}) = (@_inline_meta; first(axes1(iter.indices[1])))
 last(iter::LinearIndices) = (@_inline_meta; length(iter))
-last(iter::LinearIndices{1}) = (@_inline_meta; last(iter.indices[1]))
+last(iter::LinearIndices{1}) = (@_inline_meta; last(axes1(iter.indices[1])))

@@ -632,11 +632,10 @@ function _setindex!(l::IndexStyle, A::AbstractArray, x, I::Union{Real, AbstractA
     A
 end
 
-_iterable(X::AbstractArray, I...) = X
 @generated function _unsafe_setindex!(::IndexStyle, A::AbstractArray, x, I::Union{Real,AbstractArray}...)
     N = length(I)
     quote
-        x′ = unalias(A, _iterable(x, I...))
+        x′ = unalias(A, x)
         @nexprs $N d->(I_d = unalias(A, I[d]))
         idxlens = @ncall $N index_lengths I
         @ncall $N setindex_shape_check x′ (d->idxlens[d])
@@ -684,11 +683,7 @@ julia> diff(vec(a))
  12
 ```
 """
-function diff(A::AbstractMatrix; dims::Union{Integer,Nothing}=nothing)
-    if dims === nothing
-        depwarn("`diff(A::AbstractMatrix)` is deprecated, use `diff(A, dims=1)` instead.", :diff)
-        dims = 1
-    end
+function diff(A::AbstractMatrix; dims::Integer)
     if dims == 1
         [A[i+1,j] - A[i,j] for i=1:size(A,1)-1, j=1:size(A,2)]
     elseif dims == 2

@@ -929,7 +929,6 @@ STATIC_INLINE void *jl_get_frame_addr(void)
 }
 
 JL_DLLEXPORT jl_array_t *jl_array_cconvert_cstring(jl_array_t *a);
-JL_DLLEXPORT void jl_depwarn_partial_indexing(size_t n);
 void jl_depwarn(const char *msg, jl_value_t *sym);
 
 // Log `msg` to the current logger by calling CoreLogging.logmsg_shim() on the
@@ -946,8 +945,7 @@ extern jl_sym_t *call_sym;    extern jl_sym_t *invoke_sym;
 extern jl_sym_t *empty_sym;   extern jl_sym_t *top_sym;
 extern jl_sym_t *module_sym;  extern jl_sym_t *slot_sym;
 extern jl_sym_t *export_sym;  extern jl_sym_t *import_sym;
-extern jl_sym_t *importall_sym; extern jl_sym_t *toplevel_sym;
-extern jl_sym_t *quote_sym;   extern jl_sym_t *amp_sym;
+extern jl_sym_t *toplevel_sym; extern jl_sym_t *quote_sym;
 extern jl_sym_t *line_sym;    extern jl_sym_t *jl_incomplete_sym;
 extern jl_sym_t *goto_sym;    extern jl_sym_t *goto_ifnot_sym;
 extern jl_sym_t *return_sym;  extern jl_sym_t *unreachable_sym;

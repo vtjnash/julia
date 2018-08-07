@@ -1202,16 +1202,6 @@ mutable struct UserPasswordCredential <: AbstractCredential
     function UserPasswordCredential(user::AbstractString="", pass::Union{AbstractString, Base.SecretBuffer}="")
         new(user, pass)
     end
-
-    # Deprecated constructors
-    function UserPasswordCredential(u::AbstractString,p::AbstractString,prompt_if_incorrect::Bool)
-        Base.depwarn(string(
-            "`UserPasswordCredential` no longer supports the `prompt_if_incorrect` parameter. ",
-            "Use the `allow_prompt` keyword in supported by `LibGit2.CredentialPayload` ",
-            "instead."), :UserPasswordCredential)
-        UserPasswordCredential(u, p)
-    end
-    UserPasswordCredential(prompt_if_incorrect::Bool) = UserPasswordCredential("","",prompt_if_incorrect)
 end
 
 function Base.setproperty!(cred::UserPasswordCredential, name::Symbol, value)
@@ -1247,17 +1237,6 @@ mutable struct SSHCredential <: AbstractCredential
                            prvkey="", pubkey="")
         new(user, pass, prvkey, pubkey)
     end
-
-    # Deprecated constructors
-    function SSHCredential(u::AbstractString,p::AbstractString,prvkey::AbstractString,pubkey::AbstractString,prompt_if_incorrect::Bool)
-        Base.depwarn(string(
-            "`SSHCredential` no longer supports the `prompt_if_incorrect` parameter. ",
-            "Use the `allow_prompt` keyword in supported by `LibGit2.CredentialPayload` ",
-            "instead."), :SSHCredential)
-        SSHCredential(u, p, prvkey, pubkey)
-    end
-    SSHCredential(u::AbstractString, p::AbstractString, prompt_if_incorrect::Bool) = SSHCredential(u,p,"","",prompt_if_incorrect)
-    SSHCredential(prompt_if_incorrect::Bool) = SSHCredential("","","","",prompt_if_incorrect)
 end
 
 function Base.setproperty!(cred::SSHCredential, name::Symbol, value)
@@ -1303,6 +1282,10 @@ end
 
 function approve(cache::CachedCredentials, cred::AbstractCredential, url::AbstractString)
     cred_id = credential_identifier(url)
+    if haskey(cache.cred, cred_id)
+        # Shred the cached credential we'll be overwriting if it isn't identical
+        cred !== cache.cred[cred_id] && Base.shred!(cache.cred[cred_id])
+    end
     cache.cred[cred_id] = cred
     nothing
 end
@@ -1310,6 +1293,8 @@ end
 function reject(cache::CachedCredentials, cred::AbstractCredential, url::AbstractString)
     cred_id = credential_identifier(url)
     if haskey(cache.cred, cred_id)
+        # Shred the cached credential if it isn't the `cred` passed in
+        cred !== cache.cred[cred_id] && Base.shred!(cache.cred[cred_id])
         delete!(cache.cred, cred_id)
     end
     nothing
@@ -1409,6 +1394,8 @@ function approve(p::CredentialPayload; shred::Bool=true)
     cred = p.credential
     cred === nothing && return  # No credential was used
 
+    # Each `approve` call needs to avoid shredding the passed in credential as we need
+    # the credential information intact for subsequent approve calls.
     if p.cache !== nothing
         approve(p.cache, cred, p.url)
         shred = false  # Avoid wiping `cred` as this would also wipe the cached copy
@@ -1437,6 +1424,8 @@ function reject(p::CredentialPayload; shred::Bool=true)
     cred = p.credential
     cred === nothing && return  # No credential was used
 
+    # Note: each `reject` call needs to avoid shredding the passed in credential as we need
+    # the credential information intact for subsequent reject calls.
     if p.cache !== nothing
         reject(p.cache, cred, p.url)
     end

@@ -294,13 +294,6 @@ static uintptr_t jl_object_id_(jl_value_t *tv, jl_value_t *v)
     }
     if (dt == jl_typename_type)
         return ((jl_typename_t*)v)->hash;
-#ifdef _P64
-    if (v == jl_ANY_flag)
-        return 0x31c472f68ee30bddULL;
-#else
-    if (v == jl_ANY_flag)
-        return 0x8ee30bdd;
-#endif
     if (dt == jl_string_type) {
 #ifdef _P64
         return memhash_seed(jl_string_data(v), jl_string_len(v), 0xedc3b677);
@@ -608,10 +601,6 @@ JL_CALLABLE(jl_f__apply_latest)
 JL_DLLEXPORT jl_value_t *jl_toplevel_eval_in(jl_module_t *m, jl_value_t *ex)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
-    if (m == NULL)
-        m = jl_main_module;
-    if (jl_is_symbol(ex))
-        return jl_eval_global_var(m, (jl_sym_t*)ex);
     if (ptls->in_pure_callback)
         jl_error("eval cannot be used in a generated function");
     jl_value_t *v = NULL;
@@ -650,43 +639,28 @@ JL_CALLABLE(jl_f_isdefined)
 {
     jl_module_t *m = NULL;
     jl_sym_t *s = NULL;
-    JL_NARGSV(isdefined, 1);
-    if (nargs == 1) {
-        JL_TYPECHK(isdefined, symbol, args[0]);
-        s = (jl_sym_t*)args[0];
-    }
-    if (nargs != 2) {
-        JL_NARGS(isdefined, 1, 1);
-        jl_depwarn("`isdefined(:symbol)` is deprecated, "
-                   "use `@isdefined symbol` instead",
-                   (jl_value_t*)jl_symbol("isdefined"));
-        jl_ptls_t ptls = jl_get_ptls_states();
-        m = ptls->current_module;
-    }
-    else {
-        if (!jl_is_module(args[0])) {
-            jl_datatype_t *vt = (jl_datatype_t*)jl_typeof(args[0]);
-            assert(jl_is_datatype(vt));
-            size_t idx;
-            if (jl_is_long(args[1])) {
-                idx = jl_unbox_long(args[1])-1;
-                if (idx >= jl_datatype_nfields(vt))
-                    return jl_false;
-            }
-            else {
-                JL_TYPECHK(isdefined, symbol, args[1]);
-                idx = jl_field_index(vt, (jl_sym_t*)args[1], 0);
-                if ((int)idx == -1)
-                    return jl_false;
-            }
-            return jl_field_isdefined(args[0], idx) ? jl_true : jl_false;
+    JL_NARGS(isdefined, 2, 2);
+    if (!jl_is_module(args[0])) {
+        jl_datatype_t *vt = (jl_datatype_t*)jl_typeof(args[0]);
+        assert(jl_is_datatype(vt));
+        size_t idx;
+        if (jl_is_long(args[1])) {
+            idx = jl_unbox_long(args[1])-1;
+            if (idx >= jl_datatype_nfields(vt))
+                return jl_false;
         }
-        JL_TYPECHK(isdefined, module, args[0]);
-        JL_TYPECHK(isdefined, symbol, args[1]);
-        m = (jl_module_t*)args[0];
-        s = (jl_sym_t*)args[1];
+        else {
+            JL_TYPECHK(isdefined, symbol, args[1]);
+            idx = jl_field_index(vt, (jl_sym_t*)args[1], 0);
+            if ((int)idx == -1)
+                return jl_false;
+        }
+        return jl_field_isdefined(args[0], idx) ? jl_true : jl_false;
     }
-    assert(s);
+    JL_TYPECHK(isdefined, module, args[0]);
+    JL_TYPECHK(isdefined, symbol, args[1]);
+    m = (jl_module_t*)args[0];
+    s = (jl_sym_t*)args[1];
     return jl_boundp(m, s) ? jl_true : jl_false;
 }
 
@@ -863,12 +837,7 @@ JL_CALLABLE(jl_f_nfields)
 {
     JL_NARGS(nfields, 1, 1);
     jl_value_t *x = args[0];
-    if (jl_is_datatype(x))
-        jl_depwarn("`nfields(::DataType)` is deprecated, use `fieldcount` instead",
-                   (jl_value_t*)jl_symbol("nfields"));
-    else
-        x = jl_typeof(x);
-    return jl_box_long(jl_field_count(x));
+    return jl_box_long(jl_field_count(jl_typeof(x)));
 }
 
 // apply_type -----------------------------------------------------------------
@@ -968,13 +937,6 @@ JL_CALLABLE(jl_f_invoke_kwsorter)
     jl_value_t *argtypes = args[3];
     jl_value_t *kws = jl_get_keyword_sorter(func);
     JL_GC_PUSH1(&argtypes);
-    if (jl_is_tuple(argtypes)) {
-        jl_depwarn("`invoke(f, (types...), ...)` is deprecated, "
-                   "use `invoke(f, Tuple{types...}, ...)` instead",
-                   (jl_value_t*)jl_symbol("invoke"));
-        argtypes = (jl_value_t*)jl_apply_tuple_type_v((jl_value_t**)jl_data_ptr(argtypes),
-                                                      jl_nfields(argtypes));
-    }
     if (jl_is_tuple_type(argtypes)) {
         // construct a tuple type for invoking a keyword sorter by putting the kw container type
         // and the type of the function at the front.
@@ -1328,8 +1290,6 @@ void jl_init_primitives(void)
 
     add_builtin("AbstractString", (jl_value_t*)jl_abstractstring_type);
     add_builtin("String", (jl_value_t*)jl_string_type);
-
-    add_builtin("ANY", jl_ANY_flag);
 }
 
 #ifdef __cplusplus

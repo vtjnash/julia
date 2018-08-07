@@ -258,26 +258,6 @@ julia> A'
 kw"'"
 
 """
-    .'
-
-The transposition operator, see [`transpose`](@ref).
-
-# Examples
-```jldoctest
-julia> A = [1.0 -2.0im; 4.0im 2.0]
-2×2 Array{Complex{Float64},2}:
- 1.0+0.0im  -0.0-2.0im
- 0.0+4.0im   2.0+0.0im
-
-julia> A.'
-2×2 Array{Complex{Float64},2}:
-  1.0+0.0im  0.0+4.0im
- -0.0-2.0im  2.0+0.0im
-```
-"""
-kw".'"
-
-"""
     const
 
 `const` is used to declare global variables which are also constant. In almost all code
@@ -1892,5 +1872,40 @@ Base.getproperty
 The syntax `a.b = c` calls `setproperty!(a, :b, c)`.
 """
 Base.setproperty!
+
+"""
+    StridedArray{T, N}
+
+An `N` dimensional *strided* array with elements of type `T`. These arrays follow
+the [strided array interface](@ref man-interface-strided-arrays). If `A` is a
+`StridedArray`, then its elements are stored in memory with offsets, which may
+vary between dimensions but are constant within a dimension. For example, `A` could
+have stride 2 in dimension 1, and stride 3 in dimension 2. Incrementing `A` along
+dimension `d` jumps in memory by [`strides(A, d)`] slots. Strided arrays are
+particularly important and useful because they can sometimes be passed directly
+as pointers to foreign language libraries like BLAS.
+"""
+StridedArray
+
+"""
+    StridedVector{T}
+
+One dimensional [`StridedArray`](@ref) with elements of type `T`.
+"""
+StridedVector
+
+"""
+    StridedMatrix{T}
+
+Two dimensional [`StridedArray`](@ref) with elements of type `T`.
+"""
+StridedMatrix
+
+"""
+    StridedVecOrMat{T}
+
+Union type of [`StridedVector`](@ref) and [`StridedMatrix`](@ref) with elements of type `T`.
+"""
+StridedVecOrMat
 
 end

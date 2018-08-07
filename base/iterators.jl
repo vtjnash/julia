@@ -496,8 +496,6 @@ end
 
 @propagate_inbounds iterate(i::Rest, st=i.st) = iterate(i.itr, st)
 isdone(i::Rest, st...) = isdone(i.itr, st...)
-@propagate_inbounds iterate(i::Rest{I,S}, st::S=i.st) where {I,S<:Base.LegacyIterationCompat{I}} =
-    done(i.itr, st) ? nothing : next(i.itr, st)
 
 eltype(::Type{<:Rest{I}}) where {I} = eltype(I)
 IteratorEltype(::Type{<:Rest{I}}) where {I} = IteratorEltype(I)
@@ -803,7 +801,7 @@ iterate(::ProductIterator{Tuple{}}, state) = nothing
 @inline isdone(P::ProductIterator) = any(isdone, P.iterators)
 @inline function _pisdone(iters, states)
     iter1 = first(iters)
-    done1 = isdone(iter1, first(states)) # check step
+    done1 = isdone(iter1, first(states)[2]) # check step
     done1 === true || return done1 # false or missing
     done1 = isdone(iter1) # check restart
     done1 === true || return done1 # false or missing

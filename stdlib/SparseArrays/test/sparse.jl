@@ -1553,14 +1553,10 @@ end
     @test Array(tril(A,1)) == tril(AF,1)
     @test Array(triu!(copy(A), 2)) == triu(AF,2)
     @test Array(tril!(copy(A), 2)) == tril(AF,2)
-    @test_throws ArgumentError tril(A, -n - 2)
-    @test_throws ArgumentError tril(A, n)
-    @test_throws ArgumentError triu(A, -n)
-    @test_throws ArgumentError triu(A, n + 2)
-    @test_throws ArgumentError tril!(sparse([1,2,3], [1,2,3], [1,2,3], 3, 4), -5)
-    @test_throws ArgumentError tril!(sparse([1,2,3], [1,2,3], [1,2,3], 3, 4), 4)
-    @test_throws ArgumentError triu!(sparse([1,2,3], [1,2,3], [1,2,3], 3, 4), -3)
-    @test_throws ArgumentError triu!(sparse([1,2,3], [1,2,3], [1,2,3], 3, 4), 6)
+    @test tril(A, -n - 2) == zero(A)
+    @test tril(A, n) == A
+    @test triu(A, -n) == A
+    @test triu(A, n + 2) == zero(A)
 
     # fkeep trim option
     @test isequal(length(tril!(sparse([1,2,3], [1,2,3], [1,2,3], 3, 4), -1).rowval), 0)
@@ -2251,6 +2247,46 @@ end
     @test SparseMatrixCSC(A') isa SparseMatrixCSC
     @test transpose(A) == SparseMatrixCSC(transpose(A))
     @test SparseMatrixCSC(transpose(A)) isa SparseMatrixCSC
+end
+
+# PR 28242
+@testset "forward and backward solving of transpose/adjoint triangular matrices" begin
+    rng = MersenneTwister(20180730)
+    n = 10
+    A = sprandn(rng, n, n, 0.8); A += Diagonal((1:n) - diag(A))
+    B = ones(n, 2)
+    for (Ttri, triul ) in ((UpperTriangular, triu), (LowerTriangular, tril))
+        for trop in (adjoint, transpose)
+            AT = Ttri(A)           # ...Triangular wrapped
+            AC = triul(A)          # copied part of A
+            ATa = trop(AT)         # wrapped Adjoint
+            ACa = sparse(trop(AC)) # copied and adjoint
+            @test AT \ B ≈ AC \ B
+            @test ATa \ B ≈ ACa \ B
+            @test ATa \ sparse(B) == ATa \ B
+            @test Matrix(ATa) \ B ≈ ATa \ B
+            @test ATa * ( ATa \ B ) ≈ B
+        end
+    end
+end
+
+@testset "Issue #28369" begin
+    M = reshape([[1 2; 3 4], [9 10; 11 12], [5 6; 7 8], [13 14; 15 16]], (2,2))
+    MP = reshape([[1 2; 3 4], [5 6; 7 8], [9 10; 11 12], [13 14; 15 16]], (2,2))
+    S = sparse(M)
+    SP = sparse(MP)
+    @test isa(transpose(S), Transpose)
+    @test transpose(S) == copy(transpose(S))
+    @test Array(transpose(S)) == copy(transpose(M))
+    @test permutedims(S) == SP
+    @test permutedims(S, (2,1)) == SP
+    @test permutedims(S, (1,2)) == S
+    @test permutedims(S, (1,2)) !== S
+    MC = reshape([[(1+im) 2; 3 4], [9 10; 11 12], [(5 + 2im) 6; 7 8], [13 14; 15 16]], (2,2))
+    SC = sparse(MC)
+    @test isa(adjoint(SC), Adjoint)
+    @test adjoint(SC) == copy(adjoint(SC))
+    @test adjoint(MC) == copy(adjoint(SC))
 end
 
 end # module

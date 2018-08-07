@@ -3,7 +3,6 @@
 using REPL.REPLCompletions
 using Test
 using Random
-import OldPkg
 
 let ex = quote
     module CompletionFoo
@@ -68,7 +67,7 @@ let ex = quote
 
         test_y_array=[CompletionFoo.Test_y(rand()) for i in 1:10]
         test_dict = Dict("abc"=>1, "abcd"=>10, :bar=>2, :bar2=>9, Base=>3,
-                         contains=>4, `ls`=>5, 66=>7, 67=>8, ("q",3)=>11,
+                         occursin=>4, `ls`=>5, 66=>7, 67=>8, ("q",3)=>11,
                          "α"=>12, :α=>13)
         test_customdict = CustomDict(test_dict)
 
@@ -84,23 +83,6 @@ let ex = quote
     end
     ex.head = :toplevel
     Core.eval(Main, ex)
-end
-
-function temp_pkg_dir_noinit(fn::Function)
-    # Used in tests below to set up and tear down a sandboxed package directory
-    # Unlike the version in test/pkg.jl, this does not run OldPkg.init so does not
-    # clone METADATA (only Pkg and LibGit2 tests should need internet access)
-    tmpdir = joinpath(tempdir(),randstring())
-    withenv("JULIA_PKGDIR" => tmpdir) do
-        @test !isdir(OldPkg.dir())
-        try
-            mkpath(OldPkg.dir())
-            @test isdir(OldPkg.dir())
-            fn()
-        finally
-            rm(tmpdir, recursive=true)
-        end
-    end
 end
 
 function map_completion_text(completions)
@@ -370,11 +352,11 @@ let s = "(1, CompletionFoo.test2(`')'`,"
     @test length(c) == 1
 end
 
-let s = "CompletionFoo.test3([1, 2] + CompletionFoo.varfloat,"
+let s = "CompletionFoo.test3([1, 2] .+ CompletionFoo.varfloat,"
     c, r, res = test_complete(s)
     @test !res
-    @test c[1] == string(first(methods(Main.CompletionFoo.test3, Tuple{Array{Float64, 1}, Float64})))
-    @test length(c) == 1
+    @test_broken c[1] == string(first(methods(Main.CompletionFoo.test3, Tuple{Array{Float64, 1}, Float64})))
+    @test_broken length(c) == 1
 end
 
 let s = "CompletionFoo.test3([1.,2.], 1.,"
@@ -501,39 +483,6 @@ let s = "#=\nmax"
 end
 
 # Test completion of packages
-mkp(p) = ((@assert !isdir(p)); mkpath(p))
-temp_pkg_dir_noinit() do
-    push!(LOAD_PATH, OldPkg.dir())
-    try
-        # Complete <Mod>/src/<Mod>.jl and <Mod>.jl/src/<Mod>.jl
-        # but not <Mod>/ if no corresponding .jl file is found
-        pkg_dir = OldPkg.dir("CompletionFooPackage", "src")
-        mkp(pkg_dir)
-        touch(joinpath(pkg_dir, "CompletionFooPackage.jl"))
-
-        pkg_dir = OldPkg.dir("CompletionFooPackage2.jl", "src")
-        mkp(pkg_dir)
-        touch(joinpath(pkg_dir, "CompletionFooPackage2.jl"))
-
-        touch(OldPkg.dir("CompletionFooPackage3.jl"))
-
-        mkp(OldPkg.dir("CompletionFooPackageNone"))
-        mkp(OldPkg.dir("CompletionFooPackageNone2.jl"))
-
-        s = "using Completion"
-        c,r = test_complete(s)
-        @test "CompletionFoo" in c #The module
-        @test "CompletionFooPackage" in c #The package
-        @test "CompletionFooPackage2" in c #The package
-        @test "CompletionFooPackage3" in c #The package
-        @test !("CompletionFooPackageNone" in c) #The package
-        @test !("CompletionFooPackageNone2" in c) #The package
-        @test s[r] == "Completion"
-    finally
-        @test pop!(LOAD_PATH) == OldPkg.dir()
-    end
-end
-
 path = joinpath(tempdir(),randstring())
 pushfirst!(LOAD_PATH, path)
 try
@@ -872,9 +821,9 @@ function test_dict_completion(dict_name)
     s = "$dict_name[Ba"
     c, r = test_complete(s)
     @test c == Any["Base]"]
-    s = "$dict_name[co"
+    s = "$dict_name[occ"
     c, r = test_complete(s)
-    @test c == Any["contains]"]
+    @test c == Any["occursin]"]
     s = "$dict_name[`l"
     c, r = test_complete(s)
     @test c == Any["`ls`]"]

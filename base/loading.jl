@@ -611,7 +611,8 @@ end
 # or an Exception that describes why it couldn't be loaded
 # and it reconnects the Base.Docs.META
 function _include_from_serialized(path::String, depmods::Vector{Any})
-    restored = ccall(:jl_restore_incremental, Any, (Cstring, Any), path, depmods)
+    sv = ccall(:jl_restore_incremental, Any, (Cstring, Any), path, depmods)
+    restored = sv[1]
     if !isa(restored, Exception)
         for M in restored::Vector{Any}
             M = M::Module
@@ -623,6 +624,7 @@ function _include_from_serialized(path::String, depmods::Vector{Any})
             end
         end
     end
+    isassigned(sv, 2) && ccall(:jl_init_restored_modules, Cvoid, (Any,), sv[2])
     return restored
 end
 
@@ -767,16 +769,14 @@ precompilableerror(@nospecialize ex) = false
 
 # Call __precompile__(false) at the top of a tile prevent it from being precompiled (false)
 """
-    __precompile__(false)
+    __precompile__(isprecompilable::Bool)
 
-Specify that the file calling this function is not precompilable.
+Specify whether the file calling this function is precompilable, defaulting to `true`.
 If a module or file is *not* safely precompilable, it should call `__precompile__(false)` in
 order to throw an error if Julia attempts to precompile it.
 """
 @noinline function __precompile__(isprecompilable::Bool=true)
-    if isprecompilable
-        depwarn("__precompile__() is now the default", :__precompile__)
-    elseif 0 != ccall(:jl_generating_output, Cint, ())
+    if !isprecompilable && ccall(:jl_generating_output, Cint, ()) != 0
         throw(PrecompilableError())
     end
     nothing
@@ -918,7 +918,6 @@ function _require(pkg::PkgId)
     try
         toplevel_load[] = false
         # perform the search operation to select the module file require intends to load
-        name = pkg.name
         path = locate_package(pkg)
         if path === nothing
             throw(ArgumentError("""
@@ -939,8 +938,8 @@ function _require(pkg::PkgId)
         # but it was not handled by the precompile loader, complain
         for (concrete_pkg, concrete_build_id) in _concrete_dependencies
             if pkg == concrete_pkg
-                @warn """Module $name with build ID $concrete_build_id is missing from the cache.
-                     This may mean module $name does not support precompilation but is imported by a module that does."""
+                @warn """Module $(pkg.name) with build ID $concrete_build_id is missing from the cache.
+                     This may mean $pkg does not support precompilation but is imported by a module that does."""
                 if JLOptions().incremental != 0
                     # during incremental precompilation, this should be fail-fast
                     throw(PrecompilableError())
@@ -952,14 +951,19 @@ function _require(pkg::PkgId)
             if (0 == ccall(:jl_generating_output, Cint, ())) || (JLOptions().incremental != 0)
                 # spawn off a new incremental pre-compile task for recursive `require` calls
                 # or if the require search declared it was pre-compiled before (and therefore is expected to still be pre-compilable)
-                cachefile = compilecache(pkg)
-                m = _require_from_serialized(cachefile)
-                if isa(m, Exception)
-                    if !precompilableerror(m)
-                        @warn "The call to compilecache failed to create a usable precompiled cache file for module $name" exception=m
+                cachefile = compilecache(pkg, path)
+                if isa(cachefile, Exception)
+                    if !precompilableerror(cachefile)
+                        @warn "The call to compilecache failed to create a usable precompiled cache file for $pkg" exception=m
                     end
+                    # fall-through to loading the file locally
                 else
-                    return
+                    m = _require_from_serialized(cachefile)
+                    if isa(m, Exception)
+                        @warn "The call to compilecache failed to create a usable precompiled cache file for $pkg" exception=m
+                    else
+                        return
+                    end
                 end
             end
         end
@@ -1066,7 +1070,6 @@ function evalfile(path::AbstractString, args::Vector{String}=String[])
         Expr(:toplevel,
              :(const ARGS = $args),
              :(eval(x) = $(Expr(:core, :eval))(__anon__, x)),
-             :(@deprecate eval(m, x) Core.eval(m, x)),
              :(include(x) = $(Expr(:top, :include))(__anon__, x)),
              :(include($path))))
 end
@@ -1108,18 +1111,18 @@ function create_expr_cache(input::String, output::String, concrete_deps::typeof(
     in = io.in
     try
         write(in, """
-        begin
-        $(Base.load_path_setup_code())
-        Base._track_dependencies[] = true
-        empty!(Base._concrete_dependencies)
-        """)
+            begin
+                $(Base.load_path_setup_code())
+                Base._track_dependencies[] = true
+                Base.empty!(Base._concrete_dependencies)
+            """)
         for (pkg, build_id) in concrete_deps
             pkg_str = if pkg.uuid === nothing
                 "Base.PkgId($(repr(pkg.name)))"
             else
                 "Base.PkgId(Base.UUID(\"$(pkg.uuid)\"), $(repr(pkg.name)))"
             end
-            write(in, "push!(Base._concrete_dependencies, $pkg_str => $(repr(build_id)))\n")
+            write(in, "Base.push!(Base._concrete_dependencies, $pkg_str => $(repr(build_id)))\n")
         end
         write(io, "end\0")
         uuid_tuple = uuid === nothing ? (0, 0) : convert(NTuple{2, UInt64}, uuid)
@@ -1128,7 +1131,14 @@ function create_expr_cache(input::String, output::String, concrete_deps::typeof(
         if source !== nothing
             write(in, "task_local_storage()[:SOURCE_PATH] = $(repr(source))\0")
         end
-        write(in, "Base.include(Base.__toplevel__, $(repr(abspath(input))))\0")
+        write(in, """
+            try
+                Base.include(Base.__toplevel__, $(repr(abspath(input))))
+            catch ex
+                Base.precompilableerror(ex) || Base.rethrow(ex)
+                Base.@debug "Aborting `createexprcache'" exception=(Base.ErrorException("Declaration of __precompile__(false) not allowed"), Base.catch_backtrace())
+                Base.exit(125) # we define status = 125 means PrecompileableError
+            end\0""")
         # TODO: cleanup is probably unnecessary here
         if source !== nothing
             write(in, "delete!(task_local_storage(), :SOURCE_PATH)\0")
@@ -1152,10 +1162,11 @@ This can be used to reduce package load times. Cache files are stored in
 for important notes.
 """
 function compilecache(pkg::PkgId)
-    # decide where to get the source file from
-    name = pkg.name
     path = locate_package(pkg)
     path === nothing && throw(ArgumentError("$pkg not found during precompilation"))
+    return compilecache(pkg, path)
+end
+function compilecache(pkg::PkgId, path::String)
     # decide where to put the resulting cache file
     cachefile = abspath(DEPOT_PATH[1], cache_file_entry(pkg))
     cachepath = dirname(cachefile)
@@ -1170,17 +1181,20 @@ function compilecache(pkg::PkgId)
     # run the expression and cache the result
     verbosity = isinteractive() ? CoreLogging.Info : CoreLogging.Debug
     if isfile(cachefile)
-        @logmsg verbosity "Recompiling stale cache file $cachefile for module $name"
+        @logmsg verbosity "Recompiling stale cache file $cachefile for $pkg"
     else
-        @logmsg verbosity "Precompiling module $name"
+        @logmsg verbosity "Precompiling $pkg"
     end
-    if success(create_expr_cache(path, cachefile, concrete_deps, pkg.uuid))
+    p = create_expr_cache(path, cachefile, concrete_deps, pkg.uuid)
+    if success(p)
         # append checksum to the end of the .ji file:
         open(cachefile, "a+") do f
             write(f, _crc32c(seekstart(f)))
         end
+    elseif p.exitcode == 125
+        return PrecompilableError()
     else
-        error("Failed to precompile $name to $cachefile.")
+        error("Failed to precompile $pkg to $cachefile.")
     end
     return cachefile
 end

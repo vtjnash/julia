@@ -27,8 +27,8 @@ function test_code_reflection(freflect, f, types, tester)
 end
 
 function test_code_reflections(tester, freflect)
-    test_code_reflection(freflect, contains,
-                         Tuple{AbstractString, Regex}, tester) # abstract type
+    test_code_reflection(freflect, occursin,
+                         Tuple{Regex, AbstractString}, tester) # abstract type
     test_code_reflection(freflect, +, Tuple{Int, Int}, tester) # leaftype signature
     test_code_reflection(freflect, +,
                          Tuple{Array{Float32}, Array{Float32}}, tester) # incomplete types
@@ -266,7 +266,7 @@ import Base: datatype_alignment, return_types
 @test datatype_alignment(UInt16) == 2
 @test datatype_alignment(TLayout) == 4
 let rts = return_types(TLayout)
-    @test length(rts) >= 3 # general constructor, specific constructor, and call-to-convert adapter(s)
+    @test length(rts) == 2 # general constructor and specific constructor
     @test all(rts .== TLayout)
 end
 

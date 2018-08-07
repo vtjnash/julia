@@ -327,11 +327,120 @@ function bwdTriSolve!(A::SparseMatrixCSCUnion, B::AbstractVecOrMat)
     B
 end
 
-ldiv!(L::LowerTriangular{T,<:SparseMatrixCSCUnion{T}}, B::StridedVecOrMat) where {T} = fwdTriSolve!(L.data, B)
-ldiv!(U::UpperTriangular{T,<:SparseMatrixCSCUnion{T}}, B::StridedVecOrMat) where {T} = bwdTriSolve!(U.data, B)
+fwdTriSolve!(aA::Adjoint{<:Any,<:SparseMatrixCSCUnion}, B::AbstractVecOrMat) =
+    _fwdTriSolve!(aA.parent, B, true)
 
-(\)(L::LowerTriangular{T,<:SparseMatrixCSCUnion{T}}, B::SparseMatrixCSC) where {T} = ldiv!(L, Array(B))
-(\)(U::UpperTriangular{T,<:SparseMatrixCSCUnion{T}}, B::SparseMatrixCSC) where {T} = ldiv!(U, Array(B))
+fwdTriSolve!(aA::Transpose{<:Any,<:SparseMatrixCSCUnion}, B::AbstractVecOrMat) =
+    _fwdTriSolve!(aA.parent, B, false)
+
+function _fwdTriSolve!(A::SparseMatrixCSCUnion, B::AbstractVecOrMat, adj::Bool)
+# forward substitution for adjoints of CSC matrices
+    @assert !has_offset_axes(A, B)
+    nrowB, ncolB  = size(B, 1), size(B, 2)
+    ncol = LinearAlgebra.checksquare(A)
+    if nrowB != ncol
+        throw(DimensionMismatch("A is $(ncol) columns and B has $(nrowB) rows"))
+    end
+
+    aa = getnzval(A)
+    ja = getrowval(A)
+    ia = getcolptr(A)
+
+    joff = 0
+    for k = 1:ncolB
+        for j = 1:nrowB
+            i1 = ia[j]
+            i2 = ia[j + 1] - 1
+            akku = B[joff + j]
+            done = false
+
+            # loop through column j of A - only structural non-zeros
+            for ip = i1:i2
+                i = ja[ip]
+                aai = adj ? aa[ip]' : aa[ip]
+                if i < j
+                    akku -= B[joff + i] * aai
+                elseif i == j
+                    B[joff + j] = akku / aai
+                    done = true
+                    break
+                end
+            end
+            if !done
+                throw(LinearAlgebra.SingularException(j))
+            end
+        end
+        joff += nrowB
+    end
+    B
+end
+
+bwdTriSolve!(aA::Adjoint{<:Any,<:SparseMatrixCSCUnion}, B::AbstractVecOrMat) =
+    _bwdTriSolve!(aA.parent, B, true)
+
+bwdTriSolve!(aA::Transpose{<:Any,<:SparseMatrixCSCUnion}, B::AbstractVecOrMat) =
+    _bwdTriSolve!(aA.parent, B, false)
+
+function _bwdTriSolve!(A::SparseMatrixCSCUnion, B::AbstractVecOrMat, adj::Bool)
+# forward substitution for adjoints of CSC matrices
+    @assert !has_offset_axes(A, B)
+    nrowB, ncolB  = size(B, 1), size(B, 2)
+    ncol = LinearAlgebra.checksquare(A)
+    if nrowB != ncol
+        throw(DimensionMismatch("A is $(ncol) columns and B has $(nrowB) rows"))
+    end
+
+    aa = getnzval(A)
+    ja = getrowval(A)
+    ia = getcolptr(A)
+
+    joff = 0
+    for k = 1:ncolB
+        for j = nrowB:-1:1
+            i1 = ia[j]
+            i2 = ia[j + 1] - 1
+            akku = B[joff + j]
+            done = false
+
+            # loop through column j of A - only structural non-zeros
+            for ip = i2:-1:i1
+                i = ja[ip]
+                aai = adj ? aa[ip]' : aa[ip]
+                if i > j
+                    akku -= B[joff + i] * aai
+                elseif i == j
+                    B[joff + j] = akku / aai
+                    done = true
+                    break
+                end
+            end
+            if !done
+                throw(LinearAlgebra.SingularException(j))
+            end
+        end
+        joff += nrowB
+    end
+    B
+end
+
+ldiv!(L::LowerTriangular{T,<:SparseMatrixCSCUnion{T}}, B::StridedVecOrMat) where {T} = fwdTriSolve!(L.data, B)
+ldiv!(L::Adjoint{T,<:UpperTriangular{T,<:SparseMatrixCSCUnion{T}}}, B::StridedVecOrMat) where {T} = _fwdTriSolve!(L.parent.data, B, true)
+ldiv!(L::Transpose{T,<:UpperTriangular{T,<:SparseMatrixCSCUnion{T}}}, B::StridedVecOrMat) where {T} = _fwdTriSolve!(L.parent.data, B, false)
+
+ldiv!(U::UpperTriangular{T,<:SparseMatrixCSCUnion{T}}, B::StridedVecOrMat) where {T} = bwdTriSolve!(U.data, B)
+ldiv!(L::Adjoint{T,<:LowerTriangular{T,<:SparseMatrixCSCUnion{T}}}, B::StridedVecOrMat) where {T} = _bwdTriSolve!(L.parent.data, B, true)
+ldiv!(L::Transpose{T,<:LowerTriangular{T,<:SparseMatrixCSCUnion{T}}}, B::StridedVecOrMat) where {T} = _bwdTriSolve!(L.parent.data, B, false)
+
+(\)(L::Union{LowerTriangular{T,<:SparseMatrixCSCUnion{T}},
+             Adjoint{T,<:UpperTriangular{T,<:SparseMatrixCSCUnion{T}}},
+             Transpose{T,<:UpperTriangular{T,<:SparseMatrixCSCUnion{T}}}},
+    B::SparseMatrixCSC) where {T} = ldiv!(L, Array(B))
+
+(\)(U::Union{UpperTriangular{T,<:SparseMatrixCSCUnion{T}},
+             Adjoint{T,<:LowerTriangular{T,<:SparseMatrixCSCUnion{T}}},
+             Transpose{T,<:LowerTriangular{T,<:SparseMatrixCSCUnion{T}}}},
+    B::SparseMatrixCSC) where {T} = ldiv!(U, Array(B))
+
 \(A::Transpose{<:Real,<:Hermitian{<:Real,<:SparseMatrixCSC}}, B::Vector) = A.parent \ B
 \(A::Transpose{<:Complex,<:Hermitian{<:Complex,<:SparseMatrixCSC}}, B::Vector) = copy(A) \ B
 \(A::Transpose{<:Number,<:Symmetric{<:Number,<:SparseMatrixCSC}}, B::Vector) = A.parent \ B
@@ -363,10 +472,6 @@ rdiv!(A::SparseMatrixCSC{T}, transD::Transpose{<:Any,<:Diagonal{T}}) where {T} =
 
 function triu(S::SparseMatrixCSC{Tv,Ti}, k::Integer=0) where {Tv,Ti}
     m,n = size(S)
-    if !(-m + 1 <= k <= n + 1)
-        throw(ArgumentError(string("the requested diagonal, $k, must be at least ",
-            "$(-m + 1) and at most $(n + 1) in an $m-by-$n matrix")))
-    end
     colptr = Vector{Ti}(undef, n+1)
     nnz = 0
     for col = 1 : min(max(k+1,1), n+1)
@@ -395,10 +500,6 @@ end
 
 function tril(S::SparseMatrixCSC{Tv,Ti}, k::Integer=0) where {Tv,Ti}
     m,n = size(S)
-    if !(-m - 1 <= k <= n - 1)
-        throw(ArgumentError(string("the requested diagonal, $k, must be at least ",
-            "$(-m - 1) and at most $(n - 1) in an $m-by-$n matrix")))
-    end
     colptr = Vector{Ti}(undef, n+1)
     nnz = 0
     colptr[1] = 1

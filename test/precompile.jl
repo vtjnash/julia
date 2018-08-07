@@ -24,6 +24,7 @@ try
 
     write(FooBase_file,
           """
+          false && __precompile__(false)
           module $FooBase_module
               import Base: hash, >
               struct fmpz end
@@ -234,8 +235,13 @@ try
                 [:Base64, :CRC32c, :Dates, :DelimitedFiles, :Distributed, :FileWatching, :Markdown,
                  :Future, :Libdl, :LinearAlgebra, :Logging, :Mmap, :Printf,
                  :Profile, :Random, :Serialization, :SharedArrays, :SparseArrays, :SuiteSparse, :Test,
-                 :Unicode, :REPL, :InteractiveUtils, :OldPkg, :Pkg, :LibGit2, :SHA, :UUIDs, :Sockets,
-                 :Statistics, ]))
+                 :Unicode, :REPL, :InteractiveUtils, :Pkg, :LibGit2, :SHA, :UUIDs, :Sockets,
+                 :Statistics, ]),
+                # Plus precompilation module generated at build time
+                let id = Base.PkgId("__PackagePrecompilationStatementModule")
+                    Dict(id => Base.module_build_id(Base.root_module(id)))
+                end
+           )
         @test discard_module.(deps) == deps1
 
         @test current_task()(0x01, 0x4000, 0x30031234) == 2
@@ -279,18 +285,15 @@ try
     Baz_file = joinpath(dir, "Baz.jl")
     write(Baz_file,
           """
-          __precompile__(false)
+          true && __precompile__(false)
           module Baz
+          baz() = 1
           end
           """)
 
-    @test_warn "ERROR: LoadError: Declaring __precompile__(false) is not allowed in files that are being precompiled.\nStacktrace:\n [1] __precompile__" try
-        Base.compilecache(Base.PkgId("Baz")) # from __precompile__(false)
-        error("__precompile__ disabled test failed")
-    catch exc
-        isa(exc, ErrorException) || rethrow(exc)
-        occursin("__precompile__(false)", exc.msg) && rethrow(exc)
-    end
+    @test Base.compilecache(Base.PkgId("Baz")) == Base.PrecompilableError() # due to __precompile__(false)
+    @eval using Baz
+    @test Base.invokelatest(Baz.baz) == 1
 
     # Issue #12720
     FooBar1_file = joinpath(dir, "FooBar1.jl")
@@ -696,5 +699,42 @@ let
         rm(load_cache_path, recursive=true)
     end
 end
+
+let
+    load_path = mktempdir()
+    load_cache_path = mktempdir()
+    try
+        write(joinpath(load_path, "Foo26028.jl"),
+            """
+            module Foo26028
+
+            module Bar26028
+                x = 0
+            end
+
+            function __init__()
+                include(joinpath(@__DIR__, "Baz26028.jl"))
+            end
+
+            end
+            """)
+        write(joinpath(load_path, "Baz26028.jl"),
+            """
+            module Baz26028
+            import Foo26028.Bar26028.x
+            end
+            """)
+
+        pushfirst!(LOAD_PATH, load_path)
+        pushfirst!(DEPOT_PATH, load_cache_path)
+
+        Base.compilecache(Base.PkgId("Foo26028"))
+        @test_nowarn @eval using Foo26028
+    finally
+        rm(load_path, recursive=true)
+        rm(load_cache_path, recursive=true)
+    end
+end
+
 
 end # !withenv

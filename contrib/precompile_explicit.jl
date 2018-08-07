@@ -3,20 +3,11 @@
 # Steps to regenerate this file:
 # 1. Remove all `precompile` calls
 # 2. Rebuild system image
-# 3. Enable TRACE_COMPILE in options.h and rebuild
-# 4. Run `./julia 2> precompiles.txt` and do various things.
-# 5. Run `./julia contrib/fixup_precompile.jl precompiles.txt to overwrite `precompile.jl`
-#    or ./julia contrib/fixup_precompile.jl --merge precompiles.txt to merge into existing
-#    `precompile.jl`
+# 3. Start julia with `--trace-compile=precompiles.txt and do some stuff
+# 5. Run `grep -v '#[0-9]' precompiles.txt >> contrib/precompile_explicit.jl`
+# (filters out closures, which might have different generated names in different environments)
+# This list is only used on Windows, otherwise precompile statements are generated dynamically.
 
-let
-PrecompileStagingArea = Module()
-for (_pkgid, _mod) in Base.loaded_modules
-    if !(_pkgid.name in ("Main", "Core", "Base"))
-        @eval PrecompileStagingArea $(Symbol(_mod)) = $_mod
-    end
-end
-@eval PrecompileStagingArea begin
 precompile(Tuple{Type{Array{Base.StackTraces.StackFrame, 1}}, UndefInitializer, Int64})
 precompile(Tuple{Type{Array{Union{Nothing, String}, 1}}, UndefInitializer, Int64})
 precompile(Tuple{Type{Base.CoreLogging.LogState}, Logging.ConsoleLogger})
@@ -460,7 +451,6 @@ precompile(Tuple{typeof(Base.show), Base.GenericIOBuffer{Array{UInt8, 1}}, UInt6
 precompile(Tuple{typeof(Base.show), Base.IOContext{Base.GenericIOBuffer{Array{UInt8, 1}}}, Array{Any, 1}})
 precompile(Tuple{typeof(Base.show), Base.IOContext{Base.GenericIOBuffer{Array{UInt8, 1}}}, Int64})
 precompile(Tuple{typeof(Base.show), Base.IOContext{Base.GenericIOBuffer{Array{UInt8, 1}}}, String})
-precompile(Tuple{typeof(Base.show), Base.IOContext{Base.GenericIOBuffer{Array{UInt8, 1}}}, typeof(OldPkg.dir)})
 precompile(Tuple{typeof(Base.show), Base.IOContext{REPL.Terminals.TTYTerminal}, Base.MIME{Symbol("text/plain")}, Array{Float64, 1}})
 precompile(Tuple{typeof(Base.show), Base.IOContext{REPL.Terminals.TTYTerminal}, Base.MIME{Symbol("text/plain")}, Array{Float64, 2}})
 precompile(Tuple{typeof(Base.show), Base.IOContext{REPL.Terminals.TTYTerminal}, Base.MIME{Symbol("text/plain")}, Array{Int64, 1}})
@@ -615,7 +605,6 @@ precompile(Tuple{typeof(Markdown.terminline), Base.IOContext{Base.GenericIOBuffe
 precompile(Tuple{typeof(Markdown.terminline), Base.IOContext{Base.GenericIOBuffer{Array{UInt8, 1}}}, String})
 precompile(Tuple{typeof(Markdown.terminline_string), Base.IOContext{Base.GenericIOBuffer{Array{UInt8, 1}}}, Array{Any, 1}})
 precompile(Tuple{typeof(Markdown.terminline_string), Base.IOContext{REPL.Terminals.TTYTerminal}, Array{Any, 1}})
-precompile(Tuple{typeof(OldPkg.dir)})
 precompile(Tuple{typeof(Pkg.REPLMode.create_mode), REPL.LineEditREPL, REPL.LineEdit.Prompt})
 precompile(Tuple{typeof(Pkg.REPLMode.repl_init), REPL.LineEditREPL})
 precompile(Tuple{typeof(REPL.LineEdit.accept_result), REPL.LineEdit.MIState, REPL.LineEdit.PrefixHistoryPrompt})
@@ -742,5 +731,3 @@ precompile(Tuple{typeof(REPL.setup_interface), REPL.LineEditREPL})
 precompile(Tuple{typeof(REPL.start_repl_backend), Base.Channel{Any}, Base.Channel{Any}})
 precompile(Tuple{typeof(Random.__init__)})
 precompile(Tuple{typeof(eval), Module, Expr})
-end
-end

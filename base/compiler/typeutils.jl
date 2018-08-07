@@ -48,11 +48,11 @@ end
 function valid_tparam(@nospecialize(x))
     if isa(x, Tuple)
         for t in x
-            isa(t, Symbol) || isbitstype(typeof(t)) || return false
+            isa(t, Symbol) || isbits(t) || return false
         end
         return true
     end
-    return isa(x, Symbol) || isbitstype(typeof(x))
+    return isa(x, Symbol) || isbits(x)
 end
 
 # return an upper-bound on type `a` with type `b` removed
@@ -102,7 +102,10 @@ function countunionsplit(atypes::Union{SimpleVector,Vector{Any}})
     nu = 1
     for ti in atypes
         if isa(ti, Union)
-            nu *= unionlen(ti::Union)
+            nu, ovf = Core.Intrinsics.checked_smul_int(nu, unionlen(ti::Union))
+            if ovf
+                return typemax(Int)
+            end
         end
     end
     return nu

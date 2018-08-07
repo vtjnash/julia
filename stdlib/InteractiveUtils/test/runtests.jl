@@ -175,16 +175,12 @@ end
 # PR #23075
 @testset "versioninfo" begin
     # check that versioninfo(io; verbose=true) doesn't error, produces some output
-    # and doesn't invoke OldPkg.status which will error if JULIA_PKGDIR is set
     mktempdir() do dir
-        withenv("JULIA_PKGDIR" => dir) do
-            buf = PipeBuffer()
-            versioninfo(buf, verbose=true)
-            ver = read(buf, String)
-            @test startswith(ver, "Julia Version $VERSION")
-            @test occursin("Environment:", ver)
-            @test isempty(readdir(dir))
-        end
+        buf = PipeBuffer()
+        versioninfo(buf, verbose=true)
+        ver = read(buf, String)
+        @test startswith(ver, "Julia Version $VERSION")
+        @test occursin("Environment:", ver)
     end
     let exename = `$(Base.julia_cmd()) --startup-file=no`
         @test !occursin("Environment:", read(setenv(`$exename -e 'using InteractiveUtils; versioninfo()'`,
@@ -319,8 +315,8 @@ function test_code_reflection(freflect, f, types, tester)
 end
 
 function test_code_reflections(tester, freflect)
-    test_code_reflection(freflect, contains,
-                         Tuple{AbstractString, Regex}, tester) # abstract type
+    test_code_reflection(freflect, occursin,
+                         Tuple{Regex, AbstractString}, tester) # abstract type
     test_code_reflection(freflect, +, Tuple{Int, Int}, tester) # leaftype signature
     test_code_reflection(freflect, +,
                          Tuple{Array{Float32}, Array{Float32}}, tester) # incomplete types
