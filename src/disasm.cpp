@@ -311,7 +311,7 @@ static void jl_strip_llvm_debug(Module *m, bool all_meta, LineNumberAnnotatedWri
                     deletelast = nullptr;
                 }
                 // remove dbg.declare and dbg.value calls
-                if (isa<DbgDeclareInst>(inst) || isa<DbgValueInst>(inst)) {
+                if (isa<DbgInfoIntrinsic>(inst)) {
                     deletelast = &inst;
                     continue;
                 }
@@ -390,31 +390,42 @@ jl_value_t *jl_dump_llvm_ir(void *f, char strip_ir_metadata, char dump_module)
     return jl_pchar_to_string(code.data(), code.size());
 }
 
-//std::tuple<std::string, DenseMap<Instruction *, unsigned>>
-std::string jl_annotate_llvm_ir(Function *f, StringRef filename)
+//DenseMap<Instruction *, unsigned>
+void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef filename)
 {
-    std::string code;
     LineNumberAnnotatedWriter AAW;
     JL_LOCK(&codegen_lock); // Might GC
     { // scope block
-        llvm::raw_string_ostream stream(code);
-        Module &M = *f->getParent();
+        // make sure we won't try to reference the old subroutine
+        // (in the future, we could instead RAUW the references)
+        // but we need to keep it around in the CU, since it appears that
+        // the verifier runs verify(Function) multiple times, and then
+        // checks at the end of compilation that all CUVisited
+        // are still listed in llvm.dbg.cu
+        std::vector<MDNode *> CUs;
+        if (NamedMDNode *md = M.getNamedMetadata("llvm.dbg.cu"))
+            for (auto I : md->operands())
+                CUs.push_back(I);
         jl_strip_llvm_debug(&M, false, &AAW);
         M.print(stream, &AAW);
+        NamedMDNode *md = M.getOrInsertNamedMetadata("llvm.dbg.cu");
+        for (auto I : CUs)
+            md->addOperand(I);
+        DIBuilder dbuilder(M, false);
+        DISubroutineType *jl_di_func_null_sig = dbuilder.createSubroutineType(
+            dbuilder.getOrCreateTypeArray(None));
+        DIFile *difile = dbuilder.createFile(filename, ".");
+        DICompileUnit *CU = dbuilder.createCompileUnit(0x01, difile, "julia", true, "", 0);
+        dbuilder.finalize();
         for (auto &F : M) {
             if (F.isDeclaration())
                 continue;
             // TODO: actually should make a new DISubprogram
-            DIBuilder dbuilder(M);
-            DISubroutineType *jl_di_func_null_sig = dbuilder.createSubroutineType(
-                dbuilder.getOrCreateTypeArray(None));
-            DIFile *difile = dbuilder.createFile(filename, ".");
-            DICompileUnit *CU = dbuilder.createCompileUnit(0x01, difile, "julia", true, "", 0);
             unsigned line = AAW.getOutputLine(&F);
             DISubprogram *FuncLoc = dbuilder.createFunction(
                     CU,
-                    f->getName(),     // Name
-                    f->getName(),     // LinkageName
+                    F.getName(),     // Name
+                    F.getName(),     // LinkageName
                     difile,           // File
                     line,             // LineNo
                     jl_di_func_null_sig, // Ty
@@ -424,8 +435,8 @@ std::string jl_annotate_llvm_ir(Function *f, StringRef filename)
                     DINode::FlagZero, // Flags
                     true,             // isOptimized
                     nullptr);         // Template Parameters
-            F.setSubprogram(FuncLoc);
             dbuilder.finalize();
+            F.setSubprogram(FuncLoc);
             for (auto &BB : F) {
                 for (auto &I : BB) {
                     unsigned line = AAW.getOutputLine(&I);
@@ -436,7 +447,6 @@ std::string jl_annotate_llvm_ir(Function *f, StringRef filename)
         }
     }
     JL_UNLOCK(&codegen_lock); // Might GC
-    return code;
 }
 
 static void jl_dump_asm_internal(

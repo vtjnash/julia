@@ -383,6 +383,7 @@ static void reportWriterError(ArchiveWriterError E)
 #endif
 
 
+
 // takes the running content that has collected in the shadow module and dump it to disk
 // this builds the object file portion of the sysimage files for fast startup
 extern "C"
@@ -906,17 +907,22 @@ addPassesToGenerateCode(LLVMTargetMachine *TM, PassManagerBase &PM) {
 #endif
 
 void jl_strip_llvm_debug(Module *m);
-std::string jl_annotate_llvm_ir(Function *f, StringRef filename);
+
+Pass *createIRDebugInfoPass(StringRef OutputFilename);
+std::string &getIRDebugPassOutput(Pass *Pass);
+
+Pass *createMIRDebugInfoPass(StringRef OutputFilename);
+std::string &getMIRDebugPassOutput(Pass *Pass);
 
 
-// get a native assembly for llvm::Function
+// get a native assembly for llvm::Function, and all intermediate info
 extern "C" JL_DLLEXPORT
 jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
 {
     // precise printing via IR assembler
     SmallVector<char, 4096> ObjBufferSV;
     SmallVector<char, 4096> RemarksBufferSV;
-    std::string ir;
+    std::string ll_emitted, ll_optimized, mir;
     { // scope block
         Function *f = (Function*)F;
         assert(!f->isDeclaration());
@@ -942,12 +948,20 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
         //}
         //
         //// convert line numbers from source to IR form
-        ir = jl_annotate_llvm_ir(f, "llvmir.ll");
         legacy::PassManager PM;
+        auto ll_emitted_pass = createIRDebugInfoPass("emitted.ll");
+        PM.add(createBarrierNoopPass());
+        PM.add(ll_emitted_pass);
         addTargetPasses(&PM, jl_TargetMachine);
         addOptimizationPasses(&PM, optlevel < 0 ? jl_options.opt_level : optlevel);
         LLVMTargetMachine *TM = static_cast<LLVMTargetMachine*>(jl_TargetMachine);
+        auto ll_optimized_pass = createIRDebugInfoPass("optimized.ll");
+        PM.add(createBarrierNoopPass());
+        PM.add(ll_optimized_pass);
         MCContext *Context = addPassesToGenerateCode(TM, PM);
+        auto mir_pass = createMIRDebugInfoPass("mir.ll");
+        PM.add(createBarrierNoopPass());
+        PM.add(mir_pass);
         if (Context) {
             llvm::raw_svector_ostream asmfile(ObjBufferSV);
             llvm::raw_svector_ostream diagnostics_remarks(RemarksBufferSV);
@@ -986,16 +1000,18 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
                 PM.run(*m);
                 f->getContext().setDiagnosticsOutputFile(nullptr);
             }
+            std::swap(getIRDebugPassOutput(ll_emitted_pass), ll_emitted);
+            std::swap(getIRDebugPassOutput(ll_optimized_pass), ll_optimized);
+            std::swap(getMIRDebugPassOutput(mir_pass), mir);
         }
     }
-    jl_value_t *obj_ir = NULL;
-    jl_value_t *obj_asm = NULL;
-    jl_value_t *remarks_yaml = NULL;
-    JL_GC_PUSH3(&obj_asm, &obj_ir, &remarks_yaml);
-    obj_ir = jl_pchar_to_string(ir.data(), ir.size());
-    obj_asm = jl_pchar_to_string(ObjBufferSV.data(), ObjBufferSV.size());
-    remarks_yaml = jl_pchar_to_string(RemarksBufferSV.data(), RemarksBufferSV.size());
-    jl_value_t *analysis = (jl_value_t*)jl_svec(3, obj_asm, obj_ir, remarks_yaml);
+    jl_value_t *analysis = (jl_value_t*)jl_alloc_svec(5);
+    JL_GC_PUSH1(&analysis);
+    jl_svecset(analysis, 0, jl_pchar_to_string(ll_emitted.data(), ll_emitted.size()));
+    jl_svecset(analysis, 1, jl_pchar_to_string(ll_optimized.data(), ll_optimized.size()));
+    jl_svecset(analysis, 2, jl_pchar_to_string(mir.data(), mir.size()));
+    jl_svecset(analysis, 3, jl_pchar_to_string(ObjBufferSV.data(), ObjBufferSV.size()));
+    jl_svecset(analysis, 4, jl_pchar_to_string(RemarksBufferSV.data(), RemarksBufferSV.size()));
     JL_GC_POP();
     return analysis;
 }

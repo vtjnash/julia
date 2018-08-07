@@ -55,8 +55,8 @@ LLVMLINK :=
 ifeq ($(JULIACODEGEN),LLVM)
 SRCS += codegen jitlayers aotcompile disasm debuginfo llvm-simdloop llvm-ptls llvm-muladd \
 	llvm-late-gc-lowering llvm-lower-handlers llvm-gc-invariant-verifier \
-	llvm-propagate-addrspaces llvm-multiversioning llvm-alloc-opt cgmemmgr \
-	llvm-api
+	llvm-propagate-addrspaces llvm-multiversioning llvm-alloc-opt llvm-irdebuginfo \
+	cgmemmgr llvm-api
 FLAGS += -I$(shell $(LLVM_CONFIG_HOST) --includedir)
 LLVM_LIBS := all
 ifeq ($(USE_POLLY),1)
