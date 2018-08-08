@@ -785,13 +785,6 @@ void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, char getwrapp
         return NULL;
     }
 
-    static legacy::PassManager *PM;
-    if (!PM) {
-        PM = new legacy::PassManager();
-        addTargetPasses(PM, jl_TargetMachine);
-        addOptimizationPasses(PM, jl_options.opt_level);
-    }
-
     // get the source code for this function
     jl_code_info_t *src = (jl_code_info_t*)linfo->inferred;
     JL_GC_PUSH1(&src);
@@ -804,6 +797,20 @@ void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, char getwrapp
         src = NULL;
     if (src && !jl_is_code_info(src) && jl_is_method(linfo->def.method))
         src = jl_uncompress_ast(linfo->def.method, (jl_array_t*)src);
+
+    return jl_get_llvmf_defn2(linfo, src, world, getwrapper, optimize, params);
+}
+
+extern "C" JL_DLLEXPORT
+void *jl_get_llvmf_defn2(jl_method_instance_t *linfo, jl_code_info_t *src,
+    size_t world, char getwrapper, char optimize, const jl_cgparams_t params)
+{
+    static legacy::PassManager *PM;
+    if (optimize && !PM) {
+        PM = new legacy::PassManager();
+        addTargetPasses(PM, jl_TargetMachine);
+        addOptimizationPasses(PM, jl_options.opt_level);
+    }
 
     // emit this function into a new module
     if (src && jl_is_code_info(src)) {

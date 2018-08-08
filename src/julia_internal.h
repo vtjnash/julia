@@ -564,6 +564,7 @@ static inline void jl_set_gc_and_wait(void)
 JL_DLLEXPORT jl_value_t *jl_dump_method_asm(jl_method_instance_t *linfo, size_t world,
         int raw_mc, char getwrapper, const char* asm_variant);
 JL_DLLEXPORT void *jl_get_llvmf_defn(jl_method_instance_t *linfo, size_t world, char getwrapper, char optimize, const jl_cgparams_t params);
+JL_DLLEXPORT void *jl_get_llvmf_defn2(jl_method_instance_t *linfo, jl_code_info_t *src, size_t world, char getwrapper, char optimize, const jl_cgparams_t params);
 JL_DLLEXPORT jl_value_t *jl_dump_fptr_asm(uint64_t fptr, int raw_mc, const char* asm_variant);
 JL_DLLEXPORT jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel);
 JL_DLLEXPORT jl_value_t *jl_dump_llvm_ir(void *f, char strip_ir_metadata, char dump_module);

@@ -528,7 +528,6 @@ function show_ir(io::IO, code::IRCode, expr_type_printer=default_expr_type_print
 end
 
 function show_ir(io::IO, code::CodeInfo, expr_type_printer=default_expr_type_printer)
-    cols = displaysize(io)[2]
     used = BitSet()
     stmts = code.code
     types = code.ssavaluetypes
@@ -547,13 +546,6 @@ function show_ir(io::IO, code::CodeInfo, expr_type_printer=default_expr_type_pri
     end
     emit_lineinfo, line_indent = DILineInfoPrinter(code.linetable)
     for idx in eachindex(stmts)
-        if !isassigned(stmts, idx)
-            # This is invalid, but do something useful rather
-            # than erroring, to make debugging easier
-            printstyled(io, "#UNDEF\n", color=:red)
-            continue
-        end
-        stmt = stmts[idx]
         bbrange = cfg.blocks[bb_idx].stmts
         bbrange = bbrange.first:bbrange.last
         # Print line info update
@@ -573,6 +565,13 @@ function show_ir(io::IO, code::CodeInfo, expr_type_printer=default_expr_type_pri
         if idx == last(bbrange)
             bb_idx += 1
         end
+        if !isassigned(stmts, idx)
+            # This is invalid, but do something useful rather
+            # than erroring, to make debugging easier
+            printstyled(io, "#UNDEF\n", color=:red)
+            continue
+        end
+        stmt = stmts[idx]
         # convert statement index to labels, as expected by print_stmt
         if stmt isa Expr
             if stmt.head === :gotoifnot && length(stmt.args) == 2 && stmt.args[2] isa Int
