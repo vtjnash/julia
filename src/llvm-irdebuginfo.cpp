@@ -13,12 +13,14 @@
 
 using namespace llvm;
 
-void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef filename);
+void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef filename, std::vector<unsigned> &LineMap);
+
 
 struct IRDebugInfoPass : public ModulePass {
     static char ID;
     StringRef OutputFilename = "irdebuginfo.ll";
     std::string ir;
+    std::vector<unsigned> LineMap;
 
     public:
     IRDebugInfoPass() : ModulePass(ID)
@@ -39,7 +41,7 @@ struct IRDebugInfoPass : public ModulePass {
 bool IRDebugInfoPass::runOnModule(Module &M)
 {
     llvm::raw_string_ostream stream(ir);
-    jl_markup_llvm_ir(stream, M, OutputFilename);
+    jl_markup_llvm_ir(stream, M, OutputFilename, LineMap);
     return false;
 }
 
@@ -60,6 +62,12 @@ JL_DLLEXPORT std::string &getIRDebugPassOutput(Pass *P)
 {
     return ((IRDebugInfoPass*)P)->ir;
 }
+
+JL_DLLEXPORT std::vector<unsigned> &getIRDebugPassLineMap(Pass *P)
+{
+    return ((IRDebugInfoPass*)P)->LineMap;
+}
+
 
 
 namespace llvm {

@@ -119,7 +119,7 @@ public:
     {
         uint32_t nframes = DI.getNumberOfFrames();
         std::vector<DILineInfo> DIvec(nframes);
-        for (uint32_t i = 0; i < DI.getNumberOfFrames(); i++) {
+        for (uint32_t i = 0; i < nframes; i++) {
             DIvec[i] = DI.getFrame(i);
         }
         emit_lineinfo(Out, DIvec);
@@ -216,6 +216,9 @@ class LineNumberAnnotatedWriter : public AssemblyAnnotationWriter {
     // this (when reversed) allows mapping from line numbers in the output file back to the originating Instruction,
     // as if our input was just parsed from the file we are outputting
     DenseMap<const Value *, unsigned> OutputLineNo;
+    // this gives the mapping from line number in the output file
+    // back to the originating line number
+    std::vector<unsigned> LineNoMap;
 public:
     LineNumberAnnotatedWriter() {}
     virtual void emitFunctionAnnot(const Function *, formatted_raw_ostream &);
@@ -228,6 +231,10 @@ public:
         return it == OutputLineNo.end() ? 0 : it->second;
     }
 
+    std::vector<unsigned> takeLineMap() {
+        return std::move(LineNoMap);
+    }
+
     void addSubprogram(const Function *F, DISubprogram *SP)
     {
         Subprogram[F] = SP;
@@ -236,6 +243,24 @@ public:
     void addDebugLoc(const Instruction *I, DILocation *Loc)
     {
         DebugLoc[I] = Loc;
+    }
+
+private:
+    void record_linestart(const Value *I, DILocation *NewInstrLoc, formatted_raw_ostream &Out)
+    {
+        Out.flush();
+        unsigned line = Out.getLine();
+        unsigned topline = 0;
+        while (NewInstrLoc) {
+            if (NewInstrLoc->getLine() != 0)
+                topline = NewInstrLoc->getLine();
+            NewInstrLoc = NewInstrLoc->getInlinedAt();
+        }
+        if (topline > 0) {
+            if (LineNoMap.size() <= line)
+                LineNoMap.resize(line + 1);
+            LineNoMap[line] = topline;
+        }
     }
 };
 
@@ -258,7 +283,7 @@ void LineNumberAnnotatedWriter::emitFunctionAnnot(
         LinePrinter.emit_lineinfo(Out, DIvec);
     }
     Out.flush();
-    OutputLineNo[F] = Out.getLine();
+    OutputLineNo[F] = Out.getLine() + 1;
 }
 
 void LineNumberAnnotatedWriter::emitInstructionAnnot(
@@ -270,6 +295,7 @@ void LineNumberAnnotatedWriter::emitInstructionAnnot(
         if (Loc != DebugLoc.end())
             NewInstrLoc = Loc->second;
     }
+    record_linestart(I, NewInstrLoc, Out);
     if (NewInstrLoc && NewInstrLoc != InstrLoc) {
         InstrLoc = NewInstrLoc;
         std::vector<DILineInfo> DIvec;
@@ -287,7 +313,7 @@ void LineNumberAnnotatedWriter::emitInstructionAnnot(
     }
     Out << LinePrinter.inlining_indent(" ");
     Out.flush();
-    OutputLineNo[I] = Out.getLine();
+    OutputLineNo[I] = Out.getLine() + 1;
 }
 
 void LineNumberAnnotatedWriter::emitBasicBlockEndAnnot(
@@ -391,7 +417,7 @@ jl_value_t *jl_dump_llvm_ir(void *f, char strip_ir_metadata, char dump_module)
 }
 
 //DenseMap<Instruction *, unsigned>
-void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef filename)
+void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef filename, std::vector<unsigned> &LineMap)
 {
     LineNumberAnnotatedWriter AAW;
     JL_LOCK(&codegen_lock); // Might GC
@@ -420,7 +446,6 @@ void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef fi
         for (auto &F : M) {
             if (F.isDeclaration())
                 continue;
-            // TODO: actually should make a new DISubprogram
             unsigned line = AAW.getOutputLine(&F);
             DISubprogram *FuncLoc = dbuilder.createFunction(
                     CU,
@@ -441,10 +466,12 @@ void jl_markup_llvm_ir(llvm::raw_string_ostream &stream, Module &M, StringRef fi
                 for (auto &I : BB) {
                     unsigned line = AAW.getOutputLine(&I);
                     assert(line && "Instruction missing from output!");
+                    DebugLoc loc = I.getDebugLoc();
                     I.setDebugLoc(DebugLoc::get(line, 0, FuncLoc, NULL));
                 }
             }
         }
+        LineMap = AAW.takeLineMap();
     }
     JL_UNLOCK(&codegen_lock); // Might GC
 }

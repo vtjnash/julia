@@ -917,6 +917,7 @@ void jl_strip_llvm_debug(Module *m);
 
 Pass *createIRDebugInfoPass(StringRef OutputFilename);
 std::string &getIRDebugPassOutput(Pass *Pass);
+std::vector<unsigned> &getIRDebugPassLineMap(Pass *P);
 
 Pass *createMIRDebugInfoPass(StringRef OutputFilename);
 std::string &getMIRDebugPassOutput(Pass *Pass);
@@ -927,9 +928,10 @@ extern "C" JL_DLLEXPORT
 jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
 {
     // precise printing via IR assembler
-    SmallVector<char, 4096> ObjBufferSV;
-    SmallVector<char, 4096> RemarksBufferSV;
-    std::string ll_emitted, ll_optimized, mir;
+    std::array<std::string, 5> outputs;
+    std::array<std::vector<unsigned>, 2> linemaps;
+    llvm::raw_string_ostream asmfile(outputs.at(3));
+    llvm::raw_string_ostream diagnostics_remarks(outputs.at(4));
     { // scope block
         Function *f = (Function*)F;
         assert(!f->isDeclaration());
@@ -970,8 +972,6 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
         PM.add(createBarrierNoopPass());
         PM.add(mir_pass);
         if (Context) {
-            llvm::raw_svector_ostream asmfile(ObjBufferSV);
-            llvm::raw_svector_ostream diagnostics_remarks(RemarksBufferSV);
 #if JL_LLVM_VERSION >= 60000
             const MCSubtargetInfo &STI = *TM->getMCSubtargetInfo();
 #endif
@@ -994,11 +994,11 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
                 MRI, TM->getTargetTriple().str(), TM->getTargetCPU()
 #endif
                 );
-            auto FOut = llvm::make_unique<formatted_raw_ostream>(asmfile);
             MCCodeEmitter *MCE = nullptr;
             std::unique_ptr<MCStreamer> S(TM->getTarget().createAsmStreamer(
-                *Context, std::move(FOut), /*iIsVerboseAsm*/true,
-                /*UseDwarfDirectory*/true, InstPrinter, MCE, MAB, /*ShowInst*/false));
+                *Context, llvm::make_unique<formatted_raw_ostream>(asmfile),
+                /*iIsVerboseAsm*/true, /*UseDwarfDirectory*/true,
+                InstPrinter, MCE, MAB, /*ShowInst*/false));
             AsmPrinter *Printer =
                 TM->getTarget().createAsmPrinter(*TM, std::move(S));
             if (Printer) {
@@ -1007,18 +1007,29 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, int optlevel)
                 PM.run(*m);
                 f->getContext().setDiagnosticsOutputFile(nullptr);
             }
-            std::swap(getIRDebugPassOutput(ll_emitted_pass), ll_emitted);
-            std::swap(getIRDebugPassOutput(ll_optimized_pass), ll_optimized);
-            std::swap(getMIRDebugPassOutput(mir_pass), mir);
         }
+        outputs.at(0) = std::move(getIRDebugPassOutput(ll_emitted_pass));
+        linemaps.at(0) = std::move(getIRDebugPassLineMap(ll_emitted_pass));
+        outputs.at(1) = std::move(getIRDebugPassOutput(ll_optimized_pass));
+        linemaps.at(1) = std::move(getIRDebugPassLineMap(ll_optimized_pass));
+        outputs.at(2) = std::move(getMIRDebugPassOutput(mir_pass));
     }
-    jl_value_t *analysis = (jl_value_t*)jl_alloc_svec(5);
-    JL_GC_PUSH1(&analysis);
-    jl_svecset(analysis, 0, jl_pchar_to_string(ll_emitted.data(), ll_emitted.size()));
-    jl_svecset(analysis, 1, jl_pchar_to_string(ll_optimized.data(), ll_optimized.size()));
-    jl_svecset(analysis, 2, jl_pchar_to_string(mir.data(), mir.size()));
-    jl_svecset(analysis, 3, jl_pchar_to_string(ObjBufferSV.data(), ObjBufferSV.size()));
-    jl_svecset(analysis, 4, jl_pchar_to_string(RemarksBufferSV.data(), RemarksBufferSV.size()));
+    asmfile.flush();
+    diagnostics_remarks.flush();
+    jl_value_t *jlanalysis = (jl_value_t*)jl_alloc_svec(outputs.size());
+    jl_value_t *jllinemaps = (jl_value_t*)jl_alloc_svec(linemaps.size());
+    JL_GC_PUSH2(&jlanalysis, &jllinemaps);
+    for (size_t i = 0; i < outputs.size(); i++) {
+        std::string &txt = outputs.at(i);
+        jl_svecset(jlanalysis, i, jl_pchar_to_string(txt.data(), txt.size()));
+    }
+    for (size_t i = 0; i < linemaps.size(); i++) {
+        std::vector<unsigned> &lno = linemaps.at(i);
+        jl_array_t *jllno = jl_alloc_array_1d(jl_array_int32_type, lno.size());
+        jl_svecset(jllinemaps, i, jllno);
+        memcpy(jl_array_data(jllno), lno.data(), lno.size() * sizeof(unsigned));
+    }
+    jl_value_t *all = (jl_value_t*)jl_svec2(jlanalysis, jllinemaps);
     JL_GC_POP();
-    return analysis;
+    return all;
 }

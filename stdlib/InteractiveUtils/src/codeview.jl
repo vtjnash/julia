@@ -132,8 +132,9 @@ function expr_type_printer(io::IO, @nospecialize(typ), used::Bool)
     print(io, "::", typ)
     nothing
 end
-function repr_ir(code::Core.CodeInfo)
+function repr_ir(linfo::Core.MethodInstance, @nospecialize(rettype), code::Core.CodeInfo)
     buf = IOBuffer()
+    println(buf, linfo, "::", rettype)
     io = IOContext(buf, :SOURCE_SLOTNAMES => Base.sourceinfo_slotnames(code))
     used = BitSet()
     stmts = code.code
@@ -154,12 +155,12 @@ function repr_ir(code::Core.CodeInfo)
     nstmts = length(stmts)
     output_starts = zeros(Int, nstmts)
     for idx in 1:nstmts
-        output_starts[idx] = position(buf)
         bbrange = cfg.blocks[bb_idx].stmts
         bbrange = bbrange.first:bbrange.last
         # Print line info update
         linestart = idx == first(bbrange) ? "   " : "│  "
         emit_lineinfo(io, linestart, code.codelocs[idx])
+        output_starts[idx] = position(buf)
         # Compute BB guard rail
         if idx == first(bbrange)
             bb_idx_str = string(bb_idx)
@@ -238,6 +239,9 @@ function code_analysis(@nospecialize(f), @nospecialize(types=Tuple); syntax::Sym
     world = ccall(:jl_get_world_counter, UInt, ())
     linfo = _get_linfo(f, types, world)
     meth = linfo.def::Method
+    params = Core.Compiler.Params(world)
+    Core.Compiler.typeinf_type(meth, linfo.specTypes, linfo.sparam_vals, params) # compute calling convention return type for linfo
+    # isempty(params.cache) || (linfo = params.cache[1].linfo) # TODO: is this worthwhile ever?
     function rewrite_lineno!(src::Core.CodeInfo, from::Symbol, to::Symbol)
         # rewrites the codelocs / linetable of src so we can track statement movements with good granularity
         # and output a list of the original outer-most line numbers for each statement
@@ -263,29 +267,32 @@ function code_analysis(@nospecialize(f), @nospecialize(types=Tuple); syntax::Sym
         end
         return lines
     end
-    params = Core.Compiler.Params(world)
     ccall(:jl_typeinf_begin, Cvoid, ())
     result = Core.Compiler.InferenceResult(linfo)
     frame = Core.Compiler.InferenceState(result, false, params)
-    #lowered = IRShowEnhanced.repr_ir(frame.src) # this is effectively the same as typed
+    #lowered = IRShowEnhanced.repr_ir(linfo, Any, frame.src) # this is effectively the same as typed
     @assert Core.Compiler.typeinf(frame)
     text = get_source_hack(linfo.def::Method)
-    typed, typed_map_out = IRShowEnhanced.repr_ir(frame.src) # text, and map from typed:ssa to typed:lineno
-    typed_map_in = rewrite_lineno!(frame.src, meth.file, :lowered) # map from typed::ssa to text:lineno
+    typed, typed_map_out = IRShowEnhanced.repr_ir(linfo, result.result, frame.src) # text, and map from typed:ssa to typed:lineno
+    typed_map_in = rewrite_lineno!(frame.src, meth.file, :lowered) # map from typed:ssa to text:lineno
     opt = Core.Compiler.OptimizationState(frame)
     Core.Compiler.optimize(opt, result.result)
     ccall(:jl_typeinf_end, Cvoid, ())
-    optim, optim_map_out = IRShowEnhanced.repr_ir(opt.src) # map from optim:ssa to optim:lineno
-    optim_map_in = rewrite_lineno!(opt.src, :lowered, :optimized) # map from optim::ssa to typed:ssa
+    optim, optim_map_out = IRShowEnhanced.repr_ir(linfo, result.result, opt.src) # map from optim:ssa to optim:lineno
+    optim_map_in = rewrite_lineno!(opt.src, :lowered, :optimized) # map from optim:ssa to typed:ssa
+    opt.src.inferred = true
     analysis = _get_linfo_analysis(linfo, opt.src, world, syntax)
-    strs = String[text, typed, optim, analysis...]
+    outputs = analysis[1]::Core.SimpleVector
+    linemaps = analysis[2]::Core.SimpleVector # map from llvm:lineno to input
+    asm_map = parse_asm_linemap!(outputs[4])
+    strs = String[text, typed, optim, outputs...]
     rmaps = Vector{Int}[
         re_map(typed_map_in, invert_map(typed_map_out)), # lowered[i] -> text
         re_map(typed_map_out, re_map(optim_map_in, invert_map(optim_map_out))), # optim[i] -> lowered
-        Int[], # analysis[1][i] (llvm) -> optim
-        Int[], # analysis[2][i] (llvm) -> llvm
+        re_map(optim_map_out, map(Int, linemaps[1])), # analysis[1][i] (llvm) -> optim
+        map(Int, linemaps[2]), # analysis[2][i] (llvm) -> llvm
         Int[], # analysis[3][i] (mir) -> llvm
-        Int[], # analysis[4][i] (asm) -> mir
+        asm_map, # analysis[4][i] (asm) -> mir
         Int[], # analysis[5] (remarks)
         ]
     return strs, rmaps
@@ -365,8 +372,29 @@ end
 #    return lines, line1
 #end
 
+function parse_asm_linemap!(asm::String)
+    linemap = Int[]
+    lineno = 0
+    for line in eachline(IOBuffer(asm), keep=true)
+        if occursin(r"^\s*\.section\s", line)
+            lineno = 0
+        else
+            loc = match(r"^\s*\.loc\s+1 (\d+) \d+", line)
+            if loc !== nothing
+                lineno = parse(Int, loc[1])
+            end
+        end
+        push!(linemap, lineno)
+    end
+    return linemap
+end
+
 function collect_analysis(analysis::Vector{String}, rmaps::Vector{Vector{Int}})
     fmts = (:julia, :text, :text, :llvm, :llvm, :yaml, :asm, :yaml)
+    ids = ("julia", "julia-lowered", "julia-optim", "llvm-lowered", "llvm-optim", "llvm-mir", "asm", "remarks")
+    titles = ("Original Source", "Julia SSAIR, with Inference Types", "Julia SSAIR, Optimized",
+           "LLVM IR, Emitted (lowered)", "LLVM IR, Optimized",
+           "LLVM Machine IR", "Assembly Code", "Optimization Remarks")
     @assert length(fmts) == length(analysis)
     lnos = map(text -> countlines(IOBuffer(text)), analysis)
     render = map(analysis, fmts) do text, fmt
@@ -374,11 +402,14 @@ function collect_analysis(analysis::Vector{String}, rmaps::Vector{Vector{Int}})
         @async (write(p, text); close(p.in))
         return read(p, String)
     end
-    for x in render
-       print("""<div class="source">""", x, "</div>")
+    keep = collect(fmt !== :yaml for fmt in fmts)
+    for i = 1:length(render)
+        keep[i] || continue
+        id, title, x = ids[i], titles[i], render[i]
+        print("""<div id=\"""", id, """\"><div class="source-title">$title</div><div class="source">""", x, "</div></div>")
     end
     println()
-    println(lnos)
-    println(rmaps)
+    println(lnos[keep])
+    println(rmaps[keep[2:end]]) # TODO: actually need to remap these, and not just drop it
     return render
 end
