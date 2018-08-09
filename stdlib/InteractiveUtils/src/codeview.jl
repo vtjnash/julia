@@ -212,7 +212,7 @@ function repr_ir(linfo::Core.MethodInstance, @nospecialize(rettype), code::Core.
     end
     typed = String(take!(buf))
     postprocess_linemap!(typed, output_starts)
-    return typed,  output_starts
+    return typed, output_starts
 end
 function postprocess_linemap!(text::String, ssamap::Vector{Int})
     # convert position to the corresponding line number for each statement
@@ -227,7 +227,7 @@ function postprocess_linemap!(text::String, ssamap::Vector{Int})
     end
     return lines
 end
-end
+end # module IRShowEnhanced
 
 
 """
@@ -238,6 +238,10 @@ Compute all code transforms, modifying the line numbers at most steps to enable 
 function code_analysis(@nospecialize(f), @nospecialize(types=Tuple); syntax::Symbol = :att)
     world = ccall(:jl_get_world_counter, UInt, ())
     linfo = _get_linfo(f, types, world)
+    return code_analysis(linfo, world, syntax=syntax)
+end
+
+function code_analysis(linfo::Core.MethodInstance, world::UInt; syntax::Symbol = :att)
     meth = linfo.def::Method
     params = Core.Compiler.Params(world)
     Core.Compiler.typeinf_type(meth, linfo.specTypes, linfo.sparam_vals, params) # compute calling convention return type for linfo
@@ -314,7 +318,13 @@ function get_source_hack(m::Method)
     file = string(m.file)
     repl_history = match(r"^REPL\[(\d+)\]$", file)
     if repl_history === nothing
-        text = read(file, String)
+        file = Base.find_source_file(file)
+        if file === nothing
+            @warn "missing file $(m.file) for $m"
+            text = ""
+        else
+            text = read(file, String)
+        end
     else
         hist = Base.active_repl.interface.modes[1].hist
         hist_idx = hist.start_idx + parse(Int, repl_history[1])
@@ -403,13 +413,95 @@ function collect_analysis(analysis::Vector{String}, rmaps::Vector{Vector{Int}})
         return read(p, String)
     end
     keep = collect(fmt !== :yaml for fmt in fmts)
+    fullhtml = IOBuffer()
     for i = 1:length(render)
         keep[i] || continue
         id, title, x = ids[i], titles[i], render[i]
-        print("""<div id=\"""", id, """\"><div class="source-title">$title</div><div class="source">""", x, "</div></div>")
+        print(fullhtml, """<div id=\"""", id, """\"><div class="source-title">$title</div><div class="source">""", x, "</div></div>")
     end
-    println()
-    println(lnos[keep])
-    println(rmaps[keep[2:end]]) # TODO: actually need to remap these, and not just drop it
-    return render
+    lnos = lnos[keep]
+    rmaps = rmaps[keep[2:end]] # TODO: usually need to actually remap these, and not just drop them
+    return String(take!(fullhtml)), lnos, rmaps
+end
+
+function build_profile_analysis(methods::Vector{Core.MethodInstance})
+    fullhtml = String[]
+    lnos = Vector{Int}[]
+    rmaps = Vector{Vector{Int}}[]
+    for m in methods
+        world = Base.max_world(m)
+        world == typemax(UInt) && (world = ccall(:jl_get_world_counter, UInt, ()))
+        html, lno, rmap = collect_analysis(code_analysis(m, world)...)
+        push!(fullhtml, html)
+        push!(lnos, lno)
+        push!(rmaps, rmap)
+    end
+    return fullhtml, lnos, rmaps
+end
+
+function write_analysis(dir::String, profile::String, analysismap::Vector{Int}, allanalysis::NTuple{3, Vector}, source_heatmaps::Vector{String})
+    mkpath(dir)
+    cd(dir) do
+        write("profile", profile)
+        open("mapping", "w") do io
+            print(io, analysismap)
+        end
+        for i = 1:length(allanalysis[1])
+            fullhtml, lnos, rmaps = allanalysis[1][i], allanalysis[2][i], allanalysis[3][i]
+            dir = string(i)
+            mkpath(dir)
+            cd(dir) do
+                write("analysis", fullhtml)
+                write("julia-heatmap", source_heatmaps[i])
+                open("rlinemaps", "w") do io
+                    write(io, "[")
+                    join(io, rmaps, ", ")
+                    write(io, "]")
+                end
+                open("nlines", "w") do io
+                    print(io, lnos)
+                end
+            end
+        end
+    end
+end
+
+
+# turn the Dict into a Vector, for easier use
+function build_flamemaps(heatmaps::Vector{Dict{Int, Int}}, lineno::Vector{Int})
+    flames = Vector{String}(undef, length(heatmaps))
+    for i = 1:length(heatmaps)
+        heatmap = heatmaps[i]
+        maxline = lineno[i]
+        maxcount = sum(values(heatmap))
+        if maxcount == 0
+            flames[i] = ""
+        else
+            flame = IOBuffer()
+            print(flame, """<div class="flame"><pre>\n""")
+            for line = 1:maxline
+                count = get(heatmap, line, 0)
+                pct = round(Int, 100 * count / maxcount)
+                if pct > 0
+                    print(flame, """<span style="width:""", pct, """%"></span>\n""")
+                else
+                    print(flame, "\n")
+                end
+            end
+            print(flame, """</pre></div>\n""")
+            flames[i] = String(take!(flame))
+        end
+    end
+    return flames
+end
+
+function open_profile(dir::String)
+    profile, analysismap, methods, heatmaps = ProfileEnhanced.collect_profile()
+    allanalysis = build_profile_analysis(methods)
+    flamemaps = build_flamemaps(heatmaps, map(lnos -> lnos[1], allanalysis[2]))
+    write_analysis(dir, profile, analysismap, allanalysis, flamemaps)
+    # cp("linemap.html", "$dir/linemap.html")
+    success(`ln -s ../linemap.html $dir/linemap.html`)
+    success(`open http://localhost:8000/$dir/linemap.html`)
+    nothing
 end

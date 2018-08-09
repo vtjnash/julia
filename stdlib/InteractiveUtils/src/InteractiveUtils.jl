@@ -16,6 +16,7 @@ using LinearAlgebra  # for peakflops
 
 include("editless.jl")
 include("codeview.jl")
+include("profileview.jl")
 include("macros.jl")
 include("clipboard.jl")
 

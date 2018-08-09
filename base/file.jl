@@ -165,7 +165,7 @@ function mkdir(path::AbstractString; mode::Integer = 0o777)
         ret = ccall(:mkdir, Int32, (Cstring, UInt32), path, checkmode(mode))
     end
     systemerror(:mkdir, ret != 0; extrainfo=path)
-    path
+    return path
 end
 
 """
@@ -206,7 +206,7 @@ julia> readdir("test")
 function mkpath(path::AbstractString; mode::Integer = 0o777)
     isdirpath(path) && (path = dirname(path))
     dir = dirname(path)
-    (path == dir || isdir(path)) && return
+    (path == dir || isdir(path)) && return path
     mkpath(dir, mode = checkmode(mode))
     try
         mkdir(path, mode = mode)
@@ -217,7 +217,7 @@ function mkpath(path::AbstractString; mode::Integer = 0o777)
             rethrow()
         end
     end
-    path
+    return path
 end
 
 """
