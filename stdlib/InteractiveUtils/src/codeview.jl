@@ -96,6 +96,20 @@ function _get_linfo_analysis(
     return analysis
 end
 
+function _get_linfo_analysis_raw(
+        linfo::Core.MethodInstance, world::UInt,
+        syntax::Symbol, params::CodegenParams=CodegenParams())
+    if syntax != :att && syntax != :intel
+        throw(ArgumentError("'syntax' must be either :intel or :att"))
+    end
+    llvmf = ccall(:jl_get_llvmf_defn, Ptr{Cvoid}, (Any, UInt, Bool, Bool, CodegenParams), linfo, world, false, false, params)
+    llvmf == C_NULL && error("could not compile the specified method")
+    analysis = ccall(:jl_dump_llvm_asm, Any, (Ptr{Cvoid}, Ptr{UInt8}, Cint),
+        llvmf, syntax, -1)::Core.SimpleVector
+    return analysis
+end
+
+
 
 """
     code_llvm([io=stdout,], f, types)
@@ -228,6 +242,13 @@ function postprocess_linemap!(text::String, ssamap::Vector{Int})
     return lines
 end
 end # module IRShowEnhanced
+
+function code_analysis_raw(@nospecialize(f), @nospecialize(types=Tuple); syntax::Symbol = :att)
+    world = ccall(:jl_get_world_counter, UInt, ())
+    linfo = _get_linfo(f, types, world)
+    analysis = _get_linfo_analysis_raw(linfo, world, syntax)
+    return analysis
+end
 
 
 """
