@@ -39,11 +39,11 @@ An *environment* determines what `import X` and `using X` mean in various code c
 
 These three kinds of environment each serve a different purpose:
 
-* Project environments provide **reproducibility.** By checking a project environment into version control—e.g. a git repository—along with the rest of the project's source code, you can reproduce the exact state of the project _and_ all of its dependencies since the manifest file captures the exact version of every dependency and can be rematerialized easily.
-* Package directories provide low-overhead **convenience** when a project environment would be overkill: are handy when you have a set of packages and just want to put them somewhere and use them as they are without having to create and maintain a project environment for them.
-* Stacked environments allow for **augmentation** of the primary environment with additional tools. You can push an environment including development tools onto the stack and they will be available from the REPL and scripts but not from inside of packages.
+* Project environments provide **reproducibility**. By checking a project environment into version control—e.g. a git repository—along with the rest of the project's source code, you can reproduce the versions all of its dependencies. The manifest file, in particular, captures the exact version of every dependency, which makes it possible for `Pkg` to retrieve the correct versions.
+* Package directories provide **simplicity** when a full carefully-tracked project environment is unnecessary. They are helpful when you want to put a set of packages somewhere and be able to directly use them, without having to create a project environment for them.
+* Stacked environments allow for **adding** tools to the primary environment. You can push an environment of development tools onto the stack to make them available from the REPL and scripts, but not from inside of packages.
 
-As an abstraction, an environment provides three maps: `roots`, `graph` and `paths`. When resolving the meaning of `import X`, `roots` and `graph` are used to determine the identity of `X` and answer the question *"what is `X`?"*, while the `paths` map is used to locate the source code of `X` and answer the question *"where is `X`?"* The specific roles of the three maps are:
+At a high-level, each environment conceptually defines three maps: `roots`, `graph` and `paths`. When resolving the meaning of `import X`, the `roots` and `graph` maps are used to determine the identity of `X`, while the `paths` map is used to locate the source code of `X`. The specific roles of the three maps are:
 
 - **roots:** `name::Symbol` ⟶ `uuid::UUID`
 
@@ -155,7 +155,7 @@ and gets `2d15fe94-a1f7-436c-a4d8-07a9a496e01c` , which indicates that in the co
 
 What happens if `import Zebra` is evaluated in the main `App` code base? Since `Zebra` does not appear in the project file, the import will fail even though `Zebra` *does* appear in the manifest file. Moreover, if `import Zebra` occurs in the public `Priv` package—the one with UUID `2d15fe94-a1f7-436c-a4d8-07a9a496e01c`—then that would also fail since that `Priv` package has no declared dependencies in the manifest file and therefore cannot load any packages. The `Zebra` package can only be loaded by packages for which it appear as an explicit dependency in the manifest file: the  `Pub` package and one of the `Priv` packages.
 
-**The paths map** of a project environment is also determined by the manifest file if present and is empty if there is no manifest. The path of a package `uuid` named `X` is determined by these two rules:
+**The paths map** of a project environment is also determined by the manifest file if present or is empty if there is no manifest. The path of a package `uuid` named `X` is determined by these two rules:
 
 1. If the manifest stanza matching `uuid` has a `path` entry, use that path relative to the manifest file.
 2. Otherwise, if the manifest stanza matching `uuid` has a `git-tree-sha1` entry, compute a deterministic hash function of `uuid` and `git-tree-sha1`—call it `slug`—and look for `packages/X/$slug` in each directory in the Julia `DEPOT_PATH` global array. Use the first such directory that exists.
