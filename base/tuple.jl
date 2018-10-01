@@ -38,10 +38,18 @@ _setindex(v, i::Integer) = ()
 
 ## iterating ##
 
-function iterate(@nospecialize(t::Tuple), i::Int=1)
+function iterate(@nospecialize(t::Tuple), i::Int)
     @_inline_meta
     return (1 <= i <= length(t)) ? (@inbounds t[i], i + 1) : nothing
 end
+
+iterate(t::Tuple{}) = nothing
+
+function iterate(@nospecialize(t::Tuple))
+    @_inline_meta
+    return (@inbounds t[1], 2)
+end
+
 
 keys(@nospecialize t::Tuple) = OneTo(length(t))
 
