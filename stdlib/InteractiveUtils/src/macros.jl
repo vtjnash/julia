@@ -216,15 +216,16 @@ Evaluates the arguments to the function or macro call, determines their types, a
 
 Evaluates the arguments to the function or macro call, determines their types, and calls
 [`code_llvm`](@ref) on the resulting expression.
-Set the optional keyword arguments `raw`, `dump_module` and `optimize` by putting them and
-their value before the function call, like this:
+Set the optional keyword arguments `raw`, `dump_module`, `debuginfo`, `optimize`
+by putting them and their value before the function call, like this:
 
-    @code_llvm raw=true dump_module=true f(x)
+    @code_llvm raw=true dump_module=true debuginfo=:default f(x)
     @code_llvm optimize=false f(x)
 
 `optimize` controls whether additional optimizations, such as inlining, are also applied.
 `raw` makes all metadata and dbg.* calls visible.
-`dump_module` prints the entire module that encapsulates the function, with debug info and metadata.
+`debuginfo` may be one of full, source (default), none, to specify the verbosity of code comments.
+`dump_module` prints the entire module that encapsulates the function.
 """
 :@code_llvm
 
@@ -233,5 +234,11 @@ their value before the function call, like this:
 
 Evaluates the arguments to the function or macro call, determines their types, and calls
 [`code_native`](@ref) on the resulting expression.
+
+Set the optional keyword argument `debuginfo` by putting it before the function call, like this:
+
+    @code_native debuginfo=:default f(x)
+
+`debuginfo` may be one of source (default) or none, to specify the verbosity of code comments.
 """
 :@code_native
