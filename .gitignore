@@ -8,6 +8,7 @@
 /oprofile_data
 /usr-staging
 /Make.user
+/make.inc.cache
 /julia-*
 /source-dist.tmp
 /source-dist.tmp1
