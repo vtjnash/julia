@@ -1065,7 +1065,7 @@ function invoke_tfunc(@nospecialize(ft), @nospecialize(types), @nospecialize(arg
     meth = entry.func
     (ti, env) = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argtype, meth.sig)::SimpleVector
     rt, edge = typeinf_edge(meth::Method, ti, env, sv)
-    edge !== nothing && add_backedge!(edge::MethodInstance, sv)
+    edge !== nothing && add_inline_edge!(edge::MethodInstance, sv)
     return rt
 end
 

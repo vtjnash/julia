@@ -314,6 +314,7 @@ struct _jl_method_instance_t {
     jl_value_t *specTypes;  // argument types this was specialized for
     jl_value_t *rettype; // return type for fptr
     jl_svec_t *sparam_vals; // static parameter values, indexed by def.method->sig UnionAll tvars
+    jl_array_t *edges;
     jl_array_t *backedges;
     jl_value_t *inferred;  // inferred jl_code_info_t, or jl_nothing, or null
     jl_value_t *inferred_const; // inferred constant return value, or null

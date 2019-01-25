@@ -65,11 +65,11 @@ function typeinf(frame::InferenceState)
     # if we aren't cached, we don't need this edge
     # but our caller might, so let's just make it anyways
     for caller in frames
-        finalize_backedges(caller)
+        finalize_call_edges(caller)
     end
     if max_valid == typemax(UInt)
         for caller in frames
-            store_backedges(caller)
+            store_call_edges(caller)
         end
     end
     return true
@@ -175,11 +175,11 @@ function finish(src::CodeInfo)
     nothing
 end
 
-function finalize_backedges(me::InferenceState)
+function finalize_call_edges(me::InferenceState)
     # update all of the (cycle) callers with real backedges
     # by traversing the temporary list of backedges
     for (i, _) in me.cycle_backedges
-        add_backedge!(me.linfo, i)
+        add_call_edge!(me.linfo, i)
     end
 
     # finalize and record the linfo result
@@ -187,26 +187,13 @@ function finalize_backedges(me::InferenceState)
     nothing
 end
 
-# add the real backedges
-function store_backedges(frame::InferenceState)
+# add the real edges
+function store_call_edges(frame::InferenceState)
     toplevel = !isa(frame.linfo.def, Method)
     if !toplevel && (frame.cached || frame.parent !== nothing)
         caller = frame.result.linfo
         for edges in frame.stmt_edges
-            edges === nothing && continue
-            i = 1
-            while i <= length(edges)
-                to = edges[i]
-                if isa(to, MethodInstance)
-                    ccall(:jl_method_instance_add_backedge, Cvoid, (Any, Any), to, caller)
-                    i += 1
-                else
-                    typeassert(to, Core.MethodTable)
-                    typ = edges[i + 1]
-                    ccall(:jl_method_table_add_backedge, Cvoid, (Any, Any, Any), to, typ, caller)
-                    i += 2
-                end
-            end
+            edges isa Vector{Any} && ccall(:jl_method_instance_add_edges, Cvoid, (Any, Any), caller, edges)
         end
     end
 end

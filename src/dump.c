@@ -2234,18 +2234,7 @@ static void jl_insert_backedges(jl_array_t *list, arraylist_t *dependent_worlds)
         }
         if (valid) {
             // if this callee is still valid, add all the backedges
-            for (j = 0; j < jl_array_len(callees); j++) {
-                jl_value_t *callee = jl_array_ptr_ref(callees, j);
-                if (jl_is_method_instance(callee)) {
-                    jl_method_instance_add_backedge((jl_method_instance_t*)callee, caller);
-                }
-                else {
-                    jl_datatype_t *ftype = jl_first_argument_datatype(callee);
-                    jl_methtable_t *mt = ftype->name->mt;
-                    assert(jl_is_datatype(ftype) && mt);
-                    jl_method_table_add_backedge(mt, callee, (jl_value_t*)caller);
-                }
-            }
+            jl_method_instance_add_edges(caller, callees);
         }
         else {
             // otherwise delete it

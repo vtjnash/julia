@@ -571,8 +571,8 @@ end
 
 function spec_lambda(@nospecialize(atype), sv::OptimizationState, @nospecialize(invoke_data))
     linfo = _spec_lambda(atype, sv, invoke_data)
-    linfo !== nothing && add_backedge!(linfo, sv)
-    linfo
+    linfo !== nothing && add_inline_edge!(linfo, sv)
+    return linfo
 end
 
 # This assumes the caller has verified that all arguments to the _apply call are Tuples.
@@ -671,7 +671,7 @@ function analyze_method!(idx::Int, @nospecialize(f), @nospecialize(ft), @nospeci
 
     if invoke_api(linfo) == 2
         # in this case function can be inlined to a constant
-        add_backedge!(linfo, sv)
+        add_inline_edge!(linfo, sv)
         return ConstantCase(quoted(linfo.inferred_const), method, Any[methsp...], metharg)
     end
 
@@ -690,8 +690,8 @@ function analyze_method!(idx::Int, @nospecialize(f), @nospecialize(ft), @nospeci
         return spec_lambda(atype_unlimited, sv, invoke_data)
     end
 
-    # At this point we're committed to performing the inlining, add the backedge
-    add_backedge!(linfo, sv)
+    # At this point we're committed to performing the inlining, record the edge
+    add_inline_edge!(linfo, sv)
 
     if isa(inferred, CodeInfo)
         src = inferred
@@ -942,6 +942,7 @@ function assemble_inline_todo!(ir::IRCode, sv::OptimizationState)
             # No applicable method, or too many applicable methods
             continue
         end
+        # XXX: this lookup created call edges that it fails to record
 
         cases = Pair{Any, Any}[]
         # TODO: This could be better
@@ -1224,7 +1225,7 @@ function find_inferred(linfo::MethodInstance, @nospecialize(atypes), sv::Optimiz
                 return svec(false, inferred_src)
             end
             if isa(inferred_src, Const) && is_inlineable_constant(inferred_src.val)
-                add_backedge!(linfo, sv)
+                add_inline_edge!(linfo, sv)
                 return svec(true, quoted(inferred_src.val),)
             end
         end

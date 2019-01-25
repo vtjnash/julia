@@ -1483,7 +1483,7 @@ static int invalidate_backedges(jl_typemap_entry_t *oldentry, struct typemap_int
 }
 
 // add a backedge from callee to caller
-JL_DLLEXPORT void jl_method_instance_add_backedge(jl_method_instance_t *callee, jl_method_instance_t *caller)
+static void jl_method_instance_add_backedge(jl_method_instance_t *callee, jl_method_instance_t *caller)
 {
     assert(callee->def.method->min_world <= caller->min_world && callee->max_world >= caller->max_world);
     JL_LOCK(&callee->def.method->writelock);
@@ -1507,7 +1507,7 @@ JL_DLLEXPORT void jl_method_instance_add_backedge(jl_method_instance_t *callee, 
 }
 
 // add a backedge from a non-existent signature to caller
-JL_DLLEXPORT void jl_method_table_add_backedge(jl_methtable_t *mt, jl_value_t *typ, jl_value_t *caller)
+static void jl_method_table_add_backedge(jl_methtable_t *mt, jl_value_t *typ, jl_value_t *caller)
 {
     JL_LOCK(&mt->writelock);
     if (!mt->backedges) {
@@ -1534,6 +1534,80 @@ JL_DLLEXPORT void jl_method_table_add_backedge(jl_methtable_t *mt, jl_value_t *t
     }
     JL_UNLOCK(&mt->writelock);
 }
+
+JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees)
+{
+    size_t j, l = jl_array_len(callees);
+    for (j = 0; j < l; j++) {
+        jl_value_t *callee = jl_array_ptr_ref(callees, j);
+        if (jl_is_method_instance(callee)) {
+            jl_method_instance_add_backedge((jl_method_instance_t*)callee, caller);
+        }
+        else {
+            jl_datatype_t *ftype = jl_first_argument_datatype(callee);
+            jl_methtable_t *mt = ftype->name->mt;
+            assert(jl_is_datatype(ftype) && mt);
+            jl_method_table_add_backedge(mt, callee, (jl_value_t*)caller);
+        }
+    }
+    //if (callers->edges) {
+    //    jl_array_append(callees, callers->edges);
+    //}
+    callers->edges = callees;
+    jl_gc_wb(callers, edges);
+}
+
+
+// check that all of the edges have the same lookup result
+JL_DLLEXPORT size_t jl_verify_edges(jl_array_t *callees, size_t prev_max)
+{
+}
+
+JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t world)
+{
+    if (mi->max_world >= world)
+        return 1;
+    if (mi->absolute_max)
+        return 0;
+    JL_LOCK(&mi->def.method->writelock);
+    size_t absolute_max = jl_world_counter;
+    size_t new_max = absolute_max + 1;
+    jl_array_t *callees = mi->edges;
+    size_t j, l = jl_array_len(callees);
+    for (j = 0; j < l; j++) {
+        jl_value_t *callee = jl_array_ptr_ref(callees, j);
+        if (!callee || callee == (jl_value_t*)jl_nothing)
+            continue;
+        jl_value_t *sig;
+        if (jl_is_method_instance(callee)) {
+            jl_method_instance_t *callee_mi = (jl_method_instance_t*)callee;
+            sig = callee_mi->specTypes;
+            // TODO: verify callee. how???
+            if (!jl_verify_edge(callee_mi, world))
+                // TODO: XXX
+            if (callee_mi->max_world != ~(size_t)0) {
+                if (new_max > callee_mi->max_world)
+                    new_max = callee_mi->max_world;
+            }
+        }
+        else {
+            sig = callee;
+        }
+        // verify that this edge doesn't intersect with any new methods
+        // TODO: just use intersection-visitor and skip allocating result array?
+        size_t min_valid = 0;
+        (void)jl_matching_methods((jl_tupletype_t*)sig, /*FIXME?*/10, 1, prev_max, &min_valid, &new_max);
+        (void)min_valid;
+    }
+    if (new_max == absolute_max + 1)
+        new_max -= 1;
+    else
+        mi->absolute_max = 1;
+    mi->new_max = new_max;
+    JL_UNLOCK();
+    return new_max;
+}
+
 
 void jl_method_instance_delete(jl_method_instance_t *mi)
 {

@@ -113,7 +113,7 @@ end
 
 update_valid_age!(li::MethodInstance, sv::OptimizationState) = update_valid_age!(min_world(li), max_world(li), sv)
 
-function add_backedge!(li::MethodInstance, caller::OptimizationState)
+function add_inline_edge!(li::MethodInstance, caller::OptimizationState)
     isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     push!(caller.calledges, li)
     update_valid_age!(li, caller)

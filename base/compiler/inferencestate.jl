@@ -230,7 +230,7 @@ function add_cycle_backedge!(frame::InferenceState, caller::InferenceState, curr
 end
 
 # temporarily accumulate our edges to later add as backedges in the callee
-function add_backedge!(li::MethodInstance, caller::InferenceState)
+function add_inline_edge!(li::MethodInstance, caller::InferenceState)
     isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === nothing
         caller.stmt_edges[caller.currpc] = []
@@ -241,12 +241,11 @@ function add_backedge!(li::MethodInstance, caller::InferenceState)
 end
 
 # used to temporarily accumulate our no method errors to later add as backedges in the callee method table
-function add_mt_backedge!(mt::Core.MethodTable, @nospecialize(typ), caller::InferenceState)
+function add_call_edge!(@nospecialize(typ), caller::InferenceState)
     isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === nothing
         caller.stmt_edges[caller.currpc] = []
     end
-    push!(caller.stmt_edges[caller.currpc], mt)
     push!(caller.stmt_edges[caller.currpc], typ)
     nothing
 end

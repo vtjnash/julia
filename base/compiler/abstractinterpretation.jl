@@ -20,9 +20,9 @@ function abstract_call_gf_by_type(@nospecialize(f), argtypes::Vector{Any}, @nosp
                                   max_methods = sv.params.MAX_METHODS)
     atype_params = unwrap_unionall(atype).parameters
     ft = unwrap_unionall(atype_params[1]) # TODO: ccall jl_first_argument_datatype here
-    isa(ft, DataType) || return Any # the function being called is unknown. can't properly handle this backedge right now
+    isa(ft, DataType) || return Any # the function being called is unknown. can't properly handle this edge right now
     ftname = ft.name
-    isdefined(ftname, :mt) || return Any # not callable. should be Bottom, but can't track this backedge right now
+    isdefined(ftname, :mt) || return Any # not callable. should be Bottom, but can't track this edge right now
     if ftname === _TYPE_NAME
         tname = ft.parameters[1]
         if isa(tname, TypeVar)
@@ -30,7 +30,7 @@ function abstract_call_gf_by_type(@nospecialize(f), argtypes::Vector{Any}, @nosp
         end
         tname = unwrap_unionall(tname)
         if !isa(tname, DataType)
-            # can't track the backedge to the ctor right now
+            # can't track the edge to the ctor right now
             # for things like Union
             return Any
         end
@@ -128,7 +128,7 @@ function abstract_call_gf_by_type(@nospecialize(f), argtypes::Vector{Any}, @nosp
     end
     if !(rettype === Any) # adding a new method couldn't refine (widen) this type
         for edge in edges
-            add_backedge!(edge::MethodInstance, sv)
+            add_inline_edge!(edge::MethodInstance, sv)
         end
         fullmatch = false
         for i in napplicable:-1:1
@@ -142,7 +142,7 @@ function abstract_call_gf_by_type(@nospecialize(f), argtypes::Vector{Any}, @nosp
         if !fullmatch
             # also need an edge to the method table in case something gets
             # added that did not intersect with any existing method
-            add_mt_backedge!(ftname.mt, atype, sv)
+            add_call_edge!(atype, sv)
         end
     end
     #print("=> ", rettype, "\n")
@@ -206,7 +206,7 @@ function abstract_call_method_with_const_args(@nospecialize(rettype), @nospecial
     end
     result = inf_result.result
     isa(result, InferenceState) && return Any # TODO: is this recursive constant inference?
-    add_backedge!(inf_result.linfo, sv)
+    add_inline_edge!(inf_result.linfo, sv)
     return result
 end
 

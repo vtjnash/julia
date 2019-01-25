@@ -495,11 +495,25 @@ static int jl_typemap_intersection_node_visitor(jl_typemap_entry_t *ml, struct t
 int jl_typemap_intersection_visitor(jl_typemap_t *map, int offs,
                                     struct typemap_intersection_env *closure)
 {
+    jl_value_t *ttypes = jl_unwrap_unionall(closure->type);
+    assert(jl_is_datatype(ttypes));
+    //TODO: fast path for leaf-type tuples
+    //if (ttypes->isdispatchtuple) {
+    //    register jl_typemap_intersection_visitor_fptr fptr = closure->fptr;
+    //    size_t world = jl_world_counter;
+    //    while (world > 0) {
+    //        jl_typemap_entry_t *ml = jl_typemap_assoc_by_type(map, ttypes, &closure->env, /*subtype*/1, offs, world, /*max_world_mask*/(~(size_t)0) >> 1);
+    //        if (!ml)
+    //            break;
+    //        if (!fptr(ml, closure))
+    //            return 0;
+    //        world = ml->min_world - 1;
+    //    }
+    //    return 1;
+    //}
     if (jl_typeof(map) == (jl_value_t *)jl_typemap_level_type) {
         jl_typemap_level_t *cache = (jl_typemap_level_t*)map;
         jl_value_t *ty = NULL;
-        jl_value_t *ttypes = jl_unwrap_unionall(closure->type);
-        assert(jl_is_datatype(ttypes));
         size_t l = jl_field_count(ttypes);
         if (closure->va && l <= offs + 1) {
             ty = closure->va;
