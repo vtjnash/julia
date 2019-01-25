@@ -114,16 +114,17 @@ function update_valid_age!(min_valid::UInt, max_valid::UInt, sv::OptimizationSta
     nothing
 end
 
-function add_backedge!(li::MethodInstance, caller::OptimizationState)
-    #TODO: deprecate this?
+#update_valid_age!(li::MethodInstance, sv::OptimizationState) = update_valid_age!(min_world(li), max_world(li), sv) # TODO: deprecate this?
+
+function add_inline_edge!(li::MethodInstance, caller::OptimizationState)
     isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     push!(caller.calledges, li)
     nothing
 end
 
-function add_backedge!(li::CodeInstance, caller::OptimizationState)
+function add_inline_edge!(li::CodeInstance, caller::OptimizationState)
     update_valid_age!(min_world(li), max_world(li), caller)
-    add_backedge!(li.def, caller)
+    add_inline_edge!(li.def, caller)
     nothing
 end
 

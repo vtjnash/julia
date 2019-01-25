@@ -586,7 +586,7 @@ function spec_lambda(@nospecialize(atype), sv::OptimizationState, @nospecialize(
         min_valid[1] = invoke_data.min_valid
         max_valid[1] = invoke_data.max_valid
     end
-    mi !== nothing && add_backedge!(mi::MethodInstance, sv)
+    mi !== nothing && add_inline_edge!(mi::MethodInstance, sv)
     update_valid_age!(min_valid[1], max_valid[1], sv)
     return mi
 end
@@ -704,7 +704,7 @@ function analyze_method!(idx::Int, sig::Signature, @nospecialize(metharg), meths
 
     isconst, src = find_inferred(mi, atypes, sv, stmttyp)
     if isconst
-        add_backedge!(mi, sv)
+        add_inline_edge!(mi, sv)
         return ConstantCase(src, method, Any[methsp...], metharg)
     end
     if src === nothing
@@ -718,8 +718,8 @@ function analyze_method!(idx::Int, sig::Signature, @nospecialize(metharg), meths
         return spec_lambda(atype_unlimited, sv, invoke_data)
     end
 
-    # At this point we're committed to performing the inlining, add the backedge
-    add_backedge!(mi, sv)
+    # At this point we're committed to performing the inlining, record the backedge
+    add_inline_edge!(mi, sv)
 
     if !isa(src, CodeInfo)
         src = ccall(:jl_uncompress_ast, Any, (Any, Ptr{Cvoid}, Any), method, C_NULL, src::Vector{UInt8})::CodeInfo

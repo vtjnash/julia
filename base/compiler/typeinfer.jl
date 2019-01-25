@@ -63,18 +63,30 @@ function typeinf(frame::InferenceState)
         caller.max_valid = max_valid
         caller.src.min_world = min_valid
         caller.src.max_world = max_valid
+    end
+    for caller in frames
         if cached
             cache_result(caller.result, min_valid, max_valid)
         end
-        if max_valid == typemax(UInt)
-            # if we aren't cached, we don't need this edge
-            # but our caller might, so let's just make it anyways
-            for caller in frames
-                store_backedges(caller)
-            end
-        end
         # finalize and record the linfo result
         caller.inferred = true
+    end
+    if max_valid == typemax(UInt)
+        for caller in frames
+            store_backedges(caller)
+        end
+        #for caller in frames
+        #    finalize_call_edges(caller)
+        #end
+        ## if we aren't cached, we don't need this edge
+        ## but our caller might, so let's just make it anyways
+        #for caller in frames
+        #    #if max_valid < caller.absolute_max
+        #    #    caller.result.linfo.absolute_max = true
+        #    #else
+        #        store_call_edges(caller)
+        #    #end
+        #end
     end
     return true
 end
@@ -195,6 +207,29 @@ function store_backedges(caller, edges::Vector)
         end
     end
 end
+
+#function finalize_call_edges(me::InferenceState)
+#    # update all of the (cycle) callers with real edges
+#    # by copying the temporary list of edges
+#    for (i, _) in me.cycle_backedges
+#        add_call_edge!(me.linfo, i)
+#    end
+#
+#    # finalize and record the linfo result
+#    me.inferred = true
+#    nothing
+#end
+#
+## add the real edges
+#function store_call_edges(frame::InferenceState)
+#    caller = frame.result.linfo
+#    toplevel = !isa(caller.def, Method)
+#    if !toplevel && (frame.cached || frame.parent !== nothing)
+#        for edges in frame.stmt_edges
+#            edges isa Vector{Any} && ccall(:jl_method_instance_add_edges, Cvoid, (Any, Any), caller, edges)
+#        end
+#    end
+#end
 
 # widen all Const elements in type annotations
 function widen_all_consts!(src::CodeInfo)
@@ -616,6 +651,133 @@ end
     end
     return src
 end
+
+## this is the same convergence algorithm as inference itself
+## but just converging (slightly) different properties
+#function typeinf_ext(linfo::MethodInstance, world::UInt, _::Nothing)
+#    graph = IdDict()
+#    valid, complete = examine_edge(linfo, graph, world)
+#    @assert complete "abort"
+#    return
+#end
+#
+## optimistically determine the max-world, and/or aggregate and converge intermediate cycles
+#function examine_edge(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
+#    valid = examine_inside(linfo, graph, upto)
+#    complete = true
+#    if !(valid isa UInt)
+#        # inconclusive: need to resolve a cycle
+#        edge_cycle = valid[1]
+#        cycle_max = valid[2]
+#        valid = cycle_max
+#        seen = graph[linfo]
+#        if seen === :cycle_top
+#            graph[linfo] = :cycle
+#            # this could be the top of the whole cycle
+#            # check if we have the whole cycle now (e.g. nothing in the cycle is only the top half)
+#            complete = true
+#            for edge::MethodInstance in edge_cycle
+#                if linfo !== edge && get(graph, edge, :ignore) === :cycle_top
+#                    complete = false
+#                    break
+#                end
+#            end
+#            if complete
+#                # found the bottom of the current cycle, finish resolving it now
+#                # TODO: set absolute_max to new_max
+#                for edge::MethodInstance in edge_cycle
+#                    #@assert max_world(edge) <= cycle_max "abort"
+#                    if cycle_max < upto
+#                        println(edge)
+#                        edge.absolute_max = true
+#                    else
+#                        edge.max_world = cycle_max
+#                    end
+#                    graph[edge] = :complete
+#                end
+#            end
+#        end
+#    end
+#    return valid, complete
+#end
+#
+#function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
+#    # first handle the easy cases
+#    if max_world(linfo) >= upto || linfo.absolute_max
+#        return max_world(linfo)
+#    end
+#    absolute_max = ccall(:jl_get_world_counter, UInt, ())
+#    new_max = absolute_max
+#    if !isdefined(linfo, :edges)
+#        # never invalid (sans deletions): expand to cover current full range
+#        linfo.max_world = bitcast(Int, absolute_max)
+#        return absolute_max
+#    end
+#    seen = get(graph, linfo, :new)
+#    if seen === :complete
+#        return max_world(linfo) # TODO: unreachable?
+#    end
+#    cycle = []
+#    if seen !== :new
+#        # repeated method means we now have the top half of a method pair
+#        # defer final resolution until we come across the bottom of this cycle
+#        seen === :new && push!(cycle, edge)
+#        seen === :cycle_top || (graph[linfo] = :cycle_top)
+#        return cycle, absolute_max
+#    end
+#    graph[linfo] = :seen
+#    prev_world = max_world(linfo)
+#    min_valid = UInt[prev_world]
+#    max_valid = UInt[new_max]
+#    for edge in linfo.edges
+#        if edge isa MethodInstance
+#            # check that this target is valid
+#            valid, complete = examine_edge(edge, graph, upto)
+#            if !complete
+#                # linfo is now part of this cycle too
+#                graph[linfo] = :cycle
+#                append!(cycle, edge_cycle)
+#                seen === :new && push!(cycle, linfo)
+#            end
+#            new_max = min(valid, new_max)
+#            if new_max < upto
+#                break
+#            end
+#            sig = edge.specTypes
+#        else
+#            sig = edge
+#        end
+#        # check that this is still the right method to call
+#        max_valid[1] = new_max
+#        _methods_by_ftype(sig, #=TODO?=#20, prev_world, min_valid, max_valid)
+#        new_max = max_valid[1]
+#        if new_max < upto
+#            break
+#        end
+#    end
+#    #@assert max_world(linfo) <= new_max "abort"
+#    if !isempty(cycle)
+#        # defer final resolution until we come across the bottom of this cycle
+#        if new_max < upto
+#            # give up on this cycle
+#            # TODO: set absolute_max to new_max
+#            for edge::MethodInstance in cycle
+#                println(edge)
+#                edge.absolute_max = true
+#                graph[edge] = :complete
+#            end
+#            return new_max
+#        end
+#        return cycle, new_max
+#    end
+#    if new_max < upto
+#        println(linfo)
+#        linfo.absolute_max = true
+#    else
+#        linfo.max_world = bitcast(Int, new_max)
+#    end
+#    return new_max
+#end
 
 
 function return_type(@nospecialize(f), @nospecialize(t))

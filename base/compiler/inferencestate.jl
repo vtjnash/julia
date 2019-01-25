@@ -15,6 +15,7 @@ mutable struct InferenceState
     src::CodeInfo
     min_valid::UInt
     max_valid::UInt
+    absolute_max::UInt
     nargs::Int
     stmt_types::Vector{Any}
     stmt_edges::Vector{Any}
@@ -91,13 +92,13 @@ mutable struct InferenceState
             inmodule = linfo.def::Module
         end
 
+        absolute_max = get_world_counter()
         min_valid = src.min_world
-        max_valid = src.max_world == typemax(UInt) ?
-            get_world_counter() : src.max_world
+        max_valid = src.max_world == typemax(UInt) ? absolute_max : src.max_world
         frame = new(
             params, result, linfo,
             sp, slottypes, inmodule, 0,
-            src, min_valid, max_valid,
+            src, min_valid, max_valid, absolute_max,
             nargs, s_types, s_edges,
             Union{}, W, 1, n,
             cur_hand, handler_at, n_handlers,
@@ -224,12 +225,12 @@ function add_cycle_backedge!(frame::InferenceState, caller::InferenceState, curr
     update_valid_age!(frame, caller)
     backedge = (caller, currpc)
     contains_is(frame.cycle_backedges, backedge) || push!(frame.cycle_backedges, backedge)
-    add_backedge!(frame.linfo, caller)
+    add_inline_edge!(frame.linfo, caller)
     return frame
 end
 
 # temporarily accumulate our edges to later add as backedges in the callee
-function add_backedge!(li::MethodInstance, caller::InferenceState)
+function add_inline_edge!(li::MethodInstance, caller::InferenceState)
     isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === nothing
         caller.stmt_edges[caller.currpc] = []
@@ -239,7 +240,7 @@ function add_backedge!(li::MethodInstance, caller::InferenceState)
 end
 
 # used to temporarily accumulate our no method errors to later add as backedges in the callee method table
-function add_mt_backedge!(mt::Core.MethodTable, @nospecialize(typ), caller::InferenceState)
+function add_call_edge!(mt::Core.MethodTable, @nospecialize(typ), caller::InferenceState)
     isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === nothing
         caller.stmt_edges[caller.currpc] = []

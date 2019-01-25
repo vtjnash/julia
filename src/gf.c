@@ -862,8 +862,15 @@ static jl_method_instance_t *cache_method(
     { // scope block
         struct jl_typemap_assoc search = {(jl_value_t*)tt, world, 0, NULL, 0, ~(size_t)0};
         jl_typemap_entry_t *entry = jl_typemap_assoc_by_type(*cache, &search, offs, /*subtype*/1);
-        if (entry && entry->func.value)
+        if (entry && entry->func.value) {
             return entry->func.linfo;
+            //// see if we can re-use an existing entry
+            //if (jl_verify_edges(entry->func.linfo, world)) {
+            //    return entry->func.linfo;
+            //}
+            // truncate max_world now
+            //entry->max_world = entry->func.linfo->max_world;
+        }
     }
 
     jl_value_t *temp = NULL;
@@ -1439,12 +1446,40 @@ static void invalidate_method_instance(jl_method_instance_t *replaced, size_t ma
     JL_UNLOCK_NOGC(&replaced->def.method->writelock);
 }
 
+//TODO: jwn
+//JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees)
+//{
+//    JL_LOCK(&caller->def.method->writelock);
+//    if (caller->edges) {
+//        size_t i, j, l = jl_array_len(caller->edges);
+//        for (i = 0; i < l; i++) {
+//            jl_value_t *callee = jl_array_ptr_ref(caller->edges, i);
+//            for (j = 0; j < jl_array_len(callees); j++) {
+//                if (callee == jl_array_ptr_ref(callees, j))
+//                    break;
+//            }
+//            if (j == jl_array_len(callees))
+//                jl_array_ptr_1d_push(callees, callee);
+//        }
+//    }
+//    caller->edges = callees;
+//    jl_gc_wb(caller, callees);
+//    JL_UNLOCK(&caller->def.method->writelock);
+//}
+//
+// check that all of the edges are still valid
+struct linked_list_mi {
+    jl_method_instance_t *mi;
+    struct linked_list_mi *prev;
+};
+
 // invalidate cached methods that overlap this definition
 struct invalidate_conflicting_env {
     struct typemap_intersection_env match;
     size_t max_world;
     int invalidated;
 };
+
 static int invalidate_backedges(jl_typemap_entry_t *oldentry, struct typemap_intersection_env *closure0)
 {
     struct invalidate_conflicting_env *closure = container_of(closure0, struct invalidate_conflicting_env, match);
@@ -1517,10 +1552,101 @@ JL_DLLEXPORT void jl_method_table_add_backedge(jl_methtable_t *mt, jl_value_t *t
     JL_UNLOCK(&mt->writelock);
 }
 
+//static int jl_verify_edges_bootstrapping(jl_method_instance_t *mi, size_t upto, struct linked_list_mi *stack)
+//{
+//    if (mi->max_world >= upto)
+//        return 1;
+//    if (mi->absolute_max)
+//        return 0;
+//    const size_t prev_max = mi->max_world;
+//    size_t new_max = jl_world_counter;
+//    jl_array_t *callees = mi->edges;
+//    if (callees == NULL) {
+//        // never invalid: expand to cover full range
+//        assert(!jl_is_rettype_inferred(mi));
+//        mi->max_world = upto;
+//        return 1;
+//    }
+//    struct linked_list_mi *callee = stack;
+//    while (callee) {
+//        if (callee->mi == mi) {
+//            return 0; // algorithm failed
+//        }
+//        callee = callee->prev;
+//    }
+//    JL_GC_PUSH1(&callees);
+//    size_t j, l = jl_array_len(callees);
+//    for (j = 0; j < l; j++) {
+//        jl_value_t *callee = jl_array_ptr_ref(callees, j);
+//        if (!callee || callee == (jl_value_t*)jl_nothing)
+//            continue;
+//        jl_value_t *sig;
+//        if (jl_is_method_instance(callee)) {
+//            jl_method_instance_t *callee_mi = (jl_method_instance_t*)callee;
+//            sig = callee_mi->specTypes;
+//            if (callee_mi != mi) {
+//                struct linked_list_mi new_stack;
+//                new_stack.mi = mi;
+//                new_stack.prev = stack;
+//                if (jl_verify_edges_bootstrapping(callee_mi, upto, &new_stack)) {
+//                    if (new_max > callee_mi->max_world)
+//                        new_max = callee_mi->max_world;
+//                }
+//                else {
+//                    new_max = prev_max;
+//                    break;
+//                }
+//            }
+//        }
+//        else {
+//            sig = callee;
+//        }
+//        // verify that this edge doesn't intersect with any new methods
+//        // TODO: just use intersection-visitor and skip allocating result array?
+//        size_t min_valid = 0;
+//        (void)jl_matching_methods((jl_tupletype_t*)sig, /*FIXME?*/10, 1, prev_max, &min_valid, &new_max);
+//        (void)min_valid;
+//    }
+//    JL_GC_POP();
+//    assert(new_max >= prev_max);
+//    if (new_max >= upto) {
+//        mi->max_world = new_max;
+//        return 1;
+//    }
+//    return 0;
+//}
+//
+//JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto)
+//{
+//    if (mi->max_world >= upto)
+//        return 1;
+//    if (mi->edges == NULL) {
+//        // never invalid: expand to cover full range
+//        mi->max_world = upto;
+//        return 1;
+//    }
+//    if (mi->absolute_max)
+//        return 0;
+//    if (jl_verify_edges_bootstrapping(mi, upto, NULL))
+//        return 1;
+//    // TODO: this *MUST* not be here
+//    jl_type_infer_(&mi, upto, 1, 1);
+//    if (mi->max_world >= upto)
+//        return 1;
+//    mi->absolute_max = 1;
+//    if (JL_DEBUG_METHOD_INVALIDATION) {
+//        jl_uv_puts(JL_STDOUT, "  ", 2);
+//        jl_static_show(JL_STDOUT, (jl_value_t*)mi);
+//        jl_uv_puts(JL_STDOUT, "\n", 1);
+//    }
+//    return 0;
+//}
+
 struct invalidate_mt_env {
     jl_value_t *shadowed;
     size_t max_world;
 };
+
 static int invalidate_mt_cache(jl_typemap_entry_t *oldentry, void *closure0)
 {
     struct invalidate_mt_env *env = (struct invalidate_mt_env*)closure0;

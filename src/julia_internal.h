@@ -634,6 +634,7 @@ JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(
     jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams);
 JL_DLLEXPORT void jl_method_instance_add_backedge(jl_method_instance_t *callee, jl_method_instance_t *caller);
 JL_DLLEXPORT void jl_method_table_add_backedge(jl_methtable_t *mt, jl_value_t *typ, jl_value_t *caller);
+JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees);
 
 uint32_t jl_module_next_counter(jl_module_t *m);
 void jl_fptr_to_llvm(void *fptr, jl_code_instance_t *codeinst, int spec_abi);
