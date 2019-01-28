@@ -315,11 +315,11 @@ struct _jl_method_instance_t {
     jl_value_t *rettype; // return type for fptr
     jl_svec_t *sparam_vals; // static parameter values, indexed by def.method->sig UnionAll tvars
     jl_array_t *edges;
-    jl_array_t *backedges;
     jl_value_t *inferred;  // inferred jl_code_info_t, or jl_nothing, or null
     jl_value_t *inferred_const; // inferred constant return value, or null
     size_t min_world;
     size_t max_world;
+    uint8_t absolute_max; // whether true max world is unknown
     uint8_t inInference; // flags to tell if inference is running on this function
     uint8_t compile_traced; // if set will notify callback if this linfo is compiled
     uint8_t isspecsig; // if specptr is specsig for specTypes->rettype
@@ -504,7 +504,6 @@ typedef struct _jl_methtable_t {
     intptr_t max_args;  // max # of non-vararg arguments in a signature
     jl_value_t *kwsorter;  // keyword argument sorter function
     jl_module_t *module; // used for incremental serialization to locate original binding
-    jl_array_t *backedges;
     jl_mutex_t writelock;
 } jl_methtable_t;
 

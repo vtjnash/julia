@@ -377,7 +377,7 @@ void *jl_precompile(int all)
         if (!jl_isa_compileable_sig((jl_tupletype_t*)mi->specTypes, mi->def.method)) {
             mi = jl_get_specialization1((jl_tupletype_t*)mi->specTypes, jl_world_counter, 0);
         }
-        else if (mi->max_world != ~(size_t)0) {
+        else if (mi->max_world < jl_world_counter) {
             if (mi->min_world <= jl_typeinf_world && jl_typeinf_world <= mi->max_world)
                 jl_array_ptr_1d_push(m2, (jl_value_t*)mi);
             mi = jl_specializations_get_linfo(mi->def.method, mi->specTypes, mi->sparam_vals, jl_world_counter);

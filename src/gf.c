@@ -123,38 +123,34 @@ static int8_t jl_cachearg_offset(jl_methtable_t *mt)
 
 /// ----- Insertion logic for special entries ----- ///
 
+JL_DLLEXPORT size_t jl_verify_edges(jl_method_instance_t *mi, size_t upto);
+
 // get or create the MethodInstance for a specialization
 JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams, size_t world)
 {
     assert(world >= m->min_world && world <= m->max_world && "typemap lookup is corrupted");
+    if (world > jl_world_counter) // prevent interacting with the future
+        world = jl_world_counter;
     JL_LOCK(&m->writelock);
     jl_typemap_entry_t *sf =
         jl_typemap_assoc_by_type(m->specializations, type, NULL, /*subtype*/0, /*offs*/0, world, /*max_world_mask*/0);
     if (sf && jl_is_method_instance(sf->func.value)) {
-        jl_method_instance_t *linfo = (jl_method_instance_t*)sf->func.value;
-        assert(linfo->min_world <= sf->min_world && linfo->max_world >= sf->max_world);
-        JL_UNLOCK(&m->writelock);
-        return linfo;
+        jl_method_instance_t *linfo = sf->func.linfo;
+        if (jl_verify_edges(linfo, world) >= world) {
+            assert(linfo->min_world <= sf->min_world);
+            JL_UNLOCK(&m->writelock);
+            return linfo;
+        }
+        sf->max_world = linfo->max_world;
     }
     jl_method_instance_t *li = jl_get_specialized(m, type, sparams);
     JL_GC_PUSH1(&li);
     // TODO: fuse lookup and insert steps
-    // pick an initial world that is likely to be valid both before and after inference
-    if (world > jl_world_counter) {
-        li->min_world = jl_world_counter;
-    }
-    else {
-        li->min_world = world;
-    }
-    if (world == jl_world_counter) {
-        li->max_world = m->max_world;
-    }
-    else {
-        li->max_world = world;
-    }
+    li->min_world = world;
+    li->max_world = world;
     jl_typemap_insert(&m->specializations, (jl_value_t*)m, (jl_tupletype_t*)type,
             NULL, jl_emptysvec, (jl_value_t*)li, 0, &tfunc_cache,
-            li->min_world, li->max_world, NULL);
+            world, ~(size_t)0, NULL);
     JL_UNLOCK(&m->writelock);
     JL_GC_POP();
     return li;
@@ -162,11 +158,18 @@ JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(jl_method_t *m J
 
 JL_DLLEXPORT jl_value_t *jl_specializations_lookup(jl_method_t *m, jl_value_t *type, size_t world)
 {
+    if (world > jl_world_counter) // convenience adjustment for invalid lookup
+        world = jl_world_counter;
     jl_typemap_entry_t *sf = jl_typemap_assoc_by_type(
             m->specializations, type, NULL, /*subtype*/0, /*offs*/0, world, /*max_world_mask*/0);
-    if (!sf)
-        return jl_nothing;
-    return sf->func.value;
+    if (sf && jl_is_method_instance(sf->func.value)) {
+        jl_method_instance_t *linfo = sf->func.linfo;
+        if (jl_verify_edges(linfo, world) >= world) {
+            return (jl_value_t*)linfo;
+        }
+        sf->max_world = linfo->max_world;
+    }
+    return jl_nothing;
 }
 
 JL_DLLEXPORT jl_value_t *jl_methtable_lookup(jl_methtable_t *mt, jl_value_t *type, size_t world)
@@ -305,7 +308,7 @@ struct set_world {
     size_t world;
 };
 
-static int set_max_world2(jl_typemap_entry_t *entry, void *closure0)
+static int clip_max_world(jl_typemap_entry_t *entry, void *closure0)
 {
     struct set_world *closure = (struct set_world*)closure0;
     // entry->max_world should be <= closure->replaced->max_world
@@ -315,15 +318,26 @@ static int set_max_world2(jl_typemap_entry_t *entry, void *closure0)
     return 1;
 }
 
-static int set_min_world2(jl_typemap_entry_t *entry, void *closure0)
+static int clip_min_world(jl_typemap_entry_t *entry, void *closure0)
 {
     struct set_world *closure = (struct set_world*)closure0;
-    // entry->min_world should be >= closure->replaced->min_world and >= closure->world
-    if (entry->func.linfo == closure->replaced) {
+    // entry->min_world should be >= closure->replaced->min_world
+    if (entry->func.linfo == closure->replaced && entry->min_world < closure->world) {
         entry->min_world = closure->world;
     }
     return 1;
 }
+
+static int expand_min_world(jl_typemap_entry_t *entry, void *closure0)
+{
+    struct set_world *closure = (struct set_world*)closure0;
+    // entry->min_world should be >= closure->replaced->min_world
+    if (entry->func.linfo == closure->replaced && entry->min_world > closure->world) {
+        entry->min_world = closure->world;
+    }
+    return 1;
+}
+
 
 static void update_world_bound(jl_method_instance_t *replaced, jl_typemap_visitor_fptr fptr, size_t world)
 {
@@ -346,7 +360,8 @@ static void update_world_bound(jl_method_instance_t *replaced, jl_typemap_visito
 JL_DLLEXPORT jl_method_instance_t* jl_set_method_inferred(
         jl_method_instance_t *li, jl_value_t *rettype,
         jl_value_t *inferred_const, jl_value_t *inferred,
-        int32_t const_flags, size_t min_world, size_t max_world)
+        int32_t const_flags, size_t min_world, size_t max_world
+        /*, jl_array_t *edges, int absolute_max*/)
 {
     JL_GC_PUSH1(&li);
     assert(min_world <= max_world && "attempting to set invalid world constraints");
@@ -366,23 +381,14 @@ JL_DLLEXPORT jl_method_instance_t* jl_set_method_inferred(
                 // expand the current (uninferred) entry to cover the full inferred range
                 // only update the specializations though, since the method table may have other
                 // reasons for needing a narrower applicability range
-                struct set_world update;
-                update.replaced = li;
-                if (li->min_world != min_world) {
-                    li->min_world = min_world;
-                    update.world = min_world;
-                    jl_typemap_visitor(li->def.method->specializations, set_min_world2, (void*)&update);
-                }
-                if (li->max_world != max_world) {
-                    li->max_world = max_world;
-                    update.world = max_world;
-                    jl_typemap_visitor(li->def.method->specializations, set_max_world2, (void*)&update);
-                }
+                li->min_world = min_world;
+                li->max_world = max_world;
+                update_world_bound(li, expand_min_world, min_world);
             }
             else {
                 // clip applicability of old method instance (uninferred or inferred)
-                // to make it easier to find the inferred method
-                // (even though the real applicability was unchanged)
+                // in the lookup tables to make it easier to find the inferred method
+                // (even though the underlying applicability is unchanged)
                 // there are 6(!) regions here to consider + boundary conditions for each
                 if (li->max_world >= min_world && li->min_world <= max_world) {
                     // there is a non-zero overlap between [li->min, li->max] and [min, max]
@@ -391,16 +397,16 @@ JL_DLLEXPORT jl_method_instance_t* jl_set_method_inferred(
                     if (li->max_world > max_world) {
                         // prefer making it applicable to future ages,
                         // as those are more likely to be useful
-                        update_world_bound(li, set_min_world2, max_world + 1);
+                        update_world_bound(li, clip_min_world, max_world + 1);
                     }
                     else if (li->min_world < min_world) {
                         assert(min_world > 1 && "logic violation: min(li->min_world) == 1 (by construction), so min(min_world) == 2");
-                        update_world_bound(li, set_max_world2, min_world - 1);
+                        update_world_bound(li, clip_max_world, min_world - 1);
                     }
                     else {
                         // old inferred li is fully covered by new inference result, so just delete it
                         assert(isinferred);
-                        update_world_bound(li, set_max_world2, li->min_world - 1);
+                        update_world_bound(li, clip_max_world, li->min_world - 1);
                     }
                 }
 
@@ -411,7 +417,7 @@ JL_DLLEXPORT jl_method_instance_t* jl_set_method_inferred(
                 jl_typemap_insert(&li->def.method->specializations, li->def.value,
                         (jl_tupletype_t*)li->specTypes, NULL, jl_emptysvec,
                         (jl_value_t*)li, 0, &tfunc_cache,
-                        li->min_world, li->max_world, NULL);
+                        li->min_world, ~(size_t)0, NULL);
             }
             JL_UNLOCK(&li->def.method->writelock);
         }
@@ -977,7 +983,17 @@ static jl_method_instance_t *cache_method(
     // short-circuit (now that we hold the lock) if this entry is already present
     jl_typemap_entry_t *entry = jl_typemap_assoc_by_type(*cache, (jl_value_t*)tt, NULL, /*subtype*/1, jl_cachearg_offset(mt), world, /*max_world_mask*/0);
     if (entry && entry->func.value)
-        return (jl_method_instance_t*)entry->func.value;
+        return entry->func.linfo;
+    // see if we can re-use an existing entry
+    // TODO: need to do a lot more work here because method deletion is possible
+    // TODO: this is utter garbage
+    entry = jl_typemap_assoc_by_type(*cache, (jl_value_t*)tt, NULL, /*subtype*/1, jl_cachearg_offset(mt), world, /*max_world_mask*/(~(size_t)0) >> 1);
+    if (entry && entry->func.linfo && !entry->func.linfo->absolute_max) {
+        if (jl_verify_edges(entry->func.linfo, world) >= world) {
+            entry->max_world = entry->func.linfo->max_world;
+            return entry->func.linfo;
+        }
+    }
 
     jl_value_t *temp = NULL;
     jl_value_t *temp2 = NULL;
@@ -1402,177 +1418,49 @@ static void update_max_args(jl_methtable_t *mt, jl_value_t *type)
         mt->max_args = na;
 }
 
-static int JL_DEBUG_METHOD_INVALIDATION = 0;
-
-// invalidate cached methods that had an edge to a replaced method
-static void invalidate_method_instance(jl_method_instance_t *replaced, size_t max_world, int depth)
-{
-    if (!jl_is_method(replaced->def.method))
-        return;
-    JL_LOCK_NOGC(&replaced->def.method->writelock);
-    jl_array_t *backedges = replaced->backedges;
-    if (replaced->max_world > max_world) {
-        // recurse to all backedges to update their valid range also
-        assert(replaced->min_world - 1 <= max_world && "attempting to set invalid world constraints");
-        if (JL_DEBUG_METHOD_INVALIDATION) {
-            int d0 = depth;
-            while (d0-- > 0)
-                jl_uv_puts(JL_STDOUT, " ", 1);
-            jl_static_show(JL_STDOUT, (jl_value_t*)replaced);
-            jl_uv_puts(JL_STDOUT, "\n", 1);
-        }
-        replaced->max_world = max_world;
-        update_world_bound(replaced, set_max_world2, max_world);
-        if (backedges) {
-            size_t i, l = jl_array_len(backedges);
-            for (i = 0; i < l; i++) {
-                jl_method_instance_t *replaced = (jl_method_instance_t*)jl_array_ptr_ref(backedges, i);
-                invalidate_method_instance(replaced, max_world, depth + 1);
-            }
-        }
-    }
-    replaced->backedges = NULL;
-    JL_UNLOCK_NOGC(&replaced->def.method->writelock);
-}
-
-// invalidate cached methods that overlap this definition
-struct invalidate_conflicting_env {
-    struct typemap_intersection_env match;
-    size_t max_world;
-    int invalidated;
-};
-static int invalidate_backedges(jl_typemap_entry_t *oldentry, struct typemap_intersection_env *closure0)
-{
-    struct invalidate_conflicting_env *closure = container_of(closure0, struct invalidate_conflicting_env, match);
-    if (oldentry->max_world > closure->max_world) {
-        jl_method_instance_t *replaced_linfo = oldentry->func.linfo;
-        {
-            struct set_world def;
-            def.replaced = oldentry->func.linfo;
-            def.world = closure->max_world;
-            jl_method_t *m = def.replaced->def.method;
-
-            // truncate the max-valid in the invoke cache
-            if (m->invokes != NULL)
-                jl_typemap_visitor(m->invokes, set_max_world2, (void*)&def);
-            // invalidate mt cache entries
-            jl_datatype_t *gf = jl_first_argument_datatype((jl_value_t*)m->sig);
-            assert(jl_is_datatype(gf) && gf->name->mt && "method signature invalid?");
-            jl_typemap_visitor(gf->name->mt->cache, set_max_world2, (void*)&def);
-            if (JL_DEBUG_METHOD_INVALIDATION) {
-                jl_static_show(JL_STDOUT, (jl_value_t*)def.replaced);
-                jl_uv_puts(JL_STDOUT, "\n", 1);
-            }
-        }
-
-        // invalidate backedges
-        JL_LOCK_NOGC(&replaced_linfo->def.method->writelock);
-        jl_array_t *backedges = replaced_linfo->backedges;
-        if (backedges) {
-            size_t i, l = jl_array_len(backedges);
-            jl_method_instance_t **replaced = (jl_method_instance_t**)jl_array_ptr_data(backedges);
-            for (i = 0; i < l; i++) {
-                invalidate_method_instance(replaced[i], closure->max_world, 1);
-            }
-        }
-        closure->invalidated = 1;
-        replaced_linfo->backedges = NULL;
-        JL_UNLOCK_NOGC(&replaced_linfo->def.method->writelock);
-    }
-    return 1;
-}
-
-// add a backedge from callee to caller
-static void jl_method_instance_add_backedge(jl_method_instance_t *callee, jl_method_instance_t *caller)
-{
-    assert(callee->def.method->min_world <= caller->min_world && callee->max_world >= caller->max_world);
-    JL_LOCK(&callee->def.method->writelock);
-    if (!callee->backedges) {
-        // lazy-init the backedges array
-        callee->backedges = jl_alloc_vec_any(1);
-        jl_gc_wb(callee, callee->backedges);
-        jl_array_ptr_set(callee->backedges, 0, caller);
-    }
-    else {
-        size_t i, l = jl_array_len(callee->backedges);
-        for (i = 0; i < l; i++) {
-            if (jl_array_ptr_ref(callee->backedges, i) == (jl_value_t*)caller)
-                break;
-        }
-        if (i == l) {
-            jl_array_ptr_1d_push(callee->backedges, (jl_value_t*)caller);
-        }
-    }
-    JL_UNLOCK(&callee->def.method->writelock);
-}
-
-// add a backedge from a non-existent signature to caller
-static void jl_method_table_add_backedge(jl_methtable_t *mt, jl_value_t *typ, jl_value_t *caller)
-{
-    JL_LOCK(&mt->writelock);
-    if (!mt->backedges) {
-        // lazy-init the backedges array
-        mt->backedges = jl_alloc_vec_any(2);
-        jl_gc_wb(mt, mt->backedges);
-        jl_array_ptr_set(mt->backedges, 0, typ);
-        jl_array_ptr_set(mt->backedges, 1, caller);
-    }
-    else {
-        size_t i, l = jl_array_len(mt->backedges);
-        for (i = 1; i < l; i += 2) {
-            if (jl_types_equal(jl_array_ptr_ref(mt->backedges, i - 1), typ)) {
-                if (jl_array_ptr_ref(mt->backedges, i) == caller) {
-                    JL_UNLOCK(&mt->writelock);
-                    return;
-                }
-                // reuse the already cached instance of this type
-                typ = jl_array_ptr_ref(mt->backedges, i - 1);
-            }
-        }
-        jl_array_ptr_1d_push(mt->backedges, typ);
-        jl_array_ptr_1d_push(mt->backedges, caller);
-    }
-    JL_UNLOCK(&mt->writelock);
-}
+static int JL_DEBUG_METHOD_INVALIDATION = 1;
 
 JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees)
 {
-    size_t j, l = jl_array_len(callees);
-    for (j = 0; j < l; j++) {
-        jl_value_t *callee = jl_array_ptr_ref(callees, j);
-        if (jl_is_method_instance(callee)) {
-            jl_method_instance_add_backedge((jl_method_instance_t*)callee, caller);
-        }
-        else {
-            jl_datatype_t *ftype = jl_first_argument_datatype(callee);
-            jl_methtable_t *mt = ftype->name->mt;
-            assert(jl_is_datatype(ftype) && mt);
-            jl_method_table_add_backedge(mt, callee, (jl_value_t*)caller);
+    JL_LOCK(&caller->def.method->writelock);
+    if (caller->edges) {
+        size_t i, j, l = jl_array_len(caller->edges);
+        for (i = 0; i < l; i++) {
+            jl_value_t *callee = jl_array_ptr_ref(caller->edges, i);
+            for (j = 0; j < jl_array_len(callees); j++) {
+                if (callee == jl_array_ptr_ref(callees, j))
+                    break;
+            }
+            if (j == jl_array_len(callees))
+                jl_array_ptr_1d_push(callees, callee);
         }
     }
-    //if (callers->edges) {
-    //    jl_array_append(callees, callers->edges);
-    //}
-    callers->edges = callees;
-    jl_gc_wb(callers, edges);
+    caller->edges = callees;
+    jl_gc_wb(caller, callees);
+    JL_UNLOCK(&caller->def.method->writelock);
 }
 
 
-// check that all of the edges have the same lookup result
-JL_DLLEXPORT size_t jl_verify_edges(jl_array_t *callees, size_t prev_max)
+// check that all of the edges are still valid
+// XXX: handle recursive graphs--this is the very wrong algorithm!!!
+static size_t jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
 {
-}
-
-JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t world)
-{
-    if (mi->max_world >= world)
-        return 1;
-    if (mi->absolute_max)
-        return 0;
-    JL_LOCK(&mi->def.method->writelock);
-    size_t absolute_max = jl_world_counter;
-    size_t new_max = absolute_max + 1;
+    if (mi->max_world >= upto || mi->absolute_max)
+        return mi->max_world;
+    const size_t prev_max = mi->max_world;
+    size_t new_max = jl_world_counter;
     jl_array_t *callees = mi->edges;
+    if (depth > 100) {
+        return new_max; // algorithm failed: lie and claim it's always valid
+    }
+    if (callees == NULL) {
+        // never invalid: expand to cover full range
+        //return ~(size_t)0;
+        assert(!jl_is_rettype_inferred(mi));
+        mi->max_world = new_max;
+        return mi->max_world;
+    }
+    JL_GC_PUSH1(&callees);
     size_t j, l = jl_array_len(callees);
     for (j = 0; j < l; j++) {
         jl_value_t *callee = jl_array_ptr_ref(callees, j);
@@ -1582,12 +1470,10 @@ JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t world)
         if (jl_is_method_instance(callee)) {
             jl_method_instance_t *callee_mi = (jl_method_instance_t*)callee;
             sig = callee_mi->specTypes;
-            // TODO: verify callee. how???
-            if (!jl_verify_edge(callee_mi, world))
-                // TODO: XXX
-            if (callee_mi->max_world != ~(size_t)0) {
-                if (new_max > callee_mi->max_world)
-                    new_max = callee_mi->max_world;
+            if (callee_mi != mi) {
+                size_t world = jl_verify_edges_(callee_mi, upto, depth + 1);
+                if (new_max > world) // TODO: this isn't quite right (much too conservative)
+                    new_max = world;
             }
         }
         else {
@@ -1599,21 +1485,32 @@ JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t world)
         (void)jl_matching_methods((jl_tupletype_t*)sig, /*FIXME?*/10, 1, prev_max, &min_valid, &new_max);
         (void)min_valid;
     }
-    if (new_max == absolute_max + 1)
-        new_max -= 1;
-    else
+    mi->max_world = new_max;
+    if (new_max < upto) {
         mi->absolute_max = 1;
-    mi->new_max = new_max;
-    JL_UNLOCK();
+        mi->edges = NULL;
+        if (JL_DEBUG_METHOD_INVALIDATION) {
+            int d0 = depth;
+            while (d0-- > 0)
+                jl_uv_puts(JL_STDOUT, " ", 1);
+            jl_static_show(JL_STDOUT, (jl_value_t*)mi);
+            jl_uv_puts(JL_STDOUT, "\n", 1);
+        }
+    }
+    JL_GC_POP();
     return new_max;
+}
+
+JL_DLLEXPORT size_t jl_verify_edges(jl_method_instance_t *mi, size_t upto)
+{
+    return jl_verify_edges_(mi, upto, 0);
 }
 
 
 void jl_method_instance_delete(jl_method_instance_t *mi)
 {
-    invalidate_method_instance(mi, mi->min_world - 1, 0);
-    if (JL_DEBUG_METHOD_INVALIDATION)
-        jl_uv_puts(JL_STDOUT, "<<<\n", 4);
+    mi->max_world = mi->min_world - 1;
+    mi->absolute_max = 1;
 }
 
 static int typemap_search(jl_typemap_entry_t *entry, void *closure)
@@ -1645,11 +1542,6 @@ JL_DLLEXPORT void jl_method_table_disable(jl_methtable_t *mt, jl_method_t *metho
     methodentry->max_world = jl_world_counter++;
     // Recompute ambiguities (deleting a more specific method might reveal ambiguities that it previously resolved)
     check_ambiguous_matches(mt->defs, methodentry, check_disabled_ambiguous_visitor); // TODO: decrease repeated work?
-    // Invalidate the backedges
-    struct invalidate_conflicting_env env;
-    env.invalidated = 0;
-    env.max_world = methodentry->max_world;
-    jl_typemap_visitor(methodentry->func.method->specializations, (jl_typemap_visitor_fptr)invalidate_backedges, &env);
     JL_UNLOCK(&mt->writelock);
 }
 
@@ -1660,82 +1552,21 @@ JL_DLLEXPORT void jl_method_table_insert(jl_methtable_t *mt, jl_method_t *method
     assert(jl_is_mtable(mt));
     jl_value_t *type = method->sig;
     jl_value_t *oldvalue = NULL;
-    struct invalidate_conflicting_env env;
-    env.invalidated = 0;
-    env.max_world = method->min_world - 1;
     JL_GC_PUSH1(&oldvalue);
     JL_LOCK(&mt->writelock);
     jl_typemap_entry_t *newentry = jl_typemap_insert(&mt->defs, (jl_value_t*)mt,
             (jl_tupletype_t*)type, simpletype, jl_emptysvec, (jl_value_t*)method, 0, &method_defs,
             method->min_world, method->max_world, &oldvalue);
     if (oldvalue) {
-        if (oldvalue == (jl_value_t*)method) {
-            // redundant add of same method; no need to do anything
-            JL_UNLOCK(&mt->writelock);
-            JL_GC_POP();
-            return;
+        if (oldvalue != (jl_value_t*)method) {
+            // check for redundant add of same method; no need to do anything
+            method->ambig = ((jl_method_t*)oldvalue)->ambig;
+            jl_gc_wb(method, method->ambig);
+            method_overwrite(newentry, (jl_method_t*)oldvalue);
         }
-        method->ambig = ((jl_method_t*)oldvalue)->ambig;
-        method_overwrite(newentry, (jl_method_t*)oldvalue);
     }
     else {
-        oldvalue = check_ambiguous_matches(mt->defs, newentry, check_ambiguous_visitor);
-        if (mt->backedges) {
-            jl_value_t **backedges = jl_array_ptr_data(mt->backedges);
-            size_t i, na = jl_array_len(mt->backedges);
-            size_t ins = 0;
-            for (i = 1; i < na; i += 2) {
-                jl_value_t *backedgetyp = backedges[i - 1];
-                if (!jl_has_empty_intersection(backedgetyp, (jl_value_t*)type)) {
-                    jl_method_instance_t *backedge = (jl_method_instance_t*)backedges[i];
-                    invalidate_method_instance(backedge, env.max_world, 0);
-                    env.invalidated = 1;
-                }
-                else {
-                    backedges[ins++] = backedges[i - 1];
-                    backedges[ins++] = backedges[i - 0];
-                }
-            }
-            if (ins == 0)
-                mt->backedges = NULL;
-            else
-                jl_array_del_end(mt->backedges, na - ins);
-        }
-    }
-    if (oldvalue) {
-        jl_datatype_t *unw = (jl_datatype_t*)jl_unwrap_unionall(type);
-        size_t l = jl_svec_len(unw->parameters);
-        jl_value_t *va = NULL;
-        if (l > 0) {
-            va = jl_tparam(unw, l - 1);
-            if (jl_is_vararg_type(va))
-                va = jl_unwrap_vararg(va);
-            else
-                va = NULL;
-        }
-        env.match.va = va;
-        env.match.type = (jl_value_t*)type;
-        env.match.fptr = invalidate_backedges;
-        env.match.env = NULL;
-
-        if (jl_is_method(oldvalue)) {
-            jl_typemap_intersection_visitor(((jl_method_t*)oldvalue)->specializations, 0, &env.match);
-        }
-        else {
-            assert(jl_is_array(oldvalue));
-            jl_method_t **d = (jl_method_t**)jl_array_ptr_data(oldvalue);
-            size_t i, n = jl_array_len(oldvalue);
-            for (i = 0; i < n; i++) {
-                jl_typemap_intersection_visitor(d[i]->specializations, 0, &env.match);
-            }
-        }
-    }
-    if (env.invalidated && JL_DEBUG_METHOD_INVALIDATION) {
-        jl_uv_puts(JL_STDOUT, ">> ", 3);
-        jl_static_show(JL_STDOUT, (jl_value_t*)method);
-        jl_uv_puts(JL_STDOUT, " ", 1);
-        jl_static_show(JL_STDOUT, (jl_value_t*)type);
-        jl_uv_puts(JL_STDOUT, "\n", 1);
+        (void)check_ambiguous_matches(mt->defs, newentry, check_ambiguous_visitor);
     }
     update_max_args(mt, type);
     JL_UNLOCK(&mt->writelock);

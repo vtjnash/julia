@@ -15,6 +15,7 @@ mutable struct InferenceState
     src::CodeInfo
     min_valid::UInt
     max_valid::UInt
+    absolute_max::UInt
     nargs::Int
     stmt_types::Vector{Any}
     stmt_edges::Vector{Any}
@@ -87,9 +88,13 @@ mutable struct InferenceState
             inmodule = linfo.def::Module
         end
 
+        absolute_max = ccall(:jl_get_world_counter, UInt, ())
         if cached && !toplevel
             min_valid = min_world(linfo.def)
             max_valid = max_world(linfo.def)
+            if max_valid == typemax(UInt)
+                max_valid = absolute_max
+            end
         else
             min_valid = typemax(UInt)
             max_valid = typemin(UInt)
@@ -97,7 +102,7 @@ mutable struct InferenceState
         frame = new(
             params, result, linfo,
             sp, slottypes, inmodule, 0,
-            src, min_valid, max_valid,
+            src, min_valid, max_valid, absolute_max,
             nargs, s_types, s_edges,
             Union{}, W, 1, n,
             cur_hand, handler_at, n_handlers,

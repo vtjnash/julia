@@ -583,7 +583,7 @@ int jl_is_rettype_inferred(jl_method_instance_t *li);
 JL_DLLEXPORT jl_value_t *jl_methtable_lookup(jl_methtable_t *mt, jl_value_t *type, size_t world);
 JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(
     jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams, size_t world);
-JL_DLLEXPORT void jl_method_table_add_edges(jl_method_instance_t *caller, jl_array_t *callees);
+JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees);
 
 uint32_t jl_module_next_counter(jl_module_t *m);
 void jl_fptr_to_llvm(void *fptr, jl_method_instance_t *lam, int spec_abi);
