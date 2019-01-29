@@ -641,7 +641,7 @@ end
 function typeinf_ext(linfo::MethodInstance, world::UInt, _::Nothing)
     graph = IdDict()
     valid, complete = examine_edge(linfo, graph, world)
-    @assert complete
+    @assert complete "abort"
     return
 end
 
@@ -654,13 +654,14 @@ function examine_edge(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
         edge_cycle = valid[1]
         cycle_max = valid[2]
         valid = cycle_max
+        seen = graph[linfo]
         if seen === :cycle_top
-            graph[edge] = :cycle
+            graph[linfo] = :cycle
             # this could be the top of the whole cycle
             # check if we have the whole cycle now (e.g. nothing in the cycle is only the top half)
             complete = true
-            for frame::MethodInstance in edge_cycle
-                if edge !== frame && get(graph, frame, :ignore) === :cycle_top
+            for edge::MethodInstance in edge_cycle
+                if linfo !== edge && get(graph, edge, :ignore) === :cycle_top
                     complete = false
                     break
                 end
@@ -669,7 +670,7 @@ function examine_edge(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
                 # found the bottom of the current cycle, finish resolving it now
                 # TODO: set absolute_max to new_max
                 for edge::MethodInstance in edge_cycle
-                    @assert edge.max_world <= cycle_max
+                    @assert max_world(edge) <= cycle_max "abort"
                     if cycle_max < upto
                         edge.absolute_max = true
                     else
@@ -708,20 +709,36 @@ function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UIn
         return cycle, absolute_max
     end
     graph[linfo] = :seen
-    for edge::MethodInstance in linfo.edges
-        valid, complete = examine_edge(edge, graph, upto)
-        if !complete
-            # linfo is now part of this cycle too
-            graph[linfo] = :cycle
-            append!(cycle, edge_cycle)
-            seen === :new && push!(cycle, linfo)
+    prev_world = max_world(linfo)
+    min_valid = UInt[prev_world]
+    max_valid = UInt[new_max]
+    for edge in linfo.edges
+        if edge isa MethodInstance
+            # check that this target is valid
+            valid, complete = examine_edge(edge, graph, upto)
+            if !complete
+                # linfo is now part of this cycle too
+                graph[linfo] = :cycle
+                append!(cycle, edge_cycle)
+                seen === :new && push!(cycle, linfo)
+            end
+            new_max = min(valid, new_max)
+            if new_max < upto
+                break
+            end
+            sig = edge.specTypes
+        else
+            sig = edge
         end
-        new_max = min(valid, new_max)
+        # check that this is still the right method to call
+        max_valid[1] = new_max
+        _methods_by_ftype(sig, #=TODO?=#20, prev_world, min_valid, max_valid)
+        new_max = max_valid[1]
         if new_max < upto
             break
         end
     end
-    @assert edge.max_world <= new_max
+    @assert max_world(linfo) <= new_max "abort"
     if !isempty(cycle)
         # defer final resolution until we come across the bottom of this cycle
         if new_max < upto
@@ -736,9 +753,9 @@ function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UIn
         return cycle, new_max
     end
     if new_max < upto
-        frame.absolute_max = true
+        linfo.absolute_max = true
     else
-        edge.max_world = bitcast(Int, new_max)
+        linfo.max_world = bitcast(Int, new_max)
     end
     return new_max
 end
