@@ -123,7 +123,7 @@ static int8_t jl_cachearg_offset(jl_methtable_t *mt)
 
 /// ----- Insertion logic for special entries ----- ///
 
-JL_DLLEXPORT size_t jl_verify_edges(jl_method_instance_t *mi, size_t upto);
+JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto);
 
 // get or create the MethodInstance for a specialization
 JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams, size_t world)
@@ -136,7 +136,7 @@ JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(jl_method_t *m J
         jl_typemap_assoc_by_type(m->specializations, type, NULL, /*subtype*/0, /*offs*/0, world, /*max_world_mask*/0);
     if (sf && jl_is_method_instance(sf->func.value)) {
         jl_method_instance_t *linfo = sf->func.linfo;
-        if (jl_verify_edges(linfo, world) >= world) {
+        if (jl_verify_edges(linfo, world)) {
             assert(linfo->min_world <= sf->min_world);
             JL_UNLOCK(&m->writelock);
             return linfo;
@@ -164,7 +164,7 @@ JL_DLLEXPORT jl_value_t *jl_specializations_lookup(jl_method_t *m, jl_value_t *t
             m->specializations, type, NULL, /*subtype*/0, /*offs*/0, world, /*max_world_mask*/0);
     if (sf && jl_is_method_instance(sf->func.value)) {
         jl_method_instance_t *linfo = sf->func.linfo;
-        if (jl_verify_edges(linfo, world) >= world) {
+        if (jl_verify_edges(linfo, world)) {
             return (jl_value_t*)linfo;
         }
         sf->max_world = linfo->max_world;
@@ -989,7 +989,7 @@ static jl_method_instance_t *cache_method(
     // TODO: this is utter garbage
     entry = jl_typemap_assoc_by_type(*cache, (jl_value_t*)tt, NULL, /*subtype*/1, jl_cachearg_offset(mt), world, /*max_world_mask*/(~(size_t)0) >> 1);
     if (entry && entry->func.linfo && !entry->func.linfo->absolute_max) {
-        if (jl_verify_edges(entry->func.linfo, world) >= world) {
+        if (jl_verify_edges(entry->func.linfo, world)) {
             entry->max_world = entry->func.linfo->max_world;
             return entry->func.linfo;
         }
@@ -1443,22 +1443,24 @@ JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_
 
 // check that all of the edges are still valid
 // XXX: handle recursive graphs--this is the very wrong algorithm!!!
-static size_t jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
+static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
 {
-    if (mi->max_world >= upto || mi->absolute_max)
-        return mi->max_world;
+    if (mi->max_world >= upto)
+        return 1;
+    if (mi->absolute_max)
+        return 0;
     const size_t prev_max = mi->max_world;
     size_t new_max = jl_world_counter;
     jl_array_t *callees = mi->edges;
     if (depth > 100) {
-        return new_max; // algorithm failed: lie and claim it's always valid
+        return 1; // algorithm failed: lie and claim it's always valid
     }
     if (callees == NULL) {
         // never invalid: expand to cover full range
         //return ~(size_t)0;
         assert(!jl_is_rettype_inferred(mi));
-        mi->max_world = new_max;
-        return mi->max_world;
+        mi->max_world = upto;
+        return 1;
     }
     JL_GC_PUSH1(&callees);
     size_t j, l = jl_array_len(callees);
@@ -1471,9 +1473,12 @@ static size_t jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
             jl_method_instance_t *callee_mi = (jl_method_instance_t*)callee;
             sig = callee_mi->specTypes;
             if (callee_mi != mi) {
-                size_t world = jl_verify_edges_(callee_mi, upto, depth + 1);
-                if (new_max > world) // TODO: this isn't quite right (much too conservative)
-                    new_max = world;
+                if (!jl_verify_edges_(callee_mi, upto, depth + 1)) {
+                    mi->absolute_max = 1;
+                    // TODO: this is mostly incorrect
+                    if (new_max > callee_mi->max_world)
+                        new_max = callee_mi->max_world;
+                }
             }
         }
         else {
@@ -1485,6 +1490,7 @@ static size_t jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
         (void)jl_matching_methods((jl_tupletype_t*)sig, /*FIXME?*/10, 1, prev_max, &min_valid, &new_max);
         (void)min_valid;
     }
+    assert(new_max >= mi->max_world);
     mi->max_world = new_max;
     if (new_max < upto) {
         mi->absolute_max = 1;
@@ -1498,10 +1504,10 @@ static size_t jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
         }
     }
     JL_GC_POP();
-    return new_max;
+    return new_max >= upto;
 }
 
-JL_DLLEXPORT size_t jl_verify_edges(jl_method_instance_t *mi, size_t upto)
+JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto)
 {
     return jl_verify_edges_(mi, upto, 0);
 }

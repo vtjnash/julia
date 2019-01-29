@@ -2146,7 +2146,7 @@ static size_t lowerbound_dependent_world_set(size_t world, arraylist_t *dependen
     abort(); // unreachable
 }
 
-JL_DLLEXPORT size_t jl_verify_edges(jl_method_instance_t *mi, size_t upto);
+JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto);
 void jl_method_instance_delete(jl_method_instance_t *mi);
 
 static void jl_insert_super_edges(jl_array_t *list, arraylist_t *dependent_worlds)
@@ -2167,8 +2167,7 @@ static void jl_insert_super_edges(jl_array_t *list, arraylist_t *dependent_world
             if (jl_is_method_instance(callee)) {
                 sig = callee_mi->specTypes;
                 assert(!module_in_worklist(callee_mi->def.method->module));
-                size_t world = jl_verify_edges(callee_mi, jl_world_counter);
-                if (world < jl_world_counter) {
+                if (!jl_verify_edges(callee_mi, jl_world_counter)) {
                     valid = 0;
                     break;
                 }

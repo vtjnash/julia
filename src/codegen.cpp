@@ -2595,7 +2595,7 @@ static jl_cgval_t emit_invoke(jl_codectx_t &ctx, jl_expr_t *ex, jl_value_t *rt)
     jl_cgval_t result;
     if (lival.constant) {
         jl_method_instance_t *li = (jl_method_instance_t*)lival.constant;
-        assert(jl_is_method_instance(li));
+        assert(jl_is_method_instance(li) && li->min_world <= ctx.world && li->max_world >= ctx.world);
         //TODO: fix this assert condition
         //  currently fails due to incorrect inference recording
         //  need to separate edge-target creation from recording of inferred code

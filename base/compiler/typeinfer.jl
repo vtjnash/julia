@@ -68,11 +68,11 @@ function typeinf(frame::InferenceState)
         finalize_call_edges(caller)
     end
     for caller in frames
-        if max_valid < caller.absolute_max
-            caller.result.linfo.absolute_max = true
-        else
+        #if max_valid < caller.absolute_max
+        #    caller.result.linfo.absolute_max = true
+        #else
             store_call_edges(caller)
-        end
+        #end
     end
     return true
 end
