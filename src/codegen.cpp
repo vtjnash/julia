@@ -7141,7 +7141,7 @@ extern "C" void jl_init_llvm(void)
 
 // Register GDB event listener
 #ifdef JL_DEBUG_BUILD
-    jl_ExecutionEngine->RegisterJITEventListener(JITEventListener::createGDBRegistrationListener());
+    //jl_ExecutionEngine->RegisterJITEventListener(JITEventListener::createGDBRegistrationListener());
 #endif
 
 #ifdef JL_USE_INTEL_JITEVENTS

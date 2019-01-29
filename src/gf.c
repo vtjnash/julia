@@ -1452,7 +1452,7 @@ static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
     const size_t prev_max = mi->max_world;
     size_t new_max = jl_world_counter;
     jl_array_t *callees = mi->edges;
-    if (depth > 100) {
+    if (depth > 500) {
         return 1; // algorithm failed: lie and claim it's always valid
     }
     if (callees == NULL) {
@@ -1506,6 +1506,25 @@ static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
     JL_GC_POP();
     return new_max >= upto;
 }
+
+// This is the same algorithm as inference, only way harder, because it's in C
+//static int jl_converge_edges(jl_method_instance_t *mi, size_t upto)
+//{
+//    htable_t graph;
+//    arraylist_t worklist;
+//    htable_new(&graph, 0);
+//    arraylist_init(&worklist, 0);
+//    arraylist_push(&worklist, (void*)mi);
+//    while (worklist->len > 0) {
+//        mi = arraylist_pop(&worklist);
+//
+//        arraylist_push(&worklist, (void*)mi->edges);
+//        void **bp = ptrhash_bp(&graph, (void*)mi);
+//        *bp = mi->edges;
+//    }
+//    arraylist_free(&worklist);
+//    arraylist_free(&graph);
+//}
 
 JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto)
 {
