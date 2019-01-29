@@ -84,35 +84,35 @@ function initmeta(m::Module)
     nothing
 end
 
-function signature!(tv, expr::Expr)
-    is_macrocall = isexpr(expr, :macrocall)
-    if is_macrocall || isexpr(expr, :call)
-        sig = :(Union{Tuple{}})
-        first_arg = is_macrocall ? 3 : 2 # skip function arguments
-        for arg in expr.args[first_arg:end]
-            isexpr(arg, :parameters) && continue
-            if isexpr(arg, :kw) # optional arg
-                push!(sig.args, :(Tuple{$(sig.args[end].args[2:end]...)}))
-            end
-            push!(sig.args[end].args, argtype(arg))
-        end
-        if isexpr(expr.args[1], :curly) && isempty(tv)
-            append!(tv, tvar.(expr.args[1].args[2:end]))
-        end
-        for i = length(tv):-1:1
-            push!(sig.args, :(Tuple{$(tv[i].args[1])}))
-        end
-        for i = length(tv):-1:1
-            sig = Expr(:where, sig, tv[i])
-        end
-        return sig
-    elseif isexpr(expr, :where)
-        append!(tv, tvar.(expr.args[2:end]))
-        return signature!(tv, expr.args[1])
-    else
-        return signature!(tv, expr.args[1])
-    end
-end
+#function signature!(tv, expr::Expr)
+#    is_macrocall = isexpr(expr, :macrocall)
+#    if is_macrocall || isexpr(expr, :call)
+#        sig = :(Union{Tuple{}})
+#        first_arg = is_macrocall ? 3 : 2 # skip function arguments
+#        for arg in expr.args[first_arg:end]
+#            isexpr(arg, :parameters) && continue
+#            if isexpr(arg, :kw) # optional arg
+#                push!(sig.args, :(Tuple{$(sig.args[end].args[2:end]...)}))
+#            end
+#            push!(sig.args[end].args, argtype(arg))
+#        end
+#        if isexpr(expr.args[1], :curly) && isempty(tv)
+#            append!(tv, tvar.(expr.args[1].args[2:end]))
+#        end
+#        for i = length(tv):-1:1
+#            push!(sig.args, :(Tuple{$(tv[i].args[1])}))
+#        end
+#        for i = length(tv):-1:1
+#            sig = Expr(:where, sig, tv[i])
+#        end
+#        return sig
+#    elseif isexpr(expr, :where)
+#        append!(tv, tvar.(expr.args[2:end]))
+#        return signature!(tv, expr.args[1])
+#    else
+#        return signature!(tv, expr.args[1])
+#    end
+#end
 signature!(tv, @nospecialize(other)) = :(Union{})
 signature(expr::Expr) = signature!([], expr)
 signature(@nospecialize other) = signature!([], other)

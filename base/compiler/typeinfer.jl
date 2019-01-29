@@ -58,9 +58,6 @@ function typeinf(frame::InferenceState)
     for caller in frames
         caller.src.min_world = min_valid % Int
         caller.src.max_world = max_valid % Int
-        if cached
-            cache_result(caller.result, min_valid, max_valid)
-        end
     end
     # if we aren't cached, we don't need this edge
     # but our caller might, so let's just make it anyways
@@ -74,12 +71,18 @@ function typeinf(frame::InferenceState)
             store_call_edges(caller)
         #end
     end
+    if cached
+        for caller in frames
+            cache_result(caller, min_valid, max_valid)
+        end
+    end
     return true
 end
 
 # inference completed on `me`
 # update the MethodInstance and notify the edges
-function cache_result(result::InferenceResult, min_valid::UInt, max_valid::UInt)
+function cache_result(frame::InferenceState, min_valid::UInt, max_valid::UInt)
+    result = frame.result
     def = result.linfo.def
     toplevel = !isa(result.linfo.def, Method)
     if toplevel
@@ -139,6 +142,9 @@ function cache_result(result::InferenceResult, min_valid::UInt, max_valid::UInt)
             result.linfo, widenconst(result.result), inferred_const, inferred_result,
             const_flags, min_valid, max_valid)
         if cache !== result.linfo
+            if isdefined(result.linfo, :edges)
+                ccall(:jl_method_instance_add_edges, Cvoid, (Any, Any), cache, result.linfo.edges)
+            end
             result.linfo.inInference = false
             result.linfo = cache
         end
@@ -178,8 +184,8 @@ function finish(src::CodeInfo)
 end
 
 function finalize_call_edges(me::InferenceState)
-    # update all of the (cycle) callers with real backedges
-    # by traversing the temporary list of backedges
+    # update all of the (cycle) callers with real edges
+    # by copying the temporary list of edges
     for (i, _) in me.cycle_backedges
         add_call_edge!(me.linfo, i)
     end
@@ -191,9 +197,9 @@ end
 
 # add the real edges
 function store_call_edges(frame::InferenceState)
-    toplevel = !isa(frame.linfo.def, Method)
+    caller = frame.result.linfo
+    toplevel = !isa(caller.def, Method)
     if !toplevel && (frame.cached || frame.parent !== nothing)
-        caller = frame.result.linfo
         for edges in frame.stmt_edges
             edges isa Vector{Any} && ccall(:jl_method_instance_add_edges, Cvoid, (Any, Any), caller, edges)
         end
@@ -636,7 +642,7 @@ function typeinf_ext(linfo::MethodInstance, world::UInt, _::Nothing)
     graph = IdDict()
     valid, complete = examine_edge(linfo, graph, world)
     @assert complete
-    return valid::Bool
+    return
 end
 
 # optimistically determine the max-world, and/or aggregate and converge intermediate cycles
@@ -678,12 +684,13 @@ function examine_edge(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
 end
 
 function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
-    absolute_max = ccall(:jl_get_world_counter, UInt, ())
     # first handle the easy cases
     if max_world(linfo) >= upto || linfo.absolute_max
         return max_world(linfo)
     end
-    if isdefined(linfo, :linfos)
+    absolute_max = ccall(:jl_get_world_counter, UInt, ())
+    new_max = absolute_max
+    if !isdefined(linfo, :edges)
         # never invalid (sans deletions): expand to cover current full range
         linfo.max_world = bitcast(Int, absolute_max)
         return absolute_max
@@ -702,7 +709,7 @@ function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UIn
     end
     graph[linfo] = :seen
     for edge::MethodInstance in linfo.edges
-        valid, complete = examine_edge(edge, graph, cycle, upto)
+        valid, complete = examine_edge(edge, graph, upto)
         if !complete
             # linfo is now part of this cycle too
             graph[linfo] = :cycle

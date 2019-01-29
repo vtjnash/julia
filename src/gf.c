@@ -1505,25 +1505,13 @@ static int jl_verify_edges_bootstrapping(jl_method_instance_t *mi, size_t upto, 
         (void)jl_matching_methods((jl_tupletype_t*)sig, /*FIXME?*/10, 1, prev_max, &min_valid, &new_max);
         (void)min_valid;
     }
-    assert(new_max >= prev_max);
-    if (new_max < upto) {
-        mi->absolute_max = 1;
-        mi->edges = NULL;
-        if (JL_DEBUG_METHOD_INVALIDATION) {
-            struct linked_list_mi *callee = stack;
-            while (callee) {
-                jl_uv_puts(JL_STDOUT, " ", 1);
-                callee = callee->prev;
-            }
-            jl_static_show(JL_STDOUT, (jl_value_t*)mi);
-            jl_uv_puts(JL_STDOUT, "\n", 1);
-        }
-    }
-    else {
-        mi->max_world = new_max;
-    }
     JL_GC_POP();
-    return new_max >= upto;
+    assert(new_max >= prev_max);
+    if (new_max >= upto) {
+        mi->max_world = new_max;
+        return 1;
+    }
+    return 0;
 }
 
 JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto)
@@ -1535,10 +1523,20 @@ JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto)
         mi->max_world = upto;
         return 1;
     }
+    if (mi->absolute_max)
+        return 0;
     if (jl_verify_edges_bootstrapping(mi, upto, NULL))
         return 1;
-    // jl_type_infer_(&mi, upto, 1, 1);
-    return mi->max_world >= upto;
+    // TODO: this *MUST* not be here
+    jl_type_infer_(&mi, upto, 1, 1);
+    if (mi->max_world >= upto)
+        return 1;
+    mi->absolute_max = 1;
+    if (JL_DEBUG_METHOD_INVALIDATION) {
+        jl_static_show(JL_STDOUT, (jl_value_t*)mi);
+        jl_uv_puts(JL_STDOUT, "\n", 1);
+    }
+    return 0;
 }
 
 
