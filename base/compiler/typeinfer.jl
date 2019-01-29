@@ -632,101 +632,106 @@ end
 
 # this is the same convergence algorithm as inference itself
 # but just converging (slightly) different properties
-function typeinf_ext(linfo::MethodInstance, upto::UInt, _::Nothing)
+function typeinf_ext(linfo::MethodInstance, world::UInt, _::Nothing)
     graph = IdDict()
-    tops = IdDict()
-    new_max = examine(linfo.edges, graph, upto, cycle_tops)
-    @assert isempty(tops)
-    return
+    valid, complete = examine_edge(linfo, graph, world)
+    @assert complete
+    return valid::Bool
 end
 
 # optimistically determine the max-world, and/or aggregate and converge intermediate cycles
-function examine(edges::Vector{Any}, graph::IdDict{Any,Any}, upto::UInt, cycle_tops::IdDict{Any,Any})
-    local cycle
-    absolute_max = ccall(:jl_get_world_counter, UInt, ())
-    new_max = absolute_max
-    for edge::MethodInstance in edges
-        # first handle the easy cases
-        if max_world(edge) >= upto
-            new_max = min(max_world(edge), new_max)
-            continue
-        end
-        if edge.absolute_max
-            new_max = min(max_world(edge), new_max)
-            break
-        end
-        if isdefined(edge, :edges)
-            # never invalid (sans deletions): expand to cover current full range
-            edge.max_world = bitcast(Int, absolute_max)
-            continue
-        end
-        if edge in keys(graph)
-            # defer final resolution until we come across the bottom of this cycle
-            @isdefined(cycle) || (cycle = [])
-            push!(cycle, edge)
-            cycle_tops[edge] = edge
-        else
-            graph[edge] = edge
-            valid = examine(edge.edges, graph, upto, cycle_tops)
-            if valid isa UInt
-                @assert edge.max_world <= valid
-                edge.max_world = bitcast(Int, valid)
-                new_max = min(valid, new_max)
-                if new_max < upto
+function examine_edge(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
+    valid = examine_inside(linfo, graph, upto)
+    complete = true
+    if !(valid isa UInt)
+        # inconclusive: need to resolve a cycle
+        edge_cycle = valid[1]
+        cycle_max = valid[2]
+        valid = cycle_max
+        if seen === :cycle_top
+            graph[edge] = :cycle
+            # this could be the top of the whole cycle
+            # check if we have the whole cycle now (e.g. nothing in the cycle is only the top half)
+            complete = true
+            for frame::MethodInstance in edge_cycle
+                if edge !== frame && get(graph, frame, :ignore) === :cycle_top
+                    complete = false
                     break
                 end
-            else
-                # inconclusive: need to resolve a cycle
-                typeassert(valid, Tuple{Vector{Any}, UInt})
-                edge_cycle = valid[1]
-                cycle_max = valid[2]
-                if edge in keys(cycle_tops)
-                    # check if we have the whole cycle now
-                    delete!(cycle_tops, edge)
-                    complete = true
-                    for edge::MethodInstance in cycle
-                        if edge in keys(cycle_tops)
-                            complete = false
-                            break
-                        end
-                    end
-                    if complete
-                        # found the bottom of the current cycle, finish resolving it now
-                        absolute = cycle_max < upto
-                        for edge::MethodInstance in edge_cycle
-                            @assert edge.max_world < cycle_max
-                            frame.max_world = cycle_max
-                            frame.absolute_max = absolute
-                        end
-                    elseif @isdefined(cycle)
-                        # multi-cycle discovered to be single cycle (rare)
-                        append!(cycle, edge_cycle)
-                    end
-                else
-                    if @isdefined(cycle)
-                        # multi-cycle discovered to be single cycle (rare)
-                        append!(cycle, edge_cycle)
+            end
+            if complete
+                # found the bottom of the current cycle, finish resolving it now
+                # TODO: set absolute_max to new_max
+                for edge::MethodInstance in edge_cycle
+                    @assert edge.max_world <= cycle_max
+                    if cycle_max < upto
+                        edge.absolute_max = true
                     else
-                        # mid-cycle method
-                        cycle = edge_cycle
+                        edge.max_world = cycle_max
                     end
-                    push!(cycle, edge)
+                    graph[edge] = :complete
                 end
-                new_max = min(cycle_max, new_max)
             end
         end
     end
-    if @isdefined(cycle)
-        if newmax < upto
+    return valid, complete
+end
+
+function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
+    absolute_max = ccall(:jl_get_world_counter, UInt, ())
+    # first handle the easy cases
+    if max_world(linfo) >= upto || linfo.absolute_max
+        return max_world(linfo)
+    end
+    if isdefined(linfo, :linfos)
+        # never invalid (sans deletions): expand to cover current full range
+        linfo.max_world = bitcast(Int, absolute_max)
+        return absolute_max
+    end
+    seen = get(graph, linfo, :new)
+    if seen === :complete
+        return max_world(linfo) # TODO: unreachable?
+    end
+    cycle = []
+    if seen !== :new
+        # repeated method means we now have the top half of a method pair
+        # defer final resolution until we come across the bottom of this cycle
+        seen === :new && push!(cycle, edge)
+        seen === :cycle_top || (graph[linfo] = :cycle_top)
+        return cycle, absolute_max
+    end
+    graph[linfo] = :seen
+    for edge::MethodInstance in linfo.edges
+        valid, complete = examine_edge(edge, graph, cycle, upto)
+        if !complete
+            # linfo is now part of this cycle too
+            graph[linfo] = :cycle
+            append!(cycle, edge_cycle)
+            seen === :new && push!(cycle, linfo)
+        end
+        new_max = min(valid, new_max)
+        if new_max < upto
+            break
+        end
+    end
+    @assert edge.max_world <= new_max
+    if !isempty(cycle)
+        # defer final resolution until we come across the bottom of this cycle
+        if new_max < upto
             # give up on this cycle
             # TODO: set absolute_max to new_max
-            # TODO: is this corrupting `graph`?
             for edge::MethodInstance in cycle
-                delete!(graph, edge)
+                edge.absolute_max = true
+                graph[edge] = :complete
             end
             return new_max
         end
         return cycle, new_max
+    end
+    if new_max < upto
+        frame.absolute_max = true
+    else
+        edge.max_world = bitcast(Int, new_max)
     end
     return new_max
 end
