@@ -164,10 +164,8 @@ JL_DLLEXPORT jl_value_t *jl_specializations_lookup(jl_method_t *m, jl_value_t *t
             m->specializations, type, NULL, /*subtype*/0, /*offs*/0, world, /*max_world_mask*/0);
     if (sf && jl_is_method_instance(sf->func.value)) {
         jl_method_instance_t *linfo = sf->func.linfo;
-        if (jl_verify_edges(linfo, world)) {
+        if (linfo->max_world >= world)
             return (jl_value_t*)linfo;
-        }
-        sf->max_world = linfo->max_world;
     }
     return jl_nothing;
 }
@@ -221,9 +219,8 @@ void jl_mk_builtin_func(jl_datatype_t *dt, const char *name, jl_fptr_args_t fptr
 // returns the inferred source, and may cache the result in li
 // if successful, also updates the li argument to describe the validity of this src
 // if inference doesn't occur (or can't finish), returns NULL instead
-jl_code_info_t *jl_type_infer(jl_method_instance_t **pli JL_ROOTS_TEMPORARILY, size_t world, int force)
+jl_code_info_t *jl_type_infer_(jl_method_instance_t **pli JL_ROOTS_TEMPORARILY, size_t world, int force, int param)
 {
-    JL_TIMING(INFERENCE);
     if (jl_typeinf_func == NULL)
         return NULL;
     static int in_inference;
@@ -239,10 +236,12 @@ jl_code_info_t *jl_type_infer(jl_method_instance_t **pli JL_ROOTS_TEMPORARILY, s
         return NULL; // be careful never to infer the unspecialized method, this would not be valid
 
     jl_value_t **fargs;
-    JL_GC_PUSHARGS(fargs, 3);
+    JL_GC_PUSHARGS(fargs, 3 + param);
     fargs[0] = (jl_value_t*)jl_typeinf_func;
     fargs[1] = (jl_value_t*)li;
     fargs[2] = jl_box_ulong(world);
+    if (param)
+        fargs[3] = jl_nothing;
 #ifdef TRACE_INFERENCE
     if (li->specTypes != (jl_value_t*)jl_emptytuple_type) {
         jl_printf(JL_STDERR,"inference on ");
@@ -257,7 +256,7 @@ jl_code_info_t *jl_type_infer(jl_method_instance_t **pli JL_ROOTS_TEMPORARILY, s
     in_inference++;
     jl_svec_t *linfo_src;
     JL_TRY {
-        linfo_src = (jl_svec_t*)jl_apply(fargs, 3);
+        linfo_src = (jl_svec_t*)jl_apply(fargs, 3 + param);
     }
     JL_CATCH {
         jl_printf(JL_STDERR, "Internal error: encountered unexpected error in runtime:\n");
@@ -282,6 +281,13 @@ jl_code_info_t *jl_type_infer(jl_method_instance_t **pli JL_ROOTS_TEMPORARILY, s
 #endif
     return src;
 }
+
+jl_code_info_t *jl_type_infer(jl_method_instance_t **pli JL_ROOTS_TEMPORARILY, size_t world, int force)
+{
+    JL_TIMING(INFERENCE);
+    return jl_type_infer_(pli, world, force, 0);
+}
+
 
 JL_DLLEXPORT jl_value_t *jl_call_in_typeinf_world(jl_value_t **args, int nargs)
 {
@@ -1418,8 +1424,6 @@ static void update_max_args(jl_methtable_t *mt, jl_value_t *type)
         mt->max_args = na;
 }
 
-static int JL_DEBUG_METHOD_INVALIDATION = 1;
-
 JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees)
 {
     JL_LOCK(&caller->def.method->writelock);
@@ -1440,10 +1444,13 @@ JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_
     JL_UNLOCK(&caller->def.method->writelock);
 }
 
-
 // check that all of the edges are still valid
-// XXX: handle recursive graphs--this is the very wrong algorithm!!!
-static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
+static int JL_DEBUG_METHOD_INVALIDATION = 1;
+struct linked_list_mi {
+    jl_method_instance_t *mi;
+    struct linked_list_mi *prev;
+};
+static int jl_verify_edges_bootstrapping(jl_method_instance_t *mi, size_t upto, struct linked_list_mi *stack)
 {
     if (mi->max_world >= upto)
         return 1;
@@ -1452,15 +1459,18 @@ static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
     const size_t prev_max = mi->max_world;
     size_t new_max = jl_world_counter;
     jl_array_t *callees = mi->edges;
-    if (depth > 500) {
-        return 1; // algorithm failed: lie and claim it's always valid
-    }
     if (callees == NULL) {
         // never invalid: expand to cover full range
-        //return ~(size_t)0;
         assert(!jl_is_rettype_inferred(mi));
         mi->max_world = upto;
         return 1;
+    }
+    struct linked_list_mi *callee = stack;
+    while (callee) {
+        if (callee->mi == mi) {
+            return 0; // algorithm failed
+        }
+        callee = callee->prev;
     }
     JL_GC_PUSH1(&callees);
     size_t j, l = jl_array_len(callees);
@@ -1473,11 +1483,16 @@ static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
             jl_method_instance_t *callee_mi = (jl_method_instance_t*)callee;
             sig = callee_mi->specTypes;
             if (callee_mi != mi) {
-                if (!jl_verify_edges_(callee_mi, upto, depth + 1)) {
-                    mi->absolute_max = 1;
-                    // TODO: this is mostly incorrect
+                struct linked_list_mi new_stack;
+                new_stack.mi = mi;
+                new_stack.prev = stack;
+                if (jl_verify_edges_bootstrapping(callee_mi, upto, &new_stack)) {
                     if (new_max > callee_mi->max_world)
                         new_max = callee_mi->max_world;
+                }
+                else {
+                    new_max = prev_max;
+                    break;
                 }
             }
         }
@@ -1490,45 +1505,40 @@ static int jl_verify_edges_(jl_method_instance_t *mi, size_t upto, int depth)
         (void)jl_matching_methods((jl_tupletype_t*)sig, /*FIXME?*/10, 1, prev_max, &min_valid, &new_max);
         (void)min_valid;
     }
-    assert(new_max >= mi->max_world);
-    mi->max_world = new_max;
+    assert(new_max >= prev_max);
     if (new_max < upto) {
         mi->absolute_max = 1;
         mi->edges = NULL;
         if (JL_DEBUG_METHOD_INVALIDATION) {
-            int d0 = depth;
-            while (d0-- > 0)
+            struct linked_list_mi *callee = stack;
+            while (callee) {
                 jl_uv_puts(JL_STDOUT, " ", 1);
+                callee = callee->prev;
+            }
             jl_static_show(JL_STDOUT, (jl_value_t*)mi);
             jl_uv_puts(JL_STDOUT, "\n", 1);
         }
+    }
+    else {
+        mi->max_world = new_max;
     }
     JL_GC_POP();
     return new_max >= upto;
 }
 
-// This is the same algorithm as inference, only way harder, because it's in C
-//static int jl_converge_edges(jl_method_instance_t *mi, size_t upto)
-//{
-//    htable_t graph;
-//    arraylist_t worklist;
-//    htable_new(&graph, 0);
-//    arraylist_init(&worklist, 0);
-//    arraylist_push(&worklist, (void*)mi);
-//    while (worklist->len > 0) {
-//        mi = arraylist_pop(&worklist);
-//
-//        arraylist_push(&worklist, (void*)mi->edges);
-//        void **bp = ptrhash_bp(&graph, (void*)mi);
-//        *bp = mi->edges;
-//    }
-//    arraylist_free(&worklist);
-//    arraylist_free(&graph);
-//}
-
 JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto)
 {
-    return jl_verify_edges_(mi, upto, 0);
+    if (mi->max_world >= upto)
+        return 1;
+    if (mi->edges == NULL) {
+        // never invalid: expand to cover full range
+        mi->max_world = upto;
+        return 1;
+    }
+    if (jl_verify_edges_bootstrapping(mi, upto, NULL))
+        return 1;
+    // jl_type_infer_(&mi, upto, 1, 1);
+    return mi->max_world >= upto;
 }
 
 
