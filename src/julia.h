@@ -317,6 +317,8 @@ struct _jl_method_instance_t {
     jl_array_t *edges;
     jl_value_t *inferred;  // inferred jl_code_info_t, or jl_nothing, or null
     jl_value_t *inferred_const; // inferred constant return value, or null
+    jl_array_t *edges;
+    struct _jl_method_instance_t *next;
     size_t min_world;
     size_t max_world;
     uint8_t absolute_max; // whether true max world is unknown

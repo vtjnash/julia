@@ -670,8 +670,9 @@ function examine_edge(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UInt)
                 # found the bottom of the current cycle, finish resolving it now
                 # TODO: set absolute_max to new_max
                 for edge::MethodInstance in edge_cycle
-                    @assert max_world(edge) <= cycle_max "abort"
+                    #@assert max_world(edge) <= cycle_max "abort"
                     if cycle_max < upto
+                        println(edge)
                         edge.absolute_max = true
                     else
                         edge.max_world = cycle_max
@@ -738,13 +739,14 @@ function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UIn
             break
         end
     end
-    @assert max_world(linfo) <= new_max "abort"
+    #@assert max_world(linfo) <= new_max "abort"
     if !isempty(cycle)
         # defer final resolution until we come across the bottom of this cycle
         if new_max < upto
             # give up on this cycle
             # TODO: set absolute_max to new_max
             for edge::MethodInstance in cycle
+                println(edge)
                 edge.absolute_max = true
                 graph[edge] = :complete
             end
@@ -753,6 +755,7 @@ function examine_inside(linfo::MethodInstance, graph::IdDict{Any,Any}, upto::UIn
         return cycle, new_max
     end
     if new_max < upto
+        println(linfo)
         linfo.absolute_max = true
     else
         linfo.max_world = bitcast(Int, new_max)

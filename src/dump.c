@@ -840,6 +840,7 @@ static void jl_serialize_value_(jl_serializer_state *s, jl_value_t *v, int as_li
         jl_serialize_value(s, li->rettype);
         jl_serialize_value(s, (jl_value_t*)li->sparam_vals);
         jl_serialize_value(s, (jl_value_t*)li->edges);
+        jl_serialize_value(s, (jl_value_t*)li->next);
     }
     else if (jl_typeis(v, jl_module_type)) {
         jl_serialize_module(s, (jl_module_t*)v);
@@ -1681,6 +1682,15 @@ static jl_value_t *jl_deserialize_value_method_instance(jl_serializer_state *s, 
         return (jl_value_t*)li;
     }
 
+    li->absolute_max = 0;
+    li->inInference = 0;
+    li->isspecsig = 0;
+    li->specptr.fptr = NULL;
+    if (constret)
+        li->invoke = jl_fptr_const_return;
+    else
+        li->invoke = jl_fptr_trampoline;
+    li->compile_traced = 0;
     li->inferred = jl_deserialize_value(s, &li->inferred);
     jl_gc_wb(li, li->inferred);
     li->inferred_const = jl_deserialize_value(s, &li->inferred_const);
@@ -1693,15 +1703,9 @@ static jl_value_t *jl_deserialize_value_method_instance(jl_serializer_state *s, 
     li->edges = (jl_array_t*)jl_deserialize_value(s, (jl_value_t**)&li->edges);
     if (li->edges)
         jl_gc_wb(li, li->edges);
-    li->absolute_max = 0;
-    li->inInference = 0;
-    li->isspecsig = 0;
-    li->specptr.fptr = NULL;
-    if (constret)
-        li->invoke = jl_fptr_const_return;
-    else
-        li->invoke = jl_fptr_trampoline;
-    li->compile_traced = 0;
+    li->next = (jl_method_instance_t*)jl_deserialize_value(s, (jl_value_t**)&li->next);
+    if (li->next)
+        jl_gc_wb(li, li->next);
     return (jl_value_t*)li;
 }
 

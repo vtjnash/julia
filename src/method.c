@@ -291,6 +291,7 @@ JL_DLLEXPORT jl_method_instance_t *jl_new_method_instance_uninit(void)
     li->rettype = (jl_value_t*)jl_any_type;
     li->sparam_vals = jl_emptysvec;
     li->edges = NULL;
+    li->next = NULL;
     li->invoke = jl_fptr_trampoline;
     li->isspecsig = 0;
     li->specptr.fptr = NULL;
