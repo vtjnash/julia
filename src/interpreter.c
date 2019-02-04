@@ -782,19 +782,19 @@ jl_code_info_t *jl_code_for_interpreter(jl_method_instance_t *lam)
 {
     jl_code_info_t *src = (jl_code_info_t*)lam->inferred;
     JL_GC_PUSH1(&src);
-    if (jl_is_method(lam->def.method)) {
-        if (!src || (jl_value_t*)src == jl_nothing) {
-            if (lam->def.method->source) {
-                src = (jl_code_info_t*)lam->def.method->source;
-            }
-            else {
-                assert(lam->def.method->generator);
-                src = jl_code_for_staged(lam);
-            }
+    if (!src || (jl_value_t*)src == jl_nothing) {
+        if (lam->def.method->source) {
+            src = (jl_code_info_t*)lam->def.method->source;
         }
-        if (src && (jl_value_t*)src != jl_nothing) {
-            src = jl_uncompress_ast(lam->def.method, (jl_array_t*)src);
+        else {
+            assert(lam->def.method->generator);
+            src = jl_code_for_staged(lam);
         }
+    }
+    if (src && (jl_value_t*)src != jl_nothing) {
+        src = jl_uncompress_ast(lam->def.method, (jl_array_t*)src);
+        lam->inferred = (jl_value_t*)src;
+        jl_gc_wb(lam, src);
     }
     if (!src || !jl_is_code_info(src)) {
         jl_error("source missing for method called in interpreter");
@@ -817,8 +817,6 @@ SECT_INTERP CALLBACK_ABI void *jl_interpret_call_callback(interpreter_state *s, 
         (struct jl_interpret_call_args *)vargs;
     JL_GC_PROMISE_ROOTED(args);
     jl_code_info_t *src = jl_code_for_interpreter(args->lam);
-    args->lam->inferred = (jl_value_t*)src;
-    jl_gc_wb(args->lam, src);
 
     jl_array_t *stmts = src->code;
     assert(jl_typeis(stmts, jl_array_any_type));
@@ -831,16 +829,17 @@ SECT_INTERP CALLBACK_ABI void *jl_interpret_call_callback(interpreter_state *s, 
     int isva;
     if (jl_is_module(args->lam->def.value)) {
         s->module = args->lam->def.module;
+        s->sparam_vals = jl_emptysvec;
         nargs = 0;
         isva = 0;
     }
     else {
         s->module = args->lam->def.method->module;
+        s->sparam_vals = args->lam->sparam_vals;
         nargs = args->lam->def.method->nargs;
         isva = args->lam->def.method->isva;
     }
     s->locals = locals + 2;
-    s->sparam_vals = args->lam->sparam_vals;
     s->preevaluation = 0;
     s->continue_at = 0;
     s->mi = args->lam;

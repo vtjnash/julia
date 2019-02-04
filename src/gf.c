@@ -123,8 +123,6 @@ static int8_t jl_cachearg_offset(jl_methtable_t *mt)
 
 /// ----- Insertion logic for special entries ----- ///
 
-JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto);
-
 // get or create the MethodInstance for a specialization
 JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams, size_t world)
 {
@@ -1003,14 +1001,8 @@ static jl_method_instance_t *cache_method(
     // caller must hold the mt->writelock
     // short-circuit (now that we hold the lock) if this entry is already present
     jl_typemap_entry_t *entry = jl_typemap_assoc_by_type(*cache, (jl_value_t*)tt, NULL, /*subtype*/1, jl_cachearg_offset(mt), world, /*max_world_mask*/0);
-    if (entry && entry->func.value) {
-        // see if we can re-use an existing entry
-        if (jl_verify_edges(entry->func.linfo, world)) {
-            return entry->func.linfo;
-        }
-        // truncate max_world now
-        entry->max_world = entry->func.linfo->max_world;
-    }
+    if (entry && entry->func.value)
+        return entry->func.linfo;
 
     jl_value_t *temp = NULL;
     jl_value_t *temp2 = NULL;
@@ -1162,12 +1154,7 @@ static jl_method_instance_t *jl_mt_assoc_by_type(jl_methtable_t *mt, jl_datatype
     jl_typemap_entry_t *entry = NULL;
     entry = jl_typemap_assoc_by_type(mt->cache, (jl_value_t*)tt, NULL, /*subtype*/1, jl_cachearg_offset(mt), world, /*max_world_mask*/0);
     if (entry && entry->func.value) {
-        jl_method_instance_t *linfo = (jl_method_instance_t*)entry->func.value;
-        // see if we can use this existing entry
-        if (jl_verify_edges(linfo, world))
-            return linfo;
-        // truncate max_world now
-        entry->max_world = linfo->max_world;
+        return entry->func.linfo;
     }
 
     jl_method_instance_t *nf = NULL;
@@ -1695,14 +1682,8 @@ static jl_method_instance_t *jl_method_lookup_by_type(
         int cache, int allow_exec, size_t world)
 {
     jl_typemap_entry_t *entry = jl_typemap_assoc_by_type(mt->cache, (jl_value_t*)types, NULL, /*subtype*/1, jl_cachearg_offset(mt), world, /*max_world_mask*/0);
-    if (entry) {
-        jl_method_instance_t *linfo = (jl_method_instance_t*)entry->func.value;
-        // see if we can use this existing entry
-        if (jl_verify_edges(linfo, world))
-            return linfo;
-        // truncate max_world now
-        entry->max_world = linfo->max_world;
-    }
+    if (entry)
+        return entry->func.linfo;
     JL_LOCK(&mt->writelock);
     if (jl_is_datatype((jl_value_t*)types) && types->isdispatchtuple)
         cache = 1;
@@ -1719,15 +1700,8 @@ JL_DLLEXPORT int jl_method_exists(jl_methtable_t *mt, jl_tupletype_t *types, siz
 jl_method_instance_t *jl_method_lookup(jl_methtable_t *mt, jl_value_t **args, size_t nargs, int cache, size_t world)
 {
     jl_typemap_entry_t *entry = jl_typemap_assoc_exact(mt->cache, args, nargs, jl_cachearg_offset(mt), world);
-    if (entry) {
-        jl_method_instance_t *linfo = (jl_method_instance_t*)entry->func.value;
-        // see if we can use this existing entry
-        if (jl_verify_edges(linfo, world))
-            return linfo;
-        // truncate max_world now
-        entry->max_world = linfo->max_world;
-        return linfo;
-    }
+    if (entry)
+        return entry->func.linfo;
     JL_LOCK(&mt->writelock);
     jl_tupletype_t *tt = arg_type_tuple(args, nargs);
     JL_GC_PUSH1(&tt);
@@ -2159,22 +2133,13 @@ STATIC_INLINE jl_method_instance_t *jl_lookup_generic_(jl_value_t **args, uint32
         jl_value_t *F = args[0];
         mt = jl_gf_mtable(F);
         entry = jl_typemap_assoc_exact(mt->cache, args, nargs, jl_cachearg_offset(mt), world);
-        if (entry) {
-            jl_method_instance_t *linfo = (jl_method_instance_t*)entry->func.value;
-            // see if we can use this existing entry
-            if (!jl_verify_edges(linfo, world)) {
-                // truncate max_world now
-                entry->max_world = linfo->max_world;
-                entry = NULL;
-            }
-            else if (entry->isleafsig && entry->simplesig == (void*)jl_nothing && entry->guardsigs == jl_emptysvec) {
-                // put the entry into the cache if it's valid for a leafsig lookup,
-                // using pick_which to slightly randomize where it ends up
-                struct _call_cache_entry ex;
-                ex.def = entry;
-                ex.world = world;
-                call_cache[cache_idx[++pick_which[cache_idx[0]] & 3]] = ex;
-            }
+        if (entry && entry->isleafsig && entry->simplesig == (void*)jl_nothing && entry->guardsigs == jl_emptysvec) {
+            // put the entry into the cache if it's valid for a leafsig lookup,
+            // using pick_which to slightly randomize where it ends up
+            struct _call_cache_entry ex;
+            ex.def = entry;
+            ex.world = world;
+            call_cache[cache_idx[++pick_which[cache_idx[0]] & 3]] = ex;
         }
     }
 

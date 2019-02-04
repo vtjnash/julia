@@ -271,13 +271,11 @@ typedef struct _jl_method_t {
 
     // method's type signature. redundant with TypeMapEntry->specTypes
     jl_value_t *sig;
-    size_t min_world;
-    size_t max_world;
 
     // list of potentially-ambiguous methods (nothing = none, Vector{Any} of Methods otherwise)
     jl_value_t *ambig;
 
-    // table of all argument types for which we've inferred or compiled this code
+    // table of all jl_method_instance_t specializations we have
     jl_typemap_t *specializations;
 
     jl_value_t *slot_syms; // compacted list of slot names (String)
@@ -303,31 +301,44 @@ typedef struct _jl_method_t {
     jl_mutex_t writelock;
 } jl_method_t;
 
-// This type caches the data for a specType signature specialization of a Method
-struct _jl_method_instance_t {
+// This type is a placeholder to cache data for a specType signature specialization of a Method
+// can can be used as a unique dictionary key representation of a call to a particular Method
+// with a particular set of argument types
+typedef struct _jl_method_instance_t {
+    JL_DATA_TYPE
+    jl_method_t *method; // method this is specialized from
+    jl_value_t *specTypes;  // argument types this was specialized for
+    jl_svec_t *sparam_vals; // static parameter values, indexed by def.method->sparam_syms
+    struct _jl_lambda_t *cache;
+} jl_method_instance_t;
+
+// This type represents an executable operation
+typedef struct _jl_lambda_t {
     JL_DATA_TYPE
     union {
         jl_value_t *value; // generic accessor
         struct _jl_module_t *module; // this is a toplevel thunk
-        jl_method_t *method; // method this is specialized from
-    } def; // context for this lambda definition
-    jl_value_t *specTypes;  // argument types this was specialized for
-    jl_value_t *rettype; // return type for fptr
-    jl_svec_t *sparam_vals; // static parameter values, indexed by def.method->sig UnionAll tvars
-    jl_array_t *edges;
-    jl_value_t *inferred;  // inferred jl_code_info_t, or jl_nothing, or null
-    jl_value_t *inferred_const; // inferred constant return value, or null
-    jl_array_t *edges;
-    struct _jl_method_instance_t *next;
+        jl_method_instance_t *method; // method this is specialized from
+    } def; // pointer back to the context for this lambda definition
+    struct _jl_lambda_t *next; // pointer to the next copy of this lambda
+
+    // world range for which this object is valid to use
     size_t min_world;
     size_t max_world;
+
+    // inference state cache
+    jl_value_t *rettype; // return type for fptr
+    jl_value_t *rettype_const; // inferred constant return value, or null
+    jl_value_t *inferred; // inferred jl_code_info_t, or jl_nothing, or null
+    jl_array_t *edges; // stored information about edges from this object
+    uint8_t inInference; // flags to tell if inference is running on this object
     uint8_t absolute_max; // whether true max world is unknown
-    uint8_t inInference; // flags to tell if inference is running on this function
-    uint8_t compile_traced; // if set will notify callback if this linfo is compiled
-    uint8_t isspecsig; // if specptr is specsig for specTypes->rettype
+
+    // compilation state cache
+    uint8_t isspecsig; // if specptr is specsig over arrow-type `specTypes -> rettype`
     jl_callptr_t invoke; // jlcall entry point
-    jl_generic_specptr_t specptr;
-};
+    jl_generic_specptr_t specptr; // private data for `jlcall entry point`
+} jl_lambda_t;
 
 // all values are callable as Functions
 typedef jl_value_t jl_function_t;
@@ -550,6 +561,7 @@ extern JL_DLLEXPORT jl_datatype_t *jl_builtin_type JL_GLOBALLY_ROOTED;
 
 extern JL_DLLEXPORT jl_value_t *jl_bottom_type JL_GLOBALLY_ROOTED;
 extern JL_DLLEXPORT jl_datatype_t *jl_method_instance_type JL_GLOBALLY_ROOTED;
+extern JL_DLLEXPORT jl_datatype_t *jl_lambda_type JL_GLOBALLY_ROOTED;
 extern JL_DLLEXPORT jl_datatype_t *jl_code_info_type JL_GLOBALLY_ROOTED;
 extern JL_DLLEXPORT jl_datatype_t *jl_method_type JL_GLOBALLY_ROOTED;
 extern JL_DLLEXPORT jl_datatype_t *jl_module_type JL_GLOBALLY_ROOTED;
@@ -983,7 +995,8 @@ static inline int jl_is_layout_opaque(const jl_datatype_layout_t *l) JL_NOTSAFEP
 #define jl_is_newvarnode(v)  jl_typeis(v,jl_newvarnode_type)
 #define jl_is_linenode(v)    jl_typeis(v,jl_linenumbernode_type)
 #define jl_is_method_instance(v) jl_typeis(v,jl_method_instance_type)
-#define jl_is_code_info(v) jl_typeis(v,jl_code_info_type)
+#define jl_is_lambda(v)      jl_typeis(v,jl_lambda_type)
+#define jl_is_code_info(v)   jl_typeis(v,jl_code_info_type)
 #define jl_is_method(v)      jl_typeis(v,jl_method_type)
 #define jl_is_module(v)      jl_typeis(v,jl_module_type)
 #define jl_is_mtable(v)      jl_typeis(v,jl_methtable_type)
@@ -1549,7 +1562,7 @@ JL_DLLEXPORT void jl_register_newmeth_tracer(void (*callback)(jl_method_t *trace
 // AST access
 JL_DLLEXPORT jl_value_t *jl_copy_ast(jl_value_t *expr JL_MAYBE_UNROOTED);
 
-JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_method_t *m, jl_code_info_t *code);
+JL_DLLEXPORT jl_array_t *jl_compress_ast(jl_code_info_t *code);
 JL_DLLEXPORT jl_code_info_t *jl_uncompress_ast(jl_method_t *m, jl_array_t *data);
 JL_DLLEXPORT uint8_t jl_ast_flag_inferred(jl_array_t *data);
 JL_DLLEXPORT uint8_t jl_ast_flag_inlineable(jl_array_t *data);
