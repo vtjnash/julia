@@ -307,12 +307,12 @@ static void ti_init_master_thread(void)
 }
 
 // all threads call this function to run user code
-static jl_value_t *ti_run_fun(jl_callptr_t fptr, jl_method_instance_t *mfunc,
+static jl_value_t *ti_run_fun(jl_lambda_t *mfunc,
                               jl_value_t **args, uint32_t nargs)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
     JL_TRY {
-        fptr(mfunc, args, nargs);
+        mfunc->invoke(mfunc, args, nargs);
     }
     JL_CATCH {
         // Lock this output since we know it'll likely happen on multiple threads
@@ -419,7 +419,7 @@ void ti_threadfun(void *arg)
                 // This is probably always NULL for now
                 size_t last_age = ptls->world_age;
                 ptls->world_age = work->world_age;
-                ti_run_fun(work->fptr, work->mfunc, work->args, work->nargs);
+                ti_run_fun(work->fptr, work->args, work->nargs);
                 ptls->world_age = last_age;
                 jl_gc_unsafe_leave(ptls, gc_state);
             }
@@ -693,11 +693,11 @@ JL_DLLEXPORT jl_value_t *jl_threading_run(jl_value_t *_args)
 
     size_t world = jl_get_ptls_states()->world_age;
     threadwork.command = TI_THREADWORK_RUN;
-    threadwork.mfunc = jl_lookup_generic(args, nargs,
+    jl_method_instance_t *mfunc = jl_lookup_generic(args, nargs,
                                          jl_int32hash_fast(jl_return_address()), world);
     // Ignore constant return value for now.
-    threadwork.fptr = jl_compile_method_internal(&threadwork.mfunc, world);
-    if (threadwork.fptr == jl_fptr_const_return)
+    threadwork.fptr = jl_compile_method_internal(mfunc, world);
+    if (threadwork.fptr->invoke == jl_fptr_const_return)
         // Ignore constant return value for now.
         return jl_nothing;
     threadwork.args = args;
@@ -720,8 +720,8 @@ JL_DLLEXPORT jl_value_t *jl_threading_run(jl_value_t *_args)
 #endif
 
     // this thread must do work too (TODO: reduction?)
-    JL_GC_PROMISE_ROOTED(threadwork.mfunc);
-    tw->ret = ti_run_fun(threadwork.fptr, threadwork.mfunc, args, nargs);
+    JL_GC_PROMISE_ROOTED(threadwork.fptr);
+    tw->ret = ti_run_fun(threadwork.fptr, args, nargs);
 
 #if PROFILE_JL_THREADING
     uint64_t trun = uv_hrtime();
@@ -813,11 +813,11 @@ JL_DLLEXPORT jl_value_t *jl_threading_run(jl_value_t *_args)
                                                     jl_int32hash_fast(jl_return_address()),
                                                     jl_get_ptls_states()->world_age);
     size_t world = jl_get_ptls_states()->world_age;
-    jl_callptr_t fptr = jl_compile_method_internal(&mfunc, world);
+    jl_lambda_t *fptr = jl_compile_method_internal(mfunc, world);
     if (fptr == jl_fptr_const_return)
         // Ignore constant return value for now.
         return jl_nothing;
-    return ti_run_fun(fptr, mfunc, args, nargs);
+    return ti_run_fun(fptr, args, nargs);
 }
 
 void jl_init_threading(void)

@@ -286,22 +286,12 @@ JL_DLLEXPORT jl_method_instance_t *jl_new_method_instance_uninit(void)
     jl_method_instance_t *li =
         (jl_method_instance_t*)jl_gc_alloc(ptls, sizeof(jl_method_instance_t),
                                            jl_method_instance_type);
-    li->inferred = NULL;
-    li->inferred_const = NULL;
-    li->rettype = (jl_value_t*)jl_any_type;
-    li->sparam_vals = jl_emptysvec;
-    li->edges = NULL;
-    li->next = NULL;
-    li->invoke = jl_fptr_trampoline;
-    li->isspecsig = 0;
-    li->specptr.fptr = NULL;
-    li->compile_traced = 0;
-    li->specTypes = NULL;
-    li->inInference = 0;
     li->def.value = NULL;
-    li->absolute_max = 0;
-    li->min_world = 0;
-    li->max_world = 0;
+    li->specTypes = NULL;
+    li->sparam_vals = jl_emptysvec;
+    li->uninferred = NULL;
+    li->cache = NULL;
+    li->inInference = 0;
     return li;
 }
 
@@ -403,8 +393,7 @@ JL_DLLEXPORT jl_code_info_t *jl_code_for_staged(jl_method_instance_t *linfo)
 
     JL_TRY {
         ptls->in_pure_callback = 1;
-        // and the right world
-        ptls->world_age = def->min_world;
+        ptls->world_age = def->world;
 
         // invoke code generator
         jl_tupletype_t *ttdt = (jl_tupletype_t*)jl_unwrap_unionall(tt);
@@ -459,8 +448,6 @@ jl_method_instance_t *jl_get_specialized(jl_method_t *m, jl_value_t *types, jl_s
     new_linfo->def.method = m;
     new_linfo->specTypes = types;
     new_linfo->sparam_vals = sp;
-    new_linfo->min_world = m->min_world;
-    new_linfo->max_world = m->max_world;
     return new_linfo;
 }
 
@@ -595,14 +582,11 @@ JL_DLLEXPORT jl_method_t *jl_new_method_uninit(jl_module_t *module)
     m->invokes = NULL;
     m->isva = 0;
     m->nargs = 0;
-    m->traced = 0;
-    m->min_world = 1;
-    m->max_world = ~(size_t)0;
+    m->world = 1;
     JL_MUTEX_INIT(&m->writelock);
     return m;
 }
 
-jl_array_t *jl_all_methods JL_GLOBALLY_ROOTED;
 static jl_method_t *jl_new_method(
         jl_code_info_t *definition,
         jl_sym_t *name,
@@ -618,20 +602,7 @@ static jl_method_t *jl_new_method(
     m->isva = isva;
     m->nargs = nargs;
     jl_method_set_source(m, definition);
-
-#ifdef RECORD_METHOD_ORDER
-    if (jl_all_methods == NULL)
-        jl_all_methods = jl_alloc_vec_any(0);
-#endif
-    if (jl_all_methods != NULL) {
-        while (jl_array_len(jl_all_methods) < jl_world_counter)
-            jl_array_ptr_1d_push(jl_all_methods, NULL);
-        jl_array_ptr_1d_push(jl_all_methods, (jl_value_t*)m);
-    }
-
     JL_GC_POP();
-    m->min_world = ++jl_world_counter;
-    m->max_world = ~(size_t)0;
     return m;
 }
 
@@ -710,7 +681,7 @@ JL_DLLEXPORT jl_value_t *jl_argument_datatype(jl_value_t *argt JL_PROPAGATES_ROO
     return (jl_value_t*)dt;
 }
 
-extern tracer_cb jl_newmeth_tracer;
+jl_array_t *jl_all_methods JL_GLOBALLY_ROOTED;
 
 JL_DLLEXPORT void jl_method_def(jl_svec_t *argdata,
                                 jl_code_info_t *f,
@@ -794,9 +765,17 @@ JL_DLLEXPORT void jl_method_def(jl_svec_t *argdata,
                           m->line);
     }
 
+#ifdef RECORD_METHOD_ORDER
+    if (jl_all_methods == NULL)
+        jl_all_methods = jl_alloc_vec_any(0);
+#endif
+    if (jl_all_methods != NULL) {
+        while (jl_array_len(jl_all_methods) < jl_world_counter)
+            jl_array_ptr_1d_push(jl_all_methods, NULL);
+        jl_array_ptr_1d_push(jl_all_methods, (jl_value_t*)m);
+    }
+
     jl_method_table_insert(mt, m, NULL);
-    if (jl_newmeth_tracer)
-        jl_call_tracer(jl_newmeth_tracer, (jl_value_t*)m);
     JL_GC_POP();
 }
 

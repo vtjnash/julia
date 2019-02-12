@@ -38,7 +38,6 @@ void jl_dump_compiles(void *s)
 
 static void jl_add_to_ee();
 static uint64_t getAddressForFunction(StringRef fname);
-extern "C" tracer_cb jl_linfo_tracer;
 
 void jl_jit_globals(std::map<void *, GlobalVariable*> &globals)
 {
@@ -56,10 +55,9 @@ void jl_jit_globals(std::map<void *, GlobalVariable*> &globals)
 // (and the shadow module),
 // and generates code for it
 static jl_callptr_t _jl_compile_linfo(
-        jl_method_instance_t *li,
+        jl_lambda_t *li,
         jl_code_info_t *src,
-        size_t world,
-        std::vector<jl_method_instance_t*> &triggered_linfos)
+        size_t world)
 {
     // caller must hold codegen_lock
     // and have disabled finalizers
@@ -68,7 +66,7 @@ static jl_callptr_t _jl_compile_linfo(
     if (dump_compiles_stream != NULL)
         start_time = jl_hrtime();
 
-    assert(jl_is_method_instance(li));
+    assert(jl_isa(li, jl_lamba_type));
     assert(li->min_world <= world && (li->max_world >= world || li->max_world == 0) &&
         "invalid world for method-instance");
     assert(src && jl_is_code_info(src));
@@ -106,9 +104,7 @@ static jl_callptr_t _jl_compile_linfo(
             addr = (jl_callptr_t)getAddressForFunction(decls.functionObject);
             isspecsig = jl_egal(rettype, this_li->rettype);
         }
-        if (this_li->compile_traced)
-            triggered_linfos.push_back(this_li);
-        if (this_li->invoke == jl_fptr_trampoline) {
+        if (this_li->invoke == NULL) {
             // once set, don't change invoke-ptr, as that leads to race conditions
             // with the (not) simultaneous updates to invoke and specptr
             if (!decls.specFunctionObject.empty()) {
@@ -131,7 +127,7 @@ static jl_callptr_t _jl_compile_linfo(
 
     // If logging of the compilation stream is enabled,
     // then dump the method-instance specialization type to the stream
-    if (dump_compiles_stream != NULL && jl_is_method(li->def.method)) {
+    if (dump_compiles_stream != NULL && jl_is_method(li->def->def.method)) {
         jl_printf(dump_compiles_stream, "%" PRIu64 "\t\"", end_time - start_time);
         jl_static_show(dump_compiles_stream, li->specTypes);
         jl_printf(dump_compiles_stream, "\"\n");
@@ -183,24 +179,17 @@ void jl_extern_c(jl_function_t *f, jl_value_t *rt, jl_value_t *argt, char *name)
     JL_UNLOCK(&codegen_lock);
 }
 
-static jl_callptr_t _jl_generate_fptr(jl_method_instance_t *li, jl_code_info_t *src, size_t world)
+static void _jl_generate_fptr(jl_lambda_t *li, jl_code_info_t *src, size_t world)
 {
-    jl_callptr_t fptr = NULL;
     if (src && jl_is_code_info(src)) {
-        std::vector<jl_method_instance_t*> triggered_linfos;
-        fptr = _jl_compile_linfo(li, src, world, triggered_linfos);
-        for (jl_method_instance_t *linfo : triggered_linfos) // TODO: would be better to have released the locks first
-            if (jl_linfo_tracer)
-                jl_call_tracer(jl_linfo_tracer, (jl_value_t*)linfo);
+        _jl_compile_linfo(li, src, world);
     }
-    return fptr;
 }
 
 // this compiles li and emits fptr
 extern "C"
-jl_callptr_t jl_generate_fptr(jl_method_instance_t **pli, size_t world)
+jl_lambda_t *jl_generate_fptr(jl_method_instance_t *li, size_t world)
 {
-    jl_method_instance_t *li = *pli;
     jl_callptr_t fptr = li->invoke;
     if (fptr != jl_fptr_trampoline) {
         return fptr;
@@ -226,8 +215,7 @@ jl_callptr_t jl_generate_fptr(jl_method_instance_t **pli, size_t world)
         if (src && (jl_value_t*)src != jl_nothing)
             src = jl_uncompress_ast(li->def.method, (jl_array_t*)src);
         if (!src || !jl_is_code_info(src)) {
-            src = jl_type_infer(pli, world, 0);
-            li = *pli;
+            src = jl_type_infer(li, world, 0);
         }
         fptr = li->invoke;
         if (fptr != jl_fptr_trampoline) {
@@ -236,7 +224,7 @@ jl_callptr_t jl_generate_fptr(jl_method_instance_t **pli, size_t world)
             return fptr;
         }
     }
-    fptr = _jl_generate_fptr(li, src, world);
+    _jl_generate_fptr(fptr, src, world);
     JL_UNLOCK(&codegen_lock); // Might GC
     JL_GC_POP();
     return fptr;
@@ -244,16 +232,16 @@ jl_callptr_t jl_generate_fptr(jl_method_instance_t **pli, size_t world)
 
 // this compiles li and emits fptr
 extern "C"
-jl_callptr_t jl_generate_fptr_for_unspecialized(jl_method_instance_t *unspec)
+jl_lambda_t *jl_generate_fptr_for_unspecialized(jl_method_instance_t *unspec)
 {
     assert(jl_is_method(unspec->def.method));
-    jl_callptr_t fptr = unspec->invoke;
-    if (fptr != jl_fptr_trampoline) {
+    jl_lambda_t *fptr = unspec->cache;
+    if (fptr) {
         return fptr;
     }
     JL_LOCK(&codegen_lock);
-    fptr = unspec->invoke;
-    if (fptr != jl_fptr_trampoline) {
+    fptr = unspec->cache;
+    if (fptr) {
         JL_UNLOCK(&codegen_lock); // Might GC
         return fptr;
     }
@@ -267,9 +255,11 @@ jl_callptr_t jl_generate_fptr_for_unspecialized(jl_method_instance_t *unspec)
     }
     if (src && (jl_value_t*)src != jl_nothing)
         src = jl_uncompress_ast(unspec->def.method, (jl_array_t*)src);
-    fptr = unspec->invoke;
-    if (fptr == jl_fptr_trampoline) {
-        fptr = _jl_generate_fptr(unspec, src, unspec->min_world);
+    fptr = unspec->cache;
+    if (fptr == NULL) {
+        fptr = jl_set_method_inferred(unspec, (jl_value_t*)jl_any_type, jl_nothing, jl_nothing,
+            0, 1, ~(size_t)0);
+        _jl_generate_fptr(fptr, src, fptr->min_world);
     }
     JL_UNLOCK(&codegen_lock); // Might GC
     JL_GC_POP();
@@ -283,7 +273,8 @@ jl_value_t *jl_dump_method_asm(jl_method_instance_t *linfo, size_t world,
         int raw_mc, char getwrapper, const char* asm_variant, const char *debuginfo)
 {
     // printing via disassembly
-    uintptr_t fptr = (uintptr_t)jl_generate_fptr(&linfo, world);
+    jl_lambda_t *li = jl_generate_fptr(linfo, world);
+    jl_callptr_t fptr = li->invoke;
     if (fptr) {
         if (getwrapper)
             return jl_dump_fptr_asm(fptr, raw_mc, asm_variant, debuginfo);

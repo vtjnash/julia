@@ -140,9 +140,6 @@ STATIC_INLINE uint32_t jl_int32hash_fast(uint32_t a)
 extern jl_methtable_t *jl_type_type_mt JL_GLOBALLY_ROOTED;
 JL_DLLEXPORT extern size_t jl_world_counter;
 
-typedef void (*tracer_cb)(jl_value_t *tracee);
-void jl_call_tracer(tracer_cb callback, jl_value_t *tracee);
-
 extern size_t jl_page_size;
 extern jl_function_t *jl_typeinf_func;
 extern size_t jl_typeinf_world;
@@ -316,10 +313,10 @@ jl_svec_t *jl_perm_symsvec(size_t n, ...);
 jl_value_t *jl_gc_realloc_string(jl_value_t *s, size_t sz);
 JL_DLLEXPORT void *jl_gc_counted_malloc(size_t sz);
 
-jl_code_info_t *jl_type_infer(jl_method_instance_t **pmeth JL_ROOTS_TEMPORARILY, size_t world, int force);
-jl_callptr_t jl_generate_fptr(jl_method_instance_t **pmeth, size_t world);
-jl_callptr_t jl_generate_fptr_for_unspecialized(jl_method_instance_t *unspec);
-jl_callptr_t jl_compile_method_internal(jl_method_instance_t **pmeth, size_t world);
+jl_code_info_t *jl_type_infer(jl_method_instance_t *meth, size_t world, int force);
+jl_lambda_t *jl_generate_fptr(jl_method_instance_t *meth, size_t world);
+jl_lambda_t *jl_generate_fptr_for_unspecialized(jl_method_instance_t *unspec);
+jl_lambda_t *jl_compile_method_internal(jl_method_instance_t *meth, size_t world);
 
 JL_DLLEXPORT int jl_compile_hint(jl_tupletype_t *types);
 jl_code_info_t *jl_code_for_interpreter(jl_method_instance_t *lam);
@@ -569,7 +566,7 @@ void jl_dump_native(void *native_code,
         const char *bc_fname, const char *unopt_bc_fname, const char *obj_fname,
         const char *sysimg_data, size_t sysimg_len);
 int32_t jl_get_llvm_gv(void *native_code, jl_value_t *p) JL_NOTSAFEPOINT;
-void jl_get_function_id(void *native_code, jl_method_instance_t *linfo,
+void jl_get_function_id(void *native_code, jl_lambda_t *linfo,
         int32_t *func_idx, int32_t *specfunc_idx);
 // the first argument to jl_idtable_rehash is used to return a value
 // make sure it is rooted if it is used after the function returns
@@ -579,14 +576,13 @@ JL_DLLEXPORT jl_methtable_t *jl_new_method_table(jl_sym_t *name, jl_module_t *mo
 jl_method_instance_t *jl_get_specialization1(jl_tupletype_t *types, size_t world, int mt_cache);
 JL_DLLEXPORT int jl_has_call_ambiguities(jl_value_t *types, jl_method_t *m);
 jl_method_instance_t *jl_get_specialized(jl_method_t *m, jl_value_t *types, jl_svec_t *sp);
-int jl_is_rettype_inferred(jl_method_instance_t *li);
+int jl_is_rettype_inferred(jl_method_instance_t *li, size_t world);
 JL_DLLEXPORT jl_value_t *jl_methtable_lookup(jl_methtable_t *mt, jl_value_t *type, size_t world);
 JL_DLLEXPORT jl_method_instance_t *jl_specializations_get_linfo(
-    jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams, size_t world);
+    jl_method_t *m JL_PROPAGATES_ROOT, jl_value_t *type, jl_svec_t *sparams);
 JL_DLLEXPORT void jl_method_instance_add_edges(jl_method_instance_t *caller, jl_array_t *callees);
 
 uint32_t jl_module_next_counter(jl_module_t *m);
-void jl_fptr_to_llvm(void *fptr, jl_method_instance_t *lam, int spec_abi);
 jl_tupletype_t *arg_type_tuple(jl_value_t **args, size_t nargs);
 
 int jl_has_meta(jl_array_t *body, jl_sym_t *sym);

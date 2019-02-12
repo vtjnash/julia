@@ -39,8 +39,7 @@ enum {
 // work command to thread function
 typedef struct {
     uint8_t command;
-    jl_method_instance_t *mfunc;
-    jl_callptr_t fptr;
+    jl_lambda_t *fptr;
     jl_value_t **args;
     uint32_t nargs;
     jl_value_t *ret;

@@ -788,7 +788,7 @@ jl_value_t *jl_toplevel_eval_flex(jl_module_t *JL_NONNULL m, jl_value_t *e, int 
             jl_type_infer(&li, world, 0);
         }
         jl_value_t *dummy_f_arg = NULL;
-        result = li->invoke(li, &dummy_f_arg, 1);
+        result = jl_invoke(li, &dummy_f_arg, 1);
         ptls->world_age = last_age;
     }
     else {

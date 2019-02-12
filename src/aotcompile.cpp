@@ -92,12 +92,12 @@ typedef struct {
     std::unique_ptr<Module> M;
     std::vector<GlobalValue*> jl_sysimg_fvars;
     std::vector<GlobalValue*> jl_sysimg_gvars;
-    std::map<jl_method_instance_t *, std::tuple<uint32_t, uint32_t>> jl_fvar_map;
+    std::map<jl_lambda_t *, std::tuple<uint32_t, uint32_t>> jl_fvar_map;
     std::map<void*, int32_t> jl_value_to_llvm; // uses 1-based indexing
 } jl_native_code_desc_t;
 
 extern "C" JL_DLLEXPORT
-void jl_get_function_id(void *native_code, jl_method_instance_t *linfo,
+void jl_get_function_id(void *native_code, jl_lambda_t *linfo,
         int32_t *func_idx, int32_t *specfunc_idx)
 {
     jl_native_code_desc_t *data = (jl_native_code_desc_t*)native_code;
@@ -242,7 +242,7 @@ void *jl_create_native(jl_array_t *methods, const jl_cgparams_t cgparams)
     jl_native_code_desc_t *data = new jl_native_code_desc_t;
     jl_codegen_params_t params;
     params.params = &cgparams;
-    std::map<jl_method_instance_t *, jl_compile_result_t> emitted;
+    std::map<jl_lambda_t*, jl_compile_result_t> emitted;
     jl_method_instance_t *mi = NULL;
     jl_code_info_t *src = NULL;
     JL_GC_PUSH1(&src);
@@ -267,7 +267,7 @@ void *jl_create_native(jl_array_t *methods, const jl_cgparams_t cgparams)
                 if (!src || !jl_is_code_info(src)) {
                     src = jl_type_infer(&mi, params.world, 0);
                 }
-                if (!emitted.count(mi)) {
+                if (src && !emitted.count(mi)) {
                     // now add it to our compilation results
                     jl_compile_result_t result = jl_compile_linfo1(mi, src, params);
                     if (std::get<0>(result))
@@ -293,7 +293,7 @@ void *jl_create_native(jl_array_t *methods, const jl_cgparams_t cgparams)
     std::unique_ptr<Module> clone(CloneModule(shadow_output, VMap));
     for (auto &def : emitted) {
         jl_merge_module(clone.get(), std::move(std::get<0>(def.second)));
-        jl_method_instance_t *this_li = def.first;
+        jl_lambda_t *this_li = def.first;
         jl_llvm_functions_t decls = std::get<1>(def.second);
         jl_value_t *rettype = std::get<2>(def.second);
         StringRef func = decls.functionObject;

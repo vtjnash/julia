@@ -100,7 +100,7 @@ enum RefTags {
 // calling conventions for internal entry points.
 // this is used to set the method-instance->invoke field
 typedef enum {
-    JL_API_TRAMPOLINE,
+    JL_API_NULL,
     JL_API_BOXED,
     JL_API_CONST,
     JL_API_WITH_PARAMETERS,
@@ -665,20 +665,20 @@ static void jl_write_values(jl_serializer_state *s)
             if (jl_is_method(v)) {
                 write_padding(s->s, sizeof(jl_method_t) - tot);
             }
-            else if (jl_is_method_instance(v)) {
-                jl_method_instance_t *m = (jl_method_instance_t*)v;
-                jl_method_instance_t *newm = (jl_method_instance_t*)&s->s->buf[reloc_offset];
+            else if (jl_is_lambda(v)) {
+                jl_lambda_t *m = (jl_lambda_t*)v;
+                jl_lambda_t *newm = (jl_lambda_t*)&s->s->buf[reloc_offset];
 
                 newm->invoke = NULL;
                 newm->isspecsig = 0;
                 newm->specptr.fptr = NULL;
-                int8_t fptr_id = JL_API_TRAMPOLINE;
+                int8_t fptr_id = JL_API_NULL;
                 int8_t builtin_id = 0;
                 if (m->invoke == jl_fptr_const_return) {
                     fptr_id = JL_API_CONST;
                 }
                 else {
-                    if (jl_is_method(m->def.method)) {
+                    if (jl_is_method(m->def->def.method)) {
                         builtin_id = jl_fptr_id(m->specptr.fptr);
                         if (builtin_id) { // found in the table of builtins
                             assert(builtin_id >= 2);
@@ -718,10 +718,12 @@ static void jl_write_values(jl_serializer_state *s)
                     }
                 }
                 newm->invoke = NULL; // relocation offset
-                arraylist_push(&s->relocs_list, (void*)(reloc_offset + offsetof(jl_method_instance_t, invoke))); // relocation location
-                arraylist_push(&s->relocs_list, (void*)(((uintptr_t)FunctionRef << RELOC_TAG_OFFSET) + fptr_id)); // relocation target
+                if (fptr_id != JL_API_NULL) {
+                    arraylist_push(&s->relocs_list, (void*)(reloc_offset + offsetof(jl_lambda_t, invoke))); // relocation location
+                    arraylist_push(&s->relocs_list, (void*)(((uintptr_t)FunctionRef << RELOC_TAG_OFFSET) + fptr_id)); // relocation target
+                }
                 if (builtin_id >= 2) {
-                    arraylist_push(&s->relocs_list, (void*)(reloc_offset + offsetof(jl_method_instance_t, specptr.fptr))); // relocation location
+                    arraylist_push(&s->relocs_list, (void*)(reloc_offset + offsetof(jl_lambda_t, specptr.fptr))); // relocation location
                     arraylist_push(&s->relocs_list, (void*)(((uintptr_t)BuiltinFunctionRef << RELOC_TAG_OFFSET) + builtin_id - 2)); // relocation target
                 }
             }
@@ -884,15 +886,14 @@ static inline uintptr_t get_item_for_reloc(jl_serializer_state *s, uintptr_t bas
         case JL_API_WITH_PARAMETERS:
             if (sysimg_fptrs.base)
                 return (uintptr_t)jl_fptr_sparam;
-            JL_FALLTHROUGH;
-        case JL_API_TRAMPOLINE:
-            return (uintptr_t)jl_fptr_trampoline;
+            return (uintptr_t)NULL;
         case JL_API_CONST:
             return (uintptr_t)jl_fptr_const_return;
         case JL_API_INTERPRETED:
             return (uintptr_t)jl_fptr_interpret_call;
         case JL_API_BUILTIN:
             return (uintptr_t)jl_fptr_args;
+        case JL_API_NULL:
         case JL_API_MAX:
         //default:
             assert("corrupt relocation item id");
@@ -1013,11 +1014,11 @@ static void jl_update_all_fptrs(jl_serializer_state *s)
                 specfunc = 0;
                 offset = ~offset;
             }
-            jl_method_instance_t *li = (jl_method_instance_t*)(base + offset);
+            jl_lambda_t *li = (jl_lambda_t*)(base + offset);
             uintptr_t base = (uintptr_t)fvars.base;
-            assert(jl_is_method(li->def.method) && li->invoke != jl_fptr_const_return);
-            assert(specfunc ? li->invoke != jl_fptr_trampoline : li->invoke == jl_fptr_trampoline);
-            linfos[i] = li;
+            assert(jl_is_method(li->def->def.method) && li->invoke != jl_fptr_const_return);
+            assert(specfunc ? li->invoke != NULL : li->invoke == NULL);
+            linfos[i] = li->def;
             int32_t offset = fvars.offsets[i];
             for (; clone_idx < fvars.nclones; clone_idx++) {
                 uint32_t idx = fvars.clone_idxs[clone_idx] & jl_sysimg_val_mask;
@@ -1035,7 +1036,6 @@ static void jl_update_all_fptrs(jl_serializer_state *s)
             else {
                 li->invoke = (jl_callptr_t)fptr;
             }
-            jl_fptr_to_llvm(fptr, li, specfunc);
         }
     }
     jl_register_fptrs(sysimage_base, &fvars, linfos, sysimg_fvars_max);

@@ -2625,7 +2625,7 @@ static jl_cgval_t emit_invoke(jl_codectx_t &ctx, jl_expr_t *ex, jl_value_t *rt)
         else if (li->invoke != jl_fptr_sparam) { // check if we know we definitely can't handle this specptr
             bool specsig, needsparams;
             std::tie(specsig, needsparams) = uses_specsig(li, ctx.params->prefer_specsig);
-            if (!jl_is_rettype_inferred(li))
+            if (!jl_is_rettype_inferred(li, ctx.params.world)) // XXX: fixme-wrong
                 specsig = false;
             std::string name;
             StringRef protoname;
@@ -3810,8 +3810,8 @@ static Function* gen_cfun_wrapper(
         name = jl_symbol_name(lam->def.method->name);
     if (lam && params.cache) {
         // if (!into)
-        (void)jl_generate_fptr(&lam, world);
-        if (lam->invoke == jl_fptr_trampoline) {
+        jl_lambda_t *linfo = jl_generate_fptr(lam, world);
+        if (lam->invoke == NULL) {
             calltype = 0;
         }
         else if (lam->invoke == jl_fptr_args) {
@@ -6120,7 +6120,7 @@ void jl_add_linfo_in_flight(StringRef name, jl_method_instance_t *linfo, const D
 // `src` is not clobbered in JL_TRY
 JL_GCC_IGNORE_START("-Wclobbered")
 jl_compile_result_t jl_compile_linfo1(
-        jl_method_instance_t *li,
+        jl_lambda_t *li,
         jl_code_info_t *src,
         jl_codegen_params_t &params)
 {
@@ -6133,7 +6133,7 @@ jl_compile_result_t jl_compile_linfo1(
         compare_cgparams(params.params, &jl_default_cgparams)) &&
         "functions compiled with custom codegen params must not be cached");
     JL_TRY {
-        std::tie(m, decls) = emit_function(li, src, params);
+        std::tie(m, decls) = emit_function(li->def, src, params);
     }
     JL_CATCH {
         // Something failed! This is very, very bad.
@@ -6221,7 +6221,7 @@ void jl_compile_workqueue(
         jl_value_t *rettype = li->rettype;
         //assert(li->min_world <= params.world && (li->max_world >= params.world || li->max_world == 0) &&
         //    "invalid world for method-instance");
-        if (params.cache && li->invoke != jl_fptr_trampoline && li->invoke != jl_fptr_const_return) {
+        if (params.cache && li->invoke != NULL && li->invoke != jl_fptr_const_return) {
             if (li->invoke != jl_fptr_const_return) {
             }
             else if (li->invoke == &jl_fptr_args) {
@@ -6336,9 +6336,6 @@ static GlobalVariable *julia_const_gv(jl_value_t *val)
     }
     return nullptr;
 }
-
-// TODO: delete this
-extern "C" void jl_fptr_to_llvm(void *fptr, jl_method_instance_t *lam, int specsig) { }
 
 static void init_julia_llvm_meta(void)
 {

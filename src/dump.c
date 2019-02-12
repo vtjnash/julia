@@ -1688,8 +1688,6 @@ static jl_value_t *jl_deserialize_value_method_instance(jl_serializer_state *s, 
     li->specptr.fptr = NULL;
     if (constret)
         li->invoke = jl_fptr_const_return;
-    else
-        li->invoke = jl_fptr_trampoline;
     li->compile_traced = 0;
     li->inferred = jl_deserialize_value(s, &li->inferred);
     jl_gc_wb(li, li->inferred);
@@ -2151,7 +2149,7 @@ static size_t lowerbound_dependent_world_set(size_t world, arraylist_t *dependen
 }
 
 JL_DLLEXPORT int jl_verify_edges(jl_method_instance_t *mi, size_t upto);
-void jl_method_instance_delete(jl_method_instance_t *mi);
+void jl_lambda_delete(jl_method_instance_t *mi);
 
 static void jl_insert_super_edges(jl_array_t *list, arraylist_t *dependent_worlds)
 {
@@ -2200,7 +2198,7 @@ static void jl_insert_super_edges(jl_array_t *list, arraylist_t *dependent_world
         }
         else {
             // otherwise delete it
-            jl_method_instance_delete(caller);
+            jl_lambda_delete(caller);
         }
     }
 }
@@ -2288,7 +2286,7 @@ static void jl_finalize_serializer(jl_serializer_state *s)
 }
 
 void jl_typemap_rehash(jl_typemap_t *ml, int8_t offs);
-static void jl_reinit_item(jl_value_t *v, int how, arraylist_t *tracee_list)
+static void jl_reinit_item(jl_value_t *v, int how)
 {
     JL_TRY {
         switch (how) {
@@ -2324,8 +2322,6 @@ static void jl_reinit_item(jl_value_t *v, int how, arraylist_t *tracee_list)
                 jl_typemap_rehash(mt->defs, 0);
                 // TODO: consider reverting this when we can split on Type{...} better
                 jl_typemap_rehash(mt->cache, 1); //(mt == jl_type_typename->mt) ? 0 : 1);
-                if (tracee_list)
-                    arraylist_push(tracee_list, mt);
                 break;
             }
             case 4: { // rehash specializations tfunc
@@ -2347,14 +2343,14 @@ static void jl_reinit_item(jl_value_t *v, int how, arraylist_t *tracee_list)
     }
 }
 
-static jl_array_t *jl_finalize_deserializer(jl_serializer_state *s, arraylist_t *tracee_list)
+static jl_array_t *jl_finalize_deserializer(jl_serializer_state *s)
 {
     jl_array_t *init_order = (jl_array_t*)jl_deserialize_value(s, NULL);
 
     // run reinitialization functions
     int pos = read_int32(s->s);
     while (pos != -1) {
-        jl_reinit_item((jl_value_t*)backref_list.items[pos], read_int32(s->s), tracee_list);
+        jl_reinit_item((jl_value_t*)backref_list.items[pos], read_int32(s->s));
         pos = read_int32(s->s);
     }
     return init_order;
@@ -3014,8 +3010,7 @@ static jl_method_instance_t *jl_recache_method_instance(jl_method_instance_t *li
     //assert(ti != jl_bottom_type); (void)ti;
     if (ti == jl_bottom_type)
         env = jl_emptysvec; // the intersection may fail now if the type system had made an incorrect subtype env in the past
-    jl_method_instance_t *_new = jl_specializations_get_linfo(m, (jl_value_t*)argtypes, env, jl_world_counter < max_world ? jl_world_counter : max_world);
-    _new->max_world = max_world;
+    jl_method_instance_t *_new = jl_specializations_get_linfo(m, (jl_value_t*)argtypes, env);
     jl_update_backref_list((jl_value_t*)li, (jl_value_t*)_new, start);
     return _new;
 }
@@ -3115,16 +3110,12 @@ static jl_value_t *_jl_restore_incremental(ios_t *f, jl_array_t *mod_array)
     jl_value_t *external_methods = jl_deserialize_value(&s, &external_methods);
     jl_value_t *external_edges = jl_deserialize_value(&s, &external_edges);
 
-    arraylist_t *tracee_list = NULL;
-    if (jl_newmeth_tracer)
-        tracee_list = arraylist_new((arraylist_t*)malloc(sizeof(arraylist_t)), 0);
-
     // at this point, the AST is fully reconstructed, but still completely disconnected
     // now all of the interconnects will be created
     jl_recache_types(); // make all of the types identities correct
     jl_insert_methods((jl_array_t*)external_methods); // hook up methods of external generic functions (needs to be after recache types)
     jl_recache_other(&dependent_worlds); // make all of the other objects identities correct (needs to be after insert methods)
-    jl_array_t *init_order = jl_finalize_deserializer(&s, tracee_list); // done with f and s (needs to be after recache)
+    jl_array_t *init_order = jl_finalize_deserializer(&s); // done with f and s (needs to be after recache)
 
     JL_GC_PUSH3(&init_order, &restored, &external_edges);
     jl_gc_enable(en); // subtyping can allocate a lot, not valid before recache-other
@@ -3138,15 +3129,6 @@ static jl_value_t *_jl_restore_incremental(ios_t *f, jl_array_t *mod_array)
     ios_close(f);
 
     jl_gc_enable_finalizers(ptls, 1); // make sure we don't run any Julia code concurrently before this point
-    if (tracee_list) {
-        jl_methtable_t *mt;
-        while ((mt = (jl_methtable_t*)arraylist_pop(tracee_list)) != NULL) {
-            JL_GC_PROMISE_ROOTED(mt);
-            jl_typemap_visitor(mt->defs, trace_method, NULL);
-        }
-        arraylist_free(tracee_list);
-        free(tracee_list);
-    }
     jl_value_t *ret = (jl_value_t*)jl_svec(2, restored, init_order);
     JL_GC_POP();
 

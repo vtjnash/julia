@@ -259,14 +259,14 @@ static void _compile_all_deq(jl_array_t *found)
             jl_gc_wb(m, linfo);
         }
 
-        if (linfo->invoke != jl_fptr_trampoline)
+        if (linfo->invoke != NULL)
             continue;
         // TODO: the `unspecialized` field is not yet world-aware, so we can't store
         // an inference result there.
         //src = jl_type_infer(&linfo, jl_world_counter, 1);
         //m->unspecialized = linfo;
         //jl_gc_wb(m, linfo);
-        //if (linfo->trampoline != jl_fptr_trampoline)
+        //if (linfo->trampoline != NULL)
         //    continue;
 
         // first try to create leaf signatures from the signature declaration and compile those
@@ -345,7 +345,7 @@ static int precompile_enq_all_specializations__(jl_typemap_entry_t *def, void *c
     if (m->name == jl_symbol("__init__") && jl_is_dispatch_tupletype(m->sig)) {
         // ensure `__init__()` gets strongly-hinted, specialized, and compiled
         jl_array_ptr_1d_push((jl_array_t*)closure,
-            (jl_value_t*)jl_specializations_get_linfo(m, m->sig, jl_emptysvec, jl_world_counter));
+            (jl_value_t*)jl_specializations_get_linfo(m, m->sig, jl_emptysvec));
     }
     else {
         jl_typemap_visitor(def->func.method->specializations, precompile_enq_specialization_, closure);
@@ -376,11 +376,6 @@ void *jl_precompile(int all)
         jl_method_instance_t *mi = (jl_method_instance_t*)jl_array_ptr_ref(m, i);
         if (!jl_isa_compileable_sig((jl_tupletype_t*)mi->specTypes, mi->def.method)) {
             mi = jl_get_specialization1((jl_tupletype_t*)mi->specTypes, jl_world_counter, 0);
-        }
-        else if (mi->max_world < jl_world_counter) {
-            if (mi->min_world <= jl_typeinf_world && jl_typeinf_world <= mi->max_world)
-                jl_array_ptr_1d_push(m2, (jl_value_t*)mi);
-            mi = jl_specializations_get_linfo(mi->def.method, mi->specTypes, mi->sparam_vals, jl_world_counter);
         }
         if (mi)
             jl_array_ptr_1d_push(m2, (jl_value_t*)mi);
