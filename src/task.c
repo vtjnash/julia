@@ -1174,6 +1174,119 @@ JL_DLLEXPORT void jl_gdb_dump_threadinfo(void)
 }
 #endif
 
+
+#ifdef _OS_LINUX_
+#if defined(__i386__)
+static uintptr_t ptr_mangle(uintptr_t p)
+{
+    uintptr_t ret;
+    asm(" movl %1, %%eax;\n"
+        " xorl %%gs:0x18, %%eax;"
+        " roll $9, %%eax;"
+        " movl %%eax, %0;"
+        : "=r"(ret) : "r"(p) : "%eax");
+    return ret;
+}
+//static uintptr_t ptr_demangle(uintptr_t p)
+//{
+//    uintptr_t ret;
+//    asm(" movl %1, %%eax;\n"
+//        " rorl $9, %%eax;"
+//        " xorl %%gs:0x18, %%eax;"
+//        " movl %%eax, %0;"
+//        : "=r"(ret) : "r"(p) : "%eax" );
+//    return ret;
+//}
+#elif defined(__x86_64__)
+static uintptr_t ptr_mangle(uintptr_t p)
+{
+    uintptr_t ret;
+    asm(" movq %1, %%rax;\n"
+        " xorq %%fs:0x30, %%rax;"
+        " rolq $17, %%rax;"
+        " movq %%rax, %0;"
+        : "=r"(ret) : "r"(p) : "%rax");
+    return ret;
+}
+//static uintptr_t ptr_demangle(uintptr_t p)
+//{
+//    uintptr_t ret;
+//    asm(" movq %1, %%rax;\n"
+//        " rorq $17, %%rax;"
+//        " xorq %%fs:0x30, %%rax;"
+//        " movq %%rax, %0;"
+//        : "=r"(ret) : "r"(p) : "%rax" );
+//    return ret;
+//}
+#endif
+#else
+static uintptr_t ptr_mangle(uintptr_t p) { return p; }
+#endif
+
+static jl_ucontext_t returnto;
+static void get_fiber_bt(void)
+{
+    jl_ptls_t ptls = jl_get_ptls_states();
+    ptls->bt_size = rec_backtrace(ptls->bt_data, JL_MAX_BT_SIZE, 1);
+    jl_set_fiber(&returnto);
+}
+static void jl_backtrace_fiber(jl_ucontext_t *t)
+{
+#if defined(JL_HAVE_ASM) || defined(JL_HAVE_SIGALTSTACK) || defined(_OS_WINDOWS_)
+    uintptr_t old_pc, *pc;
+#  if defined(_OS_WINDOWS_)
+#    if defined(_CPU_X86_64_)
+    pc = &t->uc_mcontext->Rip;
+#    else
+    pc = &t->uc_mcontext->Eip;
+#    endif
+#  elif defined(_OS_DARWIN_)
+#    if defined(_CPU_X86_64_)
+    pc = (uintptr_t*)t + (16 / 8);
+#    else
+    pc = (uintptr_t*)t + (48 / 4);
+#    endif
+#  elif defined(__GLIBC__)
+    pc = (uintptr_t*)t + 7;
+#  else
+    return; // not implemented for this platform
+#  endif
+    old_pc = *pc;
+    *pc = ptr_mangle((uintptr_t)&get_fiber_bt);
+    jl_swap_fiber(&returnto, t);
+    *pc = old_pc;
+#elif defined(JL_HAVE_UCONTEXT) || defined(JL_HAVE_UNW_CONTEXT)
+    bt_context_t *context;
+#  if defined(_OS_DARWIN_)
+    context = *(bt_context_t*)&((ucontext64_t*)t)->uc_mcontext64->__ss;
+#  elif defined(_CPU_ARM_)
+    // libunwind does not use `ucontext_t` on ARM.
+    // `unw_context_t` is a struct of 16 `unsigned long` which should
+    // have the same layout as the `arm_r0` to `arm_pc` fields in `sigcontext`
+    context = (bt_context_t*)&t->uc_mcontext.arm_r0;
+#  else
+    context = (bt_context_t*)t;
+#  endif
+    jl_ptls_t ptls = jl_get_ptls_states();
+    ptls->bt_size = rec_backtrace_ctx(ptls->bt_data, JL_MAX_BT_SIZE, context);
+#endif
+}
+
+void jl_rec_backtrace(jl_task_t *t)
+{
+    jl_ptls_t ptls = jl_get_ptls_states();
+    ptls->bt_size = 0;
+    if (t->copy_stack || !t->started || t->stkbuf == NULL)
+        return;
+    if (t->tid >= 0) {
+        if (t->tid != ptls->tid)
+            return;
+        if (t == ptls->current_task)
+            return;
+    }
+    jl_backtrace_fiber(&t->ctx);
+}
+
 #ifdef __cplusplus
 }
 #endif
