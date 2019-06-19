@@ -657,7 +657,7 @@ julia> f(Val(true))
 struct Val{x}
 end
 
-Val(x) = (@_pure_meta; Val{x}())
+Val(x) = Val{x}()
 
 """
     invokelatest(f, args...; kwargs...)
