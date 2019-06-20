@@ -850,10 +850,14 @@ function _fieldtype_nothrow(@nospecialize(s), exact::Bool, name::Const)
     isa(fld, Int) || return false
     ftypes = datatype_fieldtypes(u)
     nf = length(ftypes)
-    (fld >= 1 && fld <= nf) || return false
-    if u.name === Tuple.name && fld >= nf && isvarargtype(ftypes[nf])
-        # The length of the tuple will be determined at runtime, we can't say
-        # anything
+    fld >= 1 || return false
+    if u.name === Tuple.name && nf > 0 && isvarargtype(ftypes[nf])
+        if !exact && fld >= nf
+            # The length of the tuple will be determined at runtime, we can't say
+            # anything
+            return false
+        end
+    elseif fld > nf
         return false
     end
     return true
