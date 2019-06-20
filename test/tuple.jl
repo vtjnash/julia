@@ -36,6 +36,12 @@ end
     @test convert(NTuple{3, Int}, (1.0, 2, 0x3)) === (1, 2, 3)
     @test convert(Tuple{Int, Int, Float64}, (1.0, 2, 0x3)) === (1, 2, 3.0)
 
+    @test convert(Tuple{Vararg{AbstractFloat}}, (2,)) == (2.0,)
+    @test convert(Tuple{Int, Vararg{AbstractFloat}}, (-9.0+0im, 2,)) == (-9, 2.0,)
+    let x = @inferred(convert(Tuple{Integer, UInt8, UInt16, UInt32, Int, Vararg{Real}}, (2.0, 3, 5, 6.0, 42, 3.0+0im)))
+        @test x == (2, 0x03, 0x0005, 0x00000006, 42, 3.0)
+    end
+
     @test_throws MethodError convert(Tuple{Int}, ())
     @test_throws MethodError convert(Tuple{Any}, ())
     @test_throws MethodError convert(Tuple{Int, Vararg{Int}}, ())
