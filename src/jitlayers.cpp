@@ -387,25 +387,6 @@ void JuliaOJIT::DebugObjectRegistrar::registerObject(RTDyldObjHandleT H, const O
 
     JIT.NotifyFinalizer(H, *Object, *LO);
     ORCNotifyObjectEmitted(JuliaListener.get(), *Object, *LO, JIT.MemMgr.get());
-
-    // record all of the exported symbols defined in this object
-    // in the primary hash table for the enclosing JIT
-    for (auto &Symbol : Object->symbols()) {
-        auto Flags = Symbol.getFlags();
-        if (Flags & object::BasicSymbolRef::SF_Undefined)
-            continue;
-        if (!(Flags & object::BasicSymbolRef::SF_Exported))
-            continue;
-        auto NameOrError = Symbol.getName();
-        assert(NameOrError);
-        auto Name = NameOrError.get();
-        auto Sym = JIT.CompileLayer.findSymbolIn(H, Name, true);
-        assert(Sym);
-        // note: calling getAddress here eagerly finalizes H
-        // as an alternative, we could store the JITSymbol instead
-        // (which would present a lazy-initializer functor interface instead)
-        JIT.LocalSymbolTable[Name] = (void*)(uintptr_t)cantFail(Sym.getAddress());
-    }
 }
 
 template <typename ObjSetT, typename LoadResult>
@@ -531,11 +512,19 @@ void *JuliaOJIT::getPointerToGlobalIfAvailable(const GlobalValue *GV)
 void JuliaOJIT::addModule(std::unique_ptr<Module> M)
 {
     std::vector<StringRef> NewExports;
+    std::vector<Constant*> FnTab;
+    Type *T_psize = Type::getIntNPtrTy(M->getContext(), sizeof(void*) * 8);
     for (auto &F : M->functions()) {
         if (!F.isDeclaration() && F.getLinkage() == GlobalValue::ExternalLinkage) {
             NewExports.push_back(strdup(F.getName().str().c_str()));
+            FnTab.push_back(ConstantExpr::getBitCast(&F, T_psize));
+            F.setName("");
+            F.setLinkage(GlobalValue::InternalLinkage);
         }
     }
+    ArrayType *fntab_type = ArrayType::get(T_psize, FnTab.size());
+    new GlobalVariable(*M, fntab_type, true, GlobalVariable::ExternalLinkage, ConstantArray::get(fntab_type, FnTab), "SymTab");
+    FnTab.clear();
 #ifndef JL_NDEBUG
     // validate the relocations for M
     for (Module::iterator I = M->begin(), E = M->end(); I != E; ) {
@@ -571,14 +560,20 @@ void JuliaOJIT::addModule(std::unique_ptr<Module> M)
 
     auto key = cantFail(CompileLayer.addModule(std::move(M), std::move(Resolver)));
 #endif
+
     // Force LLVM to emit the module so that we can register the symbols
     // in our lookup table.
     auto Err = CompileLayer.emitAndFinalize(key);
     // Check for errors to prevent LLVM from crashing the program.
     assert(!Err);
     // record a stable name for this fptr address
-    for (auto Name : NewExports) {
-        void *addr = LocalSymbolTable[getMangledName(Name)];
+    auto SymTab = CompileLayer.findSymbolIn(key, getMangledName("SymTab"), true);
+    assert(SymTab);
+    void **symtab = (void**)(uintptr_t)cantFail(SymTab.getAddress());
+    for (size_t i = 0; i < NewExports.size(); i++) {
+        const auto &Name = NewExports[i];
+        auto addr = symtab[i];
+        LocalSymbolTable[getMangledName(Name)] = addr;
         ReverseLocalSymbolTable[addr] = Name;
     }
 }
