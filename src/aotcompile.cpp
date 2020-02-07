@@ -41,6 +41,7 @@
 #include "llvm/Object/ArchiveWriter.h"
 #include <llvm/IR/IRPrintingPasses.h>
 #include <llvm/CodeGen/AsmPrinter.h>
+#include <llvm/CodeGen/AsmPrinterHandler.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetPassConfig.h>
 #include <llvm/MC/MCAsmInfo.h>
@@ -950,6 +951,28 @@ addPassesToGenerateCode(LLVMTargetMachine *TM, PassManagerBase &PM) {
 
 void jl_strip_llvm_debug(Module *m);
 
+class LineNumberPrinterHandler : public AsmPrinterHandler {
+  MCStreamer &S;
+
+public:
+  LineNumberPrinterHandler(AsmPrinter &Printer) : S(*Printer.OutStreamer) {}
+
+  virtual void setSymbolSize(const MCSymbol *Sym, uint64_t Size) {S.emitRawText(__func__);}
+  virtual void beginModule(Module *M) {S.emitRawText(__func__);}
+  virtual void endModule() {S.emitRawText(__func__);}
+  /// note that some AsmPrinter implementations may not call beginFunction at all
+  virtual void beginFunction(const MachineFunction *MF) {S.emitRawText(__func__);}
+  virtual void markFunctionEnd() {S.emitRawText(__func__);}
+  virtual void endFunction(const MachineFunction *MF) {S.emitRawText(__func__);}
+  virtual void beginFragment(const MachineBasicBlock *MBB,
+                             ExceptionSymbolProvider ESP) {S.emitRawText(__func__);}
+  virtual void endFragment() {S.emitRawText(__func__);}
+  virtual void beginFunclet(const MachineBasicBlock &MBB,
+                            MCSymbol *Sym = nullptr) {S.emitRawText(__func__);}
+  virtual void endFunclet() {S.emitRawText(__func__);}
+  virtual void beginInstruction(const MachineInstr *MI) {S.emitRawText(__func__);}
+  virtual void endInstruction() {S.emitRawText(__func__);}
+};
 
 // get a native assembly for llvm::Function
 // TODO: implement debuginfo handling
@@ -994,6 +1017,7 @@ jl_value_t *jl_dump_llvm_asm(void *F, const char* asm_variant, const char *debug
                 false));
             std::unique_ptr<AsmPrinter> Printer(
                 TM->getTarget().createAsmPrinter(*TM, std::move(S)));
+            Printer->AAW.reset(new LineNumberPrinterHandler(*Printer));
             if (Printer) {
                 PM.add(Printer.release());
                 PM.run(*m);
