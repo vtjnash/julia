@@ -538,7 +538,7 @@ int jl_typemap_intersection_visitor(jl_typemap_t *map, int offs,
             }
             if (cache->targ.values != (void*)jl_nothing) {
                 jl_value_t *typetype = jl_is_type_type(ty) ? jl_tparam0(ty) : NULL;
-                if (typetype) {
+                if (typetype && !jl_is_typevar(typetype)) {
                     if (is_cache_leaf(typetype)) {
                         // direct lookup of leaf types
                         jl_typemap_t *ml = mtcache_hash_lookup(&cache->targ, typetype, 1, offs);
