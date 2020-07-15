@@ -16,8 +16,9 @@
 
 //  Options for task switching algorithm (in order of preference):
 // JL_HAVE_ASM -- mostly setjmp
-// JL_HAVE_ASYNCIFY -- task switching based on the binaryen asyncify transform
-// JL_HAVE_UNW_CONTEXT -- hybrid of libunwind for start, setjmp for resume
+// JL_HAVE_ASM && JL_HAVE_UNW_CONTEXT -- libunwind-based
+// JL_HAVE_UNW_CONTEXT -- libunwind-based
+// JL_HAVE_ASYNCIFY -- task switching based on the binary asyncify transform
 // JL_HAVE_UCONTEXT -- posix standard API, requires syscall for resume
 // JL_HAVE_SIGALTSTACK -- requires several syscall for start, setjmp for resume
 
@@ -33,21 +34,25 @@ typedef win32_ucontext_t jl_ucontext_t;
 #if (defined(_CPU_X86_64_) || defined(_CPU_X86_) || defined(_CPU_AARCH64_) ||  \
      defined(_CPU_ARM_) || defined(_CPU_PPC64_))
 #define JL_HAVE_ASM
+#endif
+#if defined(JL_HAVE_ASMx)
 #elif defined(_OS_DARWIN_)
 #define JL_HAVE_UNW_CONTEXT
 #elif defined(_OS_LINUX_)
-#define JL_HAVE_UCONTEXT
+#define JL_HAVE_UNW_CONTEXT
 #elif defined(_OS_EMSCRIPTEN_)
 #define JL_HAVE_ASYNCIFY
 #else
-#define JL_HAVE_UNW_CONTEXT
+#define JL_HAVE_UNW_CONTEXT // optimistically?
 #endif
 #endif
 
-#if defined(JL_HAVE_ASM) || defined(JL_HAVE_SIGALTSTACK)
-typedef struct {
+struct jl_stack_context_t {
     jl_jmp_buf uc_mcontext;
-} jl_ucontext_t;
+};
+
+#if (!defined(JL_HAVE_UNW_CONTEXT) && defined(JL_HAVE_ASM)) || defined(JL_HAVE_SIGALTSTACK)
+typedef jl_stack_context_t jl_ucontext_t;
 #endif
 #if defined(JL_HAVE_ASYNCIFY)
 typedef struct {
@@ -59,9 +64,13 @@ typedef struct {
     void *stacktop;
 } jl_ucontext_t;
 #endif
-#if defined(JL_HAVE_UCONTEXT) || defined(JL_HAVE_UNW_CONTEXT)
+#if defined(JL_HAVE_UNW_CONTEXT)
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
+typedef unw_context_t jl_ucontext_t;
+#endif
+#if defined(JL_HAVE_UCONTEXT)
+#include <ucontext.h>
 typedef ucontext_t jl_ucontext_t;
 #endif
 #endif
@@ -192,7 +201,15 @@ struct _jl_tls_states_t {
     struct _jl_task_t *root_task;
     void *stackbase;
     size_t stacksize;
-    jl_ucontext_t base_ctx; // base context of stack
+    union {
+        jl_ucontext_t base_ctx; // base context of stack
+        // This hack is needed to support always_copy_stacks:
+#ifdef _OS_WINDOWS_
+        jl_ucontext_t copy_stack_ctx;
+#else
+        struct jl_stack_context_t copy_stack_ctx;
+#endif
+    };
     jl_jmp_buf *safe_restore;
     // Temp storage for exception thrown in signal handler. Not rooted.
     struct _jl_value_t *sig_exception;

@@ -595,6 +595,90 @@ static int jl_unw_step(bt_cursor_t *cursor, uintptr_t *ip, uintptr_t *sp, int lo
 }
 #endif
 
+
+//#ifdef _OS_LINUX_
+//#if defined(__i386__)
+////static uintptr_t ptr_mangle(uintptr_t p)
+////{
+////    asm(" xorl %%gs:0x18, %0;"
+////        " roll $9, %0;"
+////        : "+r"(p) : : );
+////    return p;
+////}
+//static uintptr_t ptr_demangle(uintptr_t p)
+//{
+//    asm(" rorl $9, %0;"
+//        " xorl %%gs:0x18, %0;"
+//        : "+r"(p) : : );
+//    return p;
+//}
+//#elif defined(__x86_64__)
+////static uintptr_t ptr_mangle(uintptr_t p)
+////{
+////    asm(" xorq %%fs:0x30, %0;"
+////        " rolq $17, %0;"
+////        : "+r"(p) : : );
+////    return p;
+////}
+//static uintptr_t ptr_demangle(uintptr_t p)
+//{
+//    asm(" rorq $17, %0;"
+//        " xorq %%fs:0x30, %0;"
+//        : "+r"(p) : : );
+//    return p;
+//}
+//#endif
+//#elif defined(_OS_DARWIN_)
+//#if defined(__x86_64__)
+//static uintptr_t ptr_demangle(uintptr_t p)
+//{
+//    asm(" xorq %%gs:0x38, %0;" : "+r"(p) : : );
+//    return p;
+//}
+//#else
+//static uintptr_t ptr_demangle(uintptr_t p) { return p; }
+//#endif
+//#else
+//static uintptr_t ptr_demangle(uintptr_t p) { return p; }
+//#endif
+//
+//static int jl_unw_get_from_setjmp(bt_cursor_t *cursor, bt_context_t *context, jl_jmp_buf *t)
+//{
+//    jl_unw_get(context);
+//    if (!jl_unw_init(cursor, context, 0))
+//        return 0;
+//    uintptr_t pc, sp;
+//#ifdef _OS_WINDOWS_
+//#    if defined(_CPU_X86_64_)
+//    pc = t->uc_mcontext->Rip;
+//    sp = t->uc_mcontext->Rsp;
+//#    else
+//    pc = t->uc_mcontext->Eip;
+//    sp = t->uc_mcontext->Esp;
+//#    endif
+//#  elif defined(_OS_DARWIN_)
+//#    if defined(_CPU_X86_64_)
+//    pc = *((uintptr_t*)t + (56 / 8));
+//    sp = *((uintptr_t*)t + (56 / 8));
+//#    else
+//    pc = *((uintptr_t*)t + (48 / 4));
+//    sp = *((uintptr_t*)t + (48 / 4));
+//#    endif
+//#  elif defined(__GLIBC__)
+//    pc = *((uintptr_t*)t + 7);
+//    sp = *((uintptr_t*)t + 7);
+//#  else
+//    return 0; // not implemented for this platform
+//#  endif
+//    pc = ptr_demangle((uintptr_t)pc);
+//    sp = ptr_demangle((uintptr_t)sp);
+//    if (unw_set_reg(cursor, UNW_REG_IP, pc) < 0)
+//        return 0;
+//    if (unw_set_reg(cursor, UNW_REG_SP, sp) < 0)
+//        return 0;
+//    return 1;
+//}
+
 JL_DLLEXPORT jl_value_t *jl_lookup_code_address(void *ip, int skipC)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
