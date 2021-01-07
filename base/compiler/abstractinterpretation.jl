@@ -28,8 +28,9 @@ function is_improvable(@nospecialize(rtype))
     return isa(rtype, PartialStruct) || isa(rtype, InterConditional)
 end
 
-function abstract_call_gf_by_type(interp::AbstractInterpreter, @nospecialize(f), argtypes::Vector{Any}, @nospecialize(atype), sv::InferenceState,
-                                  max_methods::Int = InferenceParams(interp).MAX_METHODS)
+function abstract_call_gf_by_type(interp::AbstractInterpreter, @nospecialize(f),
+                                  fargs::Union{Nothing,Vector{Any}}, argtypes::Vector{Any}, @nospecialize(atype),
+                                  sv::InferenceState, max_methods::Int = InferenceParams(interp).MAX_METHODS)
     if sv.params.unoptimize_throw_blocks && sv.currpc in sv.throw_blocks
         return CallMeta(Any, false)
     end
@@ -139,6 +140,26 @@ function abstract_call_gf_by_type(interp::AbstractInterpreter, @nospecialize(f),
             end
         else
             this_rt, edgecycle1, edge = abstract_call_method(interp, method, sig, match.sparams, multiple_matches, sv)
+            this_rt = rt_from_interprocedural(this_rt, fargs)
+            if !method.isva && fargs !== nothing
+                if !isa(this_rt, Conditional) && this_rt ⊑ Bool
+                    if isa(rettype, Conditional)
+                        slot = rettype.var
+                        si = slot_index(fargs, slot)
+                        if si !== nothing
+                            this_rt = boolean_thisrt_to_conditional(this_rt, sig, si, sv.stmt_types[sv.currpc]::VarTable, slot_id(slot))
+                        end
+                    else
+                        slot = first_slot(fargs)
+                        if slot !== nothing
+                            si = slot_index(fargs, slot)
+                            if si !== nothing
+                                this_rt = boolean_thisrt_to_conditional(this_rt, sig, si, sv.stmt_types[sv.currpc]::VarTable, slot_id(slot))
+                            end
+                        end
+                    end
+                end
+            end
             edgecycle |= edgecycle1::Bool
             if edge !== nothing
                 push!(edges, edge)
@@ -192,11 +213,61 @@ function abstract_call_gf_by_type(interp::AbstractInterpreter, @nospecialize(f),
         end
     end
 
-    @assert !(rettype isa Conditional) "invalid lattice element returned from inter-procedural context"
     #print("=> ", rettype, "\n")
     return CallMeta(rettype, info)
 end
 
+function rt_from_interprocedural(@nospecialize(rt), fargs::Union{Nothing,Vector{Any}})
+    if isa(rt, InterConditional)
+        if fargs !== nothing
+            fa = fargs[rt.slot]
+            if isa(fa, Slot)
+                return Conditional(fa, rt.vtype, rt.elsetype)
+            end
+        end
+        return widenconditional(rt)
+    end
+    return rt
+end
+
+function slot_index(fargs::Vector{Any}, slot::Slot)
+    for i in 1:length(fargs)
+        arg = fargs[i]
+        if isa(arg, Slot)
+            if slot_id(arg) == slot_id(slot)
+                return i
+            end
+        end
+    end
+    return nothing
+end
+
+function first_slot(fargs::Vector{Any})
+    for arg in fargs
+        if isa(arg, Slot)
+            return arg
+        end
+    end
+    return nothing
+end
+
+function boolean_thisrt_to_conditional(@nospecialize(rt), @nospecialize(sig), si::Int, state::VarTable, slot_id::Int)
+    new = widenconditional(fieldtype(sig, si)) # avoid nested conditional
+    old = widenconditional((state[slot_id]::VarState).typ)
+    if new ⊑ old && !is_lattice_equal(new, old)
+        if isa(rt, Const)
+            val = rt.val
+            if val === true
+                return Conditional(SlotNumber(slot_id), new, Bottom)
+            elseif val === false
+                return Conditional(SlotNumber(slot_id), Bottom, new)
+            end
+        elseif rt === Bool
+            return Conditional(SlotNumber(slot_id), new, new)
+        end
+    end
+    return rt
+end
 
 function const_prop_profitable(@nospecialize(arg))
     # have new information from argtypes that wasn't available from the signature
@@ -972,7 +1043,7 @@ function abstract_call_known(interp::AbstractInterpreter, @nospecialize(f),
         # handle Conditional propagation through !Bool
         aty = argtypes[2]
         if isa(aty, Conditional)
-            call = abstract_call_gf_by_type(interp, f, Any[Const(f), Bool], Tuple{typeof(f), Bool}, sv) # make sure we've inferred `!(::Bool)`
+            call = abstract_call_gf_by_type(interp, f, fargs, Any[Const(f), Bool], Tuple{typeof(f), Bool}, sv) # make sure we've inferred `!(::Bool)`
             return CallMeta(Conditional(aty.var, aty.elsetype, aty.vtype), call.info)
         end
     elseif la == 3 && istopfunction(f, :!==)
@@ -1014,7 +1085,7 @@ function abstract_call_known(interp::AbstractInterpreter, @nospecialize(f),
         return CallMeta(val === false ? Type : val, MethodResultPure())
     end
     atype = argtypes_to_type(argtypes)
-    return abstract_call_gf_by_type(interp, f, argtypes, atype, sv, max_methods)
+    return abstract_call_gf_by_type(interp, f, fargs, argtypes, atype, sv, max_methods)
 end
 
 # call where the function is any lattice element
@@ -1035,11 +1106,9 @@ function abstract_call(interp::AbstractInterpreter, fargs::Union{Nothing,Vector{
             add_remark!(interp, sv, "Could not identify method table for call")
             return CallMeta(Any, false)
         end
-        callinfo = abstract_call_gf_by_type(interp, nothing, argtypes, argtypes_to_type(argtypes), sv, max_methods)
-        return callinfo_from_interprocedural(callinfo, fargs)
+        return abstract_call_gf_by_type(interp, nothing, fargs, argtypes, argtypes_to_type(argtypes), sv, max_methods)
     end
-    callinfo = abstract_call_known(interp, f, fargs, argtypes, sv, max_methods)
-    return callinfo_from_interprocedural(callinfo, fargs)
+    return abstract_call_known(interp, f, fargs, argtypes, sv, max_methods)
 end
 
 function callinfo_from_interprocedural(callinfo::CallMeta, ea::Union{Nothing,Vector{Any}})
@@ -1377,12 +1446,12 @@ function typeinf_local(interp::AbstractInterpreter, frame::InferenceState)
                             # if the bestguess so far is already `Conditional`, try to convert
                             # this `rt` into `Conditional` on the slot to avoid overapproximation
                             # due to conflict of different slots
-                            rt = boolean_rt_to_conditional(rt, changes, bestguess.slot)
+                            rt = boolean_rt_to_conditional(rt, s[1]::VarTable, changes, bestguess.slot)
                         elseif nargs ≥ 1
                             # pick up the first "interesting" slot, convert `rt` to its `Conditional`
                             # TODO: this is very naive heuristic, ideally we want `Conditional`
                             # and `InterConditional` to convey constraints on multiple slots
-                            rt = boolean_rt_to_conditional(rt, changes, nargs > 1 ? 2 : 1)
+                            rt = boolean_rt_to_conditional(rt, s[1]::VarTable, changes, nargs > 1 ? 2 : 1)
                         end
                     end
                 end
@@ -1505,16 +1574,20 @@ function conditional_changes(changes::VarTable, @nospecialize(typ), var::Slot)
     return changes
 end
 
-function boolean_rt_to_conditional(@nospecialize(rt), state::VarTable, slot_id::Int)
-    typ = widenconditional((state[slot_id]::VarState).typ) # avoid nested conditional
-    if isa(rt, Const)
-        if rt.val === true
-            return Conditional(SlotNumber(slot_id), typ, Bottom)
-        elseif rt.val === false
-            return Conditional(SlotNumber(slot_id), Bottom, typ)
+function boolean_rt_to_conditional(@nospecialize(rt), init::VarTable, state::VarTable, slot_id::Int)
+    new = widenconditional((state[slot_id]::VarState).typ) # avoid nested conditional
+    old = widenconditional((init[slot_id]::VarState).typ)
+    if new ⊑ old && !is_lattice_equal(new, old)
+        if isa(rt, Const)
+            val = rt.val
+            if val === true
+                return Conditional(SlotNumber(slot_id), new, Bottom)
+            elseif val === false
+                return Conditional(SlotNumber(slot_id), Bottom, new)
+            end
+        elseif rt === Bool
+            return Conditional(SlotNumber(slot_id), new, new)
         end
-    elseif rt === Bool
-        return Conditional(SlotNumber(slot_id), typ, typ)
     end
     return rt
 end

@@ -1260,16 +1260,7 @@ end
 push!(constvec, 10)
 @test @inferred(sizeof_constvec()) == sizeof(Int) * 4
 
-let
-    f = x->isdefined(x, :re)
-    t = Tuple{ComplexF64}
-    interp = Core.Compiler.NativeInterpreter()
-    linfo = get_linfo(f, t)
-    ci = Core.Compiler.getindex(Core.Compiler.code_cache(interp), get_linfo(f, t))
-    rc = ci.rettype_const
-    @test isa(rc, Core.InterConditional)
-    @test rc.vtype === ComplexF64 && rc.elsetype === Union{}
-end
+test_const_return(x->isdefined(x, :re), Tuple{ComplexF64}, true)
 
 isdefined_f3(x) = isdefined(x, 3)
 @test @inferred(isdefined_f3(())) == false
