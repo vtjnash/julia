@@ -1773,9 +1773,10 @@ end
 
     # with Base functions
     @test Base.return_types((Any,)) do a
-        Base.Fix2(isa, Int)(a) && return sin(a) # a::Float64
-        return 0.0
-    end == Any[Float64]
+        # this uses constant propagation for DataType -> Type{Int}
+        Base.Fix2(isa, Int)(a) && return a # a::Int
+        return 0
+    end == Any[Int]
     @test Base.return_types((Union{Nothing,Int},)) do a
         isnothing(a) && return 0
         return a # a::Int
@@ -1784,22 +1785,6 @@ end
         Meta.isexpr(x, :call) && return x # x::Expr
         return nothing
     end == Any[Union{Nothing,Expr}]
-
-    # TODO: back-propagate multiple conditional constraints
-    # e.g. for the case below, currently inference picks up and propagates the constraint
-    # on the second argument (i.e. `ex.head ==== head`), which is less interesting than
-    # the constraint of the first (`isa(ex, Expr)`)
-    # we can fix this by back-propagating multiple conditional constraints,
-    # or by more appropriately choosing a constraint to propagate
-    @test_broken @evaltoplevel begin
-        # old and natural `isexpr` definition
-        isexpr(@nospecialize(ex), head::Symbol) = isa(ex, Expr) && ex.head === head
-
-        Base.return_types((Any,)) do x
-            isexpr(x, :call) && return x # x::Expr, ideally
-            return nothing
-        end == Any[Union{Nothing,Expr}]
-    end
 end
 
 function f25579(g)

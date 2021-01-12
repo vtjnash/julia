@@ -63,7 +63,8 @@ Return `true` if `x === nothing`, and return `false` if not.
 !!! compat "Julia 1.1"
     This function requires at least Julia 1.1.
 """
-isnothing(x) = x === nothing
+isnothing(::Any) = false
+isnothing(::Nothing) = true
 
 
 """
