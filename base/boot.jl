@@ -239,7 +239,7 @@ function iterate end
 function Typeof end
 ccall(:jl_toplevel_eval_in, Any, (Any, Any),
       Core, quote
-      (f::typeof(Typeof))(x) = ($(_expr(:meta,:nospecialize,:x)); isa(x,Type) ? Type{x} : typeof(x))
+          (f::typeof(Typeof))(x) = ($(_expr(:meta,:inline)); $(_expr(:meta,:nospecialize,:x)); isa(x,Type) ? Type{x} : typeof(x))
       end)
 
 
@@ -436,7 +436,7 @@ end
 # simple convert for use by constructors of types in Core
 # note that there is no actual conversion defined here,
 # so the methods and ccall's in Core aren't permitted to use convert
-convert(::Type{Any}, @nospecialize(x)) = x
+convert(::Type{Any}, @nospecialize(x)) = (@_inline_meta; x)
 convert(::Type{T}, x::T) where {T} = x
 cconvert(::Type{T}, x) where {T} = convert(T, x)
 unsafe_convert(::Type{T}, x::T) where {T} = x

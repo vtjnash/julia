@@ -21,13 +21,13 @@ _counttuple(::Type) = nothing
 
 ## indexing ##
 
-length(@nospecialize t::Tuple) = nfields(t)
+length(@nospecialize t::Tuple) = (@_inline_meta; nfields(t))
 firstindex(@nospecialize t::Tuple) = 1
-lastindex(@nospecialize t::Tuple) = length(t)
-size(@nospecialize(t::Tuple), d::Integer) = (d == 1) ? length(t) : throw(ArgumentError("invalid tuple dimension $d"))
-axes(@nospecialize t::Tuple) = (OneTo(length(t)),)
-@eval getindex(@nospecialize(t::Tuple), i::Int) = getfield(t, i, $(Expr(:boundscheck)))
-@eval getindex(@nospecialize(t::Tuple), i::Real) = getfield(t, convert(Int, i), $(Expr(:boundscheck)))
+lastindex(@nospecialize t::Tuple) = (@_inline_meta; length(t))
+size(@nospecialize(t::Tuple), d::Integer) = (@_inline_meta; (d == 1) ? length(t) : throw(ArgumentError("invalid tuple dimension $d")))
+axes(@nospecialize t::Tuple) = (@_inline_meta; (OneTo(length(t)),))
+@eval getindex(@nospecialize(t::Tuple), i::Int) = (@_inline_meta; getfield(t, i, $(Expr(:boundscheck))))
+@eval getindex(@nospecialize(t::Tuple), i::Real) = (@_inline_meta; getfield(t, convert(Int, i), $(Expr(:boundscheck))))
 getindex(t::Tuple, r::AbstractArray{<:Any,1}) = (eltype(t)[t[ri] for ri in r]...,)
 getindex(t::Tuple, b::AbstractArray{Bool,1}) = length(b) == length(t) ? getindex(t, findall(b)) : throw(BoundsError(t, b))
 getindex(t::Tuple, c::Colon) = t
@@ -47,8 +47,8 @@ true
 ```
 """
 function setindex(x::Tuple, v, i::Integer)
-    @boundscheck 1 <= i <= length(x) || throw(BoundsError(x, i))
     @_inline_meta
+    @boundscheck 1 <= i <= length(x) || throw(BoundsError(x, i))
     _setindex(v, i, x...)
 end
 
@@ -66,7 +66,7 @@ function iterate(@nospecialize(t::Tuple), i::Int=1)
     return (1 <= i <= length(t)) ? (@inbounds t[i], i + 1) : nothing
 end
 
-keys(@nospecialize t::Tuple) = OneTo(length(t))
+keys(@nospecialize t::Tuple) = (@_inline_meta; OneTo(length(t)))
 
 prevind(@nospecialize(t::Tuple), i::Integer) = Int(i)-1
 nextind(@nospecialize(t::Tuple), i::Integer) = Int(i)+1

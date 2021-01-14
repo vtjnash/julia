@@ -10,7 +10,7 @@ Return the closest common ancestor of `T` and `S`, i.e. the narrowest type from 
 they both inherit.
 """
 typejoin() = Bottom
-typejoin(@nospecialize(t)) = t
+typejoin(@nospecialize(t)) = (@_pure_meta; t)
 typejoin(@nospecialize(t), ts...) = (@_pure_meta; typejoin(t, typejoin(ts...)))
 function typejoin(@nospecialize(a), @nospecialize(b))
     @_pure_meta
@@ -146,10 +146,11 @@ either a parent of both types, or a `Union` if appropriate.
 Falls back to [`typejoin`](@ref).
 """
 function promote_typejoin(@nospecialize(a), @nospecialize(b))
+    @_inline_meta
     c = typejoin(_promote_typesubtract(a), _promote_typesubtract(b))
     return Union{a, b, c}::Type
 end
-_promote_typesubtract(@nospecialize(a)) = typesplit(a, Union{Nothing, Missing})
+_promote_typesubtract(@nospecialize(a)) = (@_inline_meta; typesplit(a, Union{Nothing, Missing}))
 
 
 # Returns length, isfixed

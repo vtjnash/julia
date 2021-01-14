@@ -332,6 +332,14 @@ function abstract_call_method(interp::AbstractInterpreter, method::Method, @nosp
         add_remark!(interp, sv, "Refusing to infer into `depwarn`")
         return Any, false, nothing
     end
+    if method.nospecialize != 0 && isdefined(method, :source)
+        declared_inline = ccall(:jl_ir_flag_inlineable, Bool, (Any,), method.source)
+        if !declared_inline
+            oldsig = sig
+            sig = get_nospecialize_sig(method, sig, sparams)
+            # sig === oldsig || println(oldsig, " => ", sig, " of ", method.sig)
+        end
+    end
     topmost = nothing
     # Limit argument type tuple growth of functions:
     # look through the parents list to see if there's a call to the same method

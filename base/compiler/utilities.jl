@@ -142,8 +142,25 @@ function get_compileable_sig(method::Method, @nospecialize(atypes), sparams::Sim
     isa(atypes, DataType) || return nothing
     mt = ccall(:jl_method_table_for, Any, (Any,), atypes)
     mt === nothing && return nothing
-    return ccall(:jl_normalize_to_compilable_sig, Any, (Any, Any, Any, Any),
+    atypes = ccall(:jl_normalize_to_compilable_sig, Any, (Any, Any, Any, Any),
         mt, atypes, sparams, method)
+    is_compileable = atypes.isdispatchtuple ||
+        ccall(:jl_isa_compileable_sig, Int32, (Any, Any), atypes, method) != 0
+    is_compileable || return nothing
+    return atypes
+end
+
+function get_nospecialize_sig(method::Method, @nospecialize(atypes), sparams::SimpleVector)
+    if atypes isa UnionAll
+        ua = unwrap_unionall(atypes)
+        ua isa DataType || return method.sig
+        atypes = Tuple{Any[rewrap_unionall(ua.parameters[i], atypes) for i = 1:length(ua.parameters)]...}
+    end
+    mt = ccall(:jl_method_table_for, Any, (Any,), atypes)
+    mt === nothing && return method.sig
+    atypes = ccall(:jl_normalize_to_compilable_sig, Any, (Any, Any, Any, Any),
+        mt, atypes, sparams, method)
+    return atypes
 end
 
 # eliminate UnionAll vars that might be degenerate due to having identical bounds,

@@ -27,7 +27,7 @@ false
 
 Supertype operator, equivalent to `T2 <: T1`.
 """
-(>:)(@nospecialize(a), @nospecialize(b)) = (b <: a)
+(>:)(a, b) = (@nospecialize; @_inline_meta; b <: a)
 
 """
     supertype(T::DataType)
@@ -305,7 +305,7 @@ julia> a ≢ a
 false
 ```
 """
-!==(@nospecialize(x), @nospecialize(y)) = !(x === y)
+!==(x, y) = (@nospecialize; @_inline_meta; !(x === y))
 const ≢ = !==
 
 """
