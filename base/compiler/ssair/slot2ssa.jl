@@ -37,8 +37,8 @@ function scan_slot_def_use(nargs::Int, ci::CodeInfo, code::Vector{Any})
     nslots = length(ci.slotflags)
     result = SlotInfo[SlotInfo() for i = 1:nslots]
     # Set defs for arguments
-    for var in result[1:nargs]
-        push!(var.defs, 0)
+    for var in 1:nargs
+        push!(result[var].defs, 0)
     end
     for idx in 1:length(code)
         stmt = code[idx]

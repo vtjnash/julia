@@ -8,6 +8,8 @@
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/Analysis/TargetTransformInfo.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/CodeGen/RuntimeLibcalls.h>
+#include <llvm/CodeGen/TargetLowering.h>
 #if JL_LLVM_VERSION >= 140000
 #include <llvm/MC/TargetRegistry.h>
 #else
@@ -481,7 +483,7 @@ void jl_dump_native_impl(void *native_code,
             ));
 
     legacy::PassManager PM;
-    addTargetPasses(&PM, TM->getTargetTriple(), TM->getTargetIRAnalysis());
+    addTargetPasses(&PM, *TM, TM->getTargetTriple(), TM->getTargetIRAnalysis());
 
     // set up optimization passes
     SmallVector<char, 0> bc_Buffer;
@@ -595,9 +597,40 @@ void jl_dump_native_impl(void *native_code,
     delete data;
 }
 
-void addTargetPasses(legacy::PassManagerBase *PM, const Triple &triple, TargetIRAnalysis analysis)
+void addTargetPasses(legacy::PassManagerBase *PM, TargetMachine &TM, const Triple &triple, TargetIRAnalysis analysis)
 {
-    PM->add(new TargetLibraryInfoWrapperPass(triple));
+    TargetLowering TLI(TM);
+    // poly-fill the F16 intrinsic names since the calling convention used is sometimes wrong otherwise
+#if !defined(_OS_DARWIN_)
+    TLI.setLibcallName(RTLIB::FPEXT_F16_F64, "julia__extendhfdf2");
+#define HANDLE_LIBCALL(A, n) TLI.setLibcallName(RTLIB::#A, "julia" ##n);
+    //HANDLE_LIBCALL(FPEXT_F16_F128, __extendhftf2)
+    //HANDLE_LIBCALL(FPEXT_F16_F80, __extendhfxf2)
+//    HANDLE_LIBCALL(FPEXT_F16_F64, __extendhfdf2)
+//    HANDLE_LIBCALL(FPEXT_F16_F32, __gnu_h2f_ieee) *
+//    HANDLE_LIBCALL(FPROUND_F32_F16, __gnu_f2h_ieee) *
+//    HANDLE_LIBCALL(FPROUND_F64_F16, __truncdfhf2) *
+//    //HANDLE_LIBCALL(FPROUND_F80_F16, __truncxfhf2)
+//    //HANDLE_LIBCALL(FPROUND_F128_F16, __trunctfhf2)
+//    //HANDLE_LIBCALL(FPROUND_PPCF128_F16, __trunctfhf2)
+//    HANDLE_LIBCALL(FPTOSINT_F16_I32, __fixhfsi)
+//    HANDLE_LIBCALL(FPTOSINT_F16_I64, __fixhfdi)
+//    //HANDLE_LIBCALL(FPTOSINT_F16_I128, __fixhfti)
+//    HANDLE_LIBCALL(FPTOUINT_F16_I32, __fixunshfsi)
+//    HANDLE_LIBCALL(FPTOUINT_F16_I64, __fixunshfdi)
+//    //HANDLE_LIBCALL(FPTOUINT_F16_I128, __fixunshfti)
+//    HANDLE_LIBCALL(SINTTOFP_I32_F16, __floatsihf)
+//    HANDLE_LIBCALL(SINTTOFP_I64_F16, __floatdihf)
+//    //HANDLE_LIBCALL(SINTTOFP_I128_F16, __floattihf)
+//    HANDLE_LIBCALL(UINTTOFP_I32_F16, __floatunsihf)
+//    HANDLE_LIBCALL(UINTTOFP_I64_F16, __floatundihf)
+//    //HANDLE_LIBCALL(UINTTOFP_I128_F16, __floatuntihf)
+#undef HANDLE_LIBCALL
+#endif
+    // now how do I instruct X86Subtarget::getCallLowering to return our new, improved TLI object?
+    TargetLibraryInfoImpl BaselineInfoImpl(triple);
+    //BaselineInfoImpl.addVectorizableFunctions({});
+    PM->add(new TargetLibraryInfoWrapperPass(BaselineInfoImpl));
     PM->add(createTargetTransformInfoWrapperPass(std::move(analysis)));
 }
 
@@ -857,7 +890,7 @@ public:
         (void)jl_init_llvm();
         PMTopLevelManager *TPM = Stack.top()->getTopLevelManager();
         TPMAdapter Adapter(TPM);
-        addTargetPasses(&Adapter, jl_ExecutionEngine->getTargetTriple(), jl_ExecutionEngine->getTargetIRAnalysis());
+        addTargetPasses(&Adapter, *jl_ExecutionEngine->cloneTargetMachine(), jl_ExecutionEngine->getTargetTriple(), jl_ExecutionEngine->getTargetIRAnalysis());
         addOptimizationPasses(&Adapter, OptLevel, true, dump_native, true);
         addMachinePasses(&Adapter, OptLevel);
     }
@@ -993,7 +1026,7 @@ void *jl_get_llvmf_defn_impl(jl_method_instance_t *mi, size_t world, char getwra
     static legacy::PassManager *PM;
     if (!PM) {
         PM = new legacy::PassManager();
-        addTargetPasses(PM, jl_ExecutionEngine->getTargetTriple(), jl_ExecutionEngine->getTargetIRAnalysis());
+        addTargetPasses(PM, *jl_ExecutionEngine->cloneTargetMachine(), jl_ExecutionEngine->getTargetTriple(), jl_ExecutionEngine->getTargetIRAnalysis());
         addOptimizationPasses(PM, jl_options.opt_level);
         addMachinePasses(PM, jl_options.opt_level);
     }

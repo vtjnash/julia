@@ -901,7 +901,7 @@ namespace {
         }
         std::unique_ptr<legacy::PassManager> operator()() {
             auto PM = std::make_unique<legacy::PassManager>();
-            addTargetPasses(PM.get(), TM->getTargetTriple(), TM->getTargetIRAnalysis());
+            addTargetPasses(PM.get(), *TM, TM->getTargetTriple(), TM->getTargetIRAnalysis());
             addOptimizationPasses(PM.get(), optlevel);
             addMachinePasses(PM.get(), optlevel);
             return PM;
