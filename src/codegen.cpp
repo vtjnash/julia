@@ -7736,8 +7736,15 @@ static jl_llvm_functions_t
                     }
                     if (returninfo.cc == jl_returninfo_t::SRet) {
                         assert(jl_is_concrete_type(jlrettype));
-                        emit_memcpy(ctx, sret, nullptr, retvalinfo, jl_datatype_size(jlrettype),
-                                    julia_alignment(jlrettype));
+                        if (retvalinfo.promotion_ssa != -1) {
+                            AllocaInst *originalAlloca = cast<AllocaInst>(retvalinfo.V);
+                            originalAlloca->replaceAllUsesWith(sret);
+                            originalAlloca->eraseFromParent();
+                        }
+                        else {
+                            emit_memcpy(ctx, sret, nullptr, retvalinfo, jl_datatype_size(jlrettype),
+                                        julia_alignment(jlrettype));
+                        }
                     }
                     else { // must be jl_returninfo_t::Union
                         emit_unionmove(ctx, sret, nullptr, retvalinfo, /*skip*/isboxed_union);
