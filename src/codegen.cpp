@@ -1293,7 +1293,7 @@ struct jl_cgval_t {
     {
         assert(TIndex == NULL || TIndex->getType() == getInt8Ty(TIndex->getContext()));
     }
-    jl_cgval_t(Value *Vptr, bool isboxed, jl_value_t *typ, Value *tindex, MDNode *tbaa) : // general pointer constructor
+    jl_cgval_t(Value *Vptr, bool isboxed, jl_value_t *typ, Value *tindex, MDNode *tbaa, Instruction *promotion_point) : // general pointer constructor
         V(Vptr),
         Vboxed(isboxed ? Vptr : nullptr),
         TIndex(tindex),
@@ -1302,7 +1302,7 @@ struct jl_cgval_t {
         isboxed(isboxed),
         isghost(false),
         tbaa(tbaa),
-        promotion_point(nullptr),
+        promotion_point(promotion_point),
         promotion_ssa(-1)
     {
         if (Vboxed)
@@ -1610,7 +1610,7 @@ static inline jl_cgval_t ghostValue(jl_codectx_t &ctx, jl_value_t *typ)
     }
     if (jl_is_type_type(typ)) {
         // replace T::Type{T} with T, by assuming that T must be a leaftype of some sort
-        jl_cgval_t constant(NULL, true, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+        jl_cgval_t constant(NULL, true, typ, NULL, best_tbaa(ctx.tbaa(), typ), nullptr);
         constant.constant = jl_tparam0(typ);
         return constant;
     }
@@ -1632,17 +1632,16 @@ static inline jl_cgval_t mark_julia_const(jl_codectx_t &ctx, jl_value_t *jv)
         if (jl_is_datatype_singleton((jl_datatype_t*)typ))
             return ghostValue(ctx, typ);
     }
-    jl_cgval_t constant(NULL, true, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+    jl_cgval_t constant(NULL, true, typ, NULL, best_tbaa(ctx.tbaa(), typ), nullptr);
     constant.constant = jv;
     return constant;
 }
 
 
-static inline jl_cgval_t mark_julia_slot(Value *v, jl_value_t *typ, Value *tindex, MDNode *tbaa)
+static inline jl_cgval_t mark_julia_slot(Value *v, jl_value_t *typ, Value *tindex, MDNode *tbaa, Instruction *promotion_point=nullptr)
 {
     // this enables lazy-copying of immutable values and stack or argument slots
-    jl_cgval_t tagval(v, false, typ, tindex, tbaa);
-    return tagval;
+    return jl_cgval_t(v, false, typ, tindex, tbaa, promotion_point);
 }
 
 static bool valid_as_globalinit(const Value *v) {
@@ -1662,15 +1661,18 @@ static bool valid_as_globalinit(const Value *v) {
 static inline jl_cgval_t value_to_pointer(jl_codectx_t &ctx, Value *v, jl_value_t *typ, Value *tindex)
 {
     Value *loc;
+    Instruction *promotion_point;
     if (valid_as_globalinit(v)) { // llvm can't handle all the things that could be inside a ConstantExpr
         loc = get_pointer_to_constant(ctx.emission_context, cast<Constant>(v), "_j_const", *jl_Module);
+        promotion_point = nullptr;
     }
     else {
         loc = emit_static_alloca(ctx, v->getType());
-        ctx.builder.CreateStore(v, loc);
+        promotion_point = ctx.builder.CreateStore(v, loc);
     }
-    return mark_julia_slot(loc, typ, tindex, ctx.tbaa().tbaa_stack);
+    return mark_julia_slot(loc, typ, tindex, ctx.tbaa().tbaa_stack, promotion_point);
 }
+
 static inline jl_cgval_t value_to_pointer(jl_codectx_t &ctx, const jl_cgval_t &v)
 {
     if (v.ispointer())
@@ -1701,7 +1703,7 @@ static inline jl_cgval_t mark_julia_type(jl_codectx_t &ctx, Value *v, bool isbox
         return value_to_pointer(ctx, v, typ, NULL);
     }
     if (isboxed)
-        return jl_cgval_t(v, isboxed, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+        return jl_cgval_t(v, isboxed, typ, NULL, best_tbaa(ctx.tbaa(), typ), nullptr);
     return jl_cgval_t(v, typ, NULL);
 }
 
@@ -1734,7 +1736,7 @@ static inline jl_cgval_t update_julia_type(jl_codectx_t &ctx, const jl_cgval_t &
             if (alwaysboxed) {
                 // discovered that this union-split type must actually be isboxed
                 if (v.Vboxed) {
-                    return jl_cgval_t(v.Vboxed, true, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+                    return jl_cgval_t(v.Vboxed, true, typ, NULL, best_tbaa(ctx.tbaa(), typ), nullptr);
                 }
                 else {
                     // type mismatch (there weren't any boxed values in the union)
@@ -1964,14 +1966,14 @@ static jl_cgval_t convert_julia_type_union(jl_codectx_t &ctx, const jl_cgval_t &
                             decay_derived(ctx, boxv),
                             decay_derived(ctx, emit_bitcast(ctx, slotv, boxv->getType())));
             }
-            jl_cgval_t newv = jl_cgval_t(slotv, false, typ, new_tindex, tbaa);
+            jl_cgval_t newv = jl_cgval_t(slotv, false, typ, new_tindex, tbaa, nullptr);
             assert(boxv->getType() == ctx.types().T_prjlvalue);
             newv.Vboxed = boxv;
             return newv;
         }
     }
     else {
-        return jl_cgval_t(boxed(ctx, v), true, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+        return jl_cgval_t(boxed(ctx, v), true, typ, NULL, best_tbaa(ctx.tbaa(), typ), nullptr);
     }
     return jl_cgval_t(v, typ, new_tindex);
 }
@@ -1992,7 +1994,7 @@ static jl_cgval_t convert_julia_type(jl_codectx_t &ctx, const jl_cgval_t &v, jl_
         if (v.TIndex && !jl_is_pointerfree(typ)) {
             // discovered that this union-split type must actually be isboxed
             if (v.Vboxed) {
-                return jl_cgval_t(v.Vboxed, true, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+                return jl_cgval_t(v.Vboxed, true, typ, NULL, best_tbaa(ctx.tbaa(), typ), nullptr);
             }
             else {
                 // type mismatch: there weren't any boxed values in the union
@@ -2049,7 +2051,7 @@ static jl_cgval_t convert_julia_type(jl_codectx_t &ctx, const jl_cgval_t &v, jl_
         }
         if (makeboxed) {
             // convert to a simple isboxed value
-            return jl_cgval_t(boxed(ctx, v), true, typ, NULL, best_tbaa(ctx.tbaa(), typ));
+            return mark_julia_type(ctx, boxed(ctx, v), true, typ);
         }
     }
     return jl_cgval_t(v, typ, new_tindex);
@@ -5004,11 +5006,11 @@ static jl_cgval_t emit_expr(jl_codectx_t &ctx, jl_value_t *expr, ssize_t ssaidx_
             is_promotable = ctx.ssavalue_usecount.at(ssaidx_0based) == 1;
         }
         jl_cgval_t res = emit_call(ctx, ex, expr_t, is_promotable);
-        // some intrinsics (e.g. typeassert) can return a wider type
-        // than what's actually possible
-        if (is_promotable && res.promotion_point) {
+        if (is_promotable && res.promotion_point && res.promotion_ssa == -1) {
             res.promotion_ssa = ssaidx_0based;
         }
+        // some intrinsics (e.g. typeassert) can return a wider type
+        // than what's actually possible
         res = update_julia_type(ctx, res, expr_t);
         if (res.typ == jl_bottom_type || expr_t == jl_bottom_type) {
             CreateTrap(ctx.builder);
@@ -5132,7 +5134,7 @@ static jl_cgval_t emit_expr(jl_codectx_t &ctx, jl_value_t *expr, ssize_t ssaidx_
                 jl_is_concrete_type(jl_tparam0(ty))) {
             assert(nargs <= jl_datatype_nfields(jl_tparam0(ty)) + 1);
             jl_cgval_t res = emit_new_struct(ctx, jl_tparam0(ty), nargs - 1, &argv[1], is_promotable);
-            if (is_promotable && res.promotion_point && res.promotion_ssa==-1)
+            if (is_promotable && res.promotion_point && res.promotion_ssa == -1)
                 res.promotion_ssa = ssaidx_0based;
             return res;
         }

@@ -1720,6 +1720,8 @@ static jl_cgval_t typed_load(jl_codectx_t &ctx, Value *ptr, Value *idx_0based, j
             elty = Type::getIntNTy(ctx.builder.getContext(), 8 * nb);
         }
     }
+    BasicBlock::iterator promotion_point = std::prev(ctx.builder.GetInsertPoint()); // might point to end(), since end()++ == begin()
+    assert(ctx.builder.GetInsertBlock()->end() == std::prev(ctx.builder.GetInsertBlock()->begin()));
     Type *realelty = elty;
     if (Order != AtomicOrdering::NotAtomic && isa<IntegerType>(elty)) {
         unsigned nb2 = PowerOf2Ceil(nb);
@@ -1780,7 +1782,7 @@ static jl_cgval_t typed_load(jl_codectx_t &ctx, Value *ptr, Value *idx_0based, j
     if (instr)
         return mark_julia_type(ctx, instr, isboxed, jltype);
     else
-        return mark_julia_slot(intcast, jltype, NULL, ctx.tbaa().tbaa_stack);
+        return mark_julia_slot(intcast, jltype, NULL, ctx.tbaa().tbaa_stack, &*std::next(promotion_point));
 }
 
 static jl_cgval_t typed_store(jl_codectx_t &ctx,
@@ -3300,7 +3302,7 @@ static Value *boxed(jl_codectx_t &ctx, const jl_cgval_t &vinfo, bool is_promotab
         assert(!type_is_ghost(t)); // ghost values should have been handled by vinfo.constant above!
         box = _boxed_special(ctx, vinfo, t);
         if (!box) {
-            bool do_promote = vinfo.promotion_point;
+            bool do_promote = vinfo.promotion_ssa != -1;
             if (do_promote && is_promotable) {
                 auto IP = ctx.builder.saveIP();
                 ctx.builder.SetInsertPoint(vinfo.promotion_point);
