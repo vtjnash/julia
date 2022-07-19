@@ -191,11 +191,7 @@ macro isdefined(s::Symbol)
 end
 
 function _is_internal(__module__)
-    if ccall(:jl_base_relative_to, Any, (Any,), __module__)::Module === Core.Compiler ||
-       nameof(__module__) === :Base
-        return true
-    end
-    return false
+    return true
 end
 
 # can be used in place of `@pure` (supposed to be used for bootstrapping)

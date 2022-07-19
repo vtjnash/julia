@@ -1,5 +1,6 @@
 # This file is a part of Julia. License is MIT: https://julialang.org/license
 
+Core.include(Core, "docs/core.jl")
 Core.include(Main, "Base.jl")
 
 using .Base

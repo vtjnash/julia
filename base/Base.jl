@@ -69,10 +69,12 @@ eval(m::Module, x) = Core.eval(m, x)
 
 # init core docsystem
 import Core: @doc, @__doc__, WrappedException, @int128_str, @uint128_str, @big_str, @cmd
-if isdefined(Core, :Compiler)
-    import Core.Compiler.CoreDocs
-    Core.atdoc!(CoreDocs.docm)
-end
+import Core.CoreDocs
+Core.atdoc!(CoreDocs.docm)
+
+Core.eval(Core, :(baremodule Compiler
+        function return_type end
+    end))
 
 include("exports.jl")
 
@@ -193,11 +195,6 @@ include("reinterpretarray.jl")
 include("bitarray.jl")
 include("bitset.jl")
 
-if !isdefined(Core, :Compiler)
-    include("docs/core.jl")
-    Core.atdoc!(CoreDocs.docm)
-end
-
 include("multimedia.jl")
 using .Multimedia
 
@@ -278,6 +275,8 @@ include("partr.jl")
 include("task.jl")
 include("threads_overloads.jl")
 include("weakkeydict.jl")
+
+Core.include(Core.Compiler, "compiler/compiler.jl")
 
 include("env.jl")
 

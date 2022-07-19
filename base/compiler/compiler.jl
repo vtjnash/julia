@@ -1,7 +1,5 @@
 # This file is a part of Julia. License is MIT: https://julialang.org/license
 
-getfield(Core, :eval)(Core, :(baremodule Compiler
-
 using Core.Intrinsics, Core.IR
 
 import Core: print, println, show, write, unsafe_write, stdout, stderr,
@@ -186,6 +184,3 @@ ccall(:jl_set_typeinf_func, Cvoid, (Any,), typeinf_ext_toplevel)
 
 include("compiler/parsing.jl")
 Core.eval(Core, :(_parse = Compiler.fl_parse))
-
-end # baremodule Compiler
-))

@@ -1241,33 +1241,6 @@ function show_mi(io::IO, l::Core.MethodInstance, from_stackframe::Bool=false)
     end
 end
 
-# These sometimes show up as Const-values in InferenceFrameInfo signatures
-show(io::IO, r::Core.Compiler.UnitRange) = show(io, r.start : r.stop)
-show(io::IO, mime::MIME{Symbol("text/plain")}, r::Core.Compiler.UnitRange) = show(io, mime, r.start : r.stop)
-
-function show(io::IO, mi_info::Core.Compiler.Timings.InferenceFrameInfo)
-    mi = mi_info.mi
-    def = mi.def
-    if isa(def, Method)
-        if isdefined(def, :generator) && mi === def.generator
-            print(io, "InferenceFrameInfo generator for ")
-            show(io, def)
-        else
-            print(io, "InferenceFrameInfo for ")
-            argnames = [isa(a, Core.Const) ? (isa(a.val, Type) ? "" : a.val) : "" for a in mi_info.slottypes[1:mi_info.nargs]]
-            show_tuple_as_call(io, def.name, mi.specTypes; argnames, qualified=true)
-        end
-    else
-        linetable = mi.uninferred.linetable
-        line = isempty(linetable) ? "" : (lt = linetable[1]; string(lt.file, ':', lt.line))
-        print(io, "Toplevel InferenceFrameInfo thunk from ", def, " starting at ", line)
-    end
-end
-
-function show(io::IO, tinf::Core.Compiler.Timings.Timing)
-    print(io, "Core.Compiler.Timings.Timing(", tinf.mi_info, ") with ", length(tinf.children), " children")
-end
-
 function show_delim_array(io::IO, itr::Union{AbstractArray,SimpleVector}, op, delim, cl,
                           delim_one, i1=first(LinearIndices(itr)), l=last(LinearIndices(itr)))
     print(io, op)
@@ -1362,7 +1335,7 @@ show(io::IO, s::Symbol) = show_unquoted_quote_expr(io, s, 0, 0, 0)
 
 const ExprNode = Union{Expr, QuoteNode, Slot, LineNumberNode, SSAValue,
                        GotoNode, GlobalRef, PhiNode, PhiCNode, UpsilonNode,
-                       Core.Compiler.GotoIfNot, Core.Compiler.ReturnNode}
+                       Core.GotoIfNot, Core.ReturnNode}
 # Operators have precedence levels from 1-N, and show_unquoted defaults to a
 # precedence level of 0 (the fourth argument). The top-level print and show
 # methods use a precedence of -1 to specially allow space-separated macro syntax.
@@ -2562,30 +2535,6 @@ function show(io::IO, vm::Core.TypeofVararg)
 end
 
 module IRShow
-    const Compiler = Core.Compiler
-    using Core.IR
-    import ..Base
-    import .Compiler: IRCode, ReturnNode, GotoIfNot, CFG, scan_ssa_use!, Argument,
-        isexpr, compute_basic_blocks, block_for_inst,
-        TriState, Effects, ALWAYS_TRUE, ALWAYS_FALSE, TRISTATE_UNKNOWN
-    Base.getindex(r::Compiler.StmtRange, ind::Integer) = Compiler.getindex(r, ind)
-    Base.size(r::Compiler.StmtRange) = Compiler.size(r)
-    Base.first(r::Compiler.StmtRange) = Compiler.first(r)
-    Base.last(r::Compiler.StmtRange) = Compiler.last(r)
-    Base.length(is::Compiler.InstructionStream) = Compiler.length(is)
-    Base.iterate(is::Compiler.InstructionStream, st::Int=1) = (st <= Compiler.length(is)) ? (is[st], st + 1) : nothing
-    Base.getindex(is::Compiler.InstructionStream, idx::Int) = Compiler.getindex(is, idx)
-    Base.getindex(node::Compiler.Instruction, fld::Symbol) = Compiler.getindex(node, fld)
-    include("compiler/ssair/show.jl")
-
-    const __debuginfo = Dict{Symbol, Any}(
-        # :full => src -> Base.IRShow.statementidx_lineinfo_printer(src), # and add variable slot information
-        :source => src -> Base.IRShow.statementidx_lineinfo_printer(src),
-        # :oneliner => src -> Base.IRShow.statementidx_lineinfo_printer(Base.IRShow.PartialLineInfoPrinter, src),
-        :none => src -> Base.IRShow.lineinfo_disabled,
-        )
-    const default_debuginfo = Ref{Symbol}(:none)
-    debuginfo(sym) = sym === :default ? default_debuginfo[] : sym
 end
 
 function show(io::IO, src::CodeInfo; debuginfo::Symbol=:source)
@@ -2608,20 +2557,6 @@ function show(io::IO, src::CodeInfo; debuginfo::Symbol=:source)
         show(lambda_io, body)
     end
     print(io, ")")
-end
-
-function show(io::IO, inferred::Core.Compiler.InferenceResult)
-    tt = inferred.linfo.specTypes.parameters[2:end]
-    tts = join(["::$(t)" for t in tt], ", ")
-    rettype = inferred.result
-    if isa(rettype, Core.Compiler.InferenceState)
-        rettype = rettype.bestguess
-    end
-    print(io, "$(inferred.linfo.def.name)($(tts)) => $(rettype)")
-end
-
-function show(io::IO, ::Core.Compiler.NativeInterpreter)
-    print(io, "Core.Compiler.NativeInterpreter(...)")
 end
 
 

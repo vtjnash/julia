@@ -1,13 +1,13 @@
 # This file is a part of Julia. License is MIT: https://julialang.org/license
 
-module CoreDocs
+baremodule CoreDocs
 
-import ..esc, ..push!, ..getindex, ..unsafe_load, ..Csize_t, ..@nospecialize
+import ..Expr, ..push!
 
-@nospecialize # don't specialize on any arguments of the methods declared herein
+Core.eval(CoreDocs, Expr(:meta, :nospecialize))
 
 function doc!(source::LineNumberNode, mod::Module, str, ex)
-    push!(DOCS, Core.svec(mod, ex, str, source.file, source.line))
+    #push!(DOCS, Core.svec(mod, ex, str, source.file, source.line))
     nothing
 end
 const DOCS = Array{Core.SimpleVector,1}()
@@ -25,7 +25,7 @@ function docm(source::LineNumberNode, mod::Module, str, x)
     else
         out = Expr(:block, x, out)
     end
-    return esc(out)
+    return Expr(:escape, out)
 end
 docm(source::LineNumberNode, mod::Module, x) =
     isexpr(x, :->) ? docm(source, mod, x.args[1], x.args[2].args[2]) : error("invalid '@doc'.")
