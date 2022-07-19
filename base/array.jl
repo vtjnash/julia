@@ -211,7 +211,9 @@ function bitsunionsize(u::Union)
 end
 
 elsize(@nospecialize _::Type{A}) where {T,A<:Array{T}} = aligned_sizeof(T)
+if sizeof !== Core.sizeof
 sizeof(a::Array) = Core.sizeof(a)
+end
 
 function isassigned(a::Array, i::Int...)
     @inline

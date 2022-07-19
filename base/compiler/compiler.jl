@@ -1,5 +1,17 @@
 # This file is a part of Julia. License is MIT: https://julialang.org/license
 
+getfield(Core, :eval)(Core, :(begin
+include(x) = include(Core, x)
+eval(x) = Core.eval(Core, x)
+
+# essential files and libraries
+include(Core, "essentials.jl")
+include(Core, "ctypes.jl")
+include(Core, "generator.jl")
+include(Core, "reflection.jl")
+include(Core, "options.jl")
+end))
+
 getfield(Core, :eval)(Core, :(baremodule Compiler
 
 using Core.Intrinsics, Core.IR
@@ -7,7 +19,7 @@ using Core.Intrinsics, Core.IR
 import Core: print, println, show, write, unsafe_write, stdout, stderr,
              _apply_iterate, svec, apply_type, Builtin, IntrinsicFunction,
              MethodInstance, CodeInstance, MethodMatch, PartialOpaque,
-             TypeofVararg
+             TypeofVararg, convert, ifelse
 
 const getproperty = Core.getfield
 const setproperty! = Core.setfield!
@@ -23,15 +35,9 @@ eval(m, x) = Core.eval(m, x)
 include(x) = Core.include(Compiler, x)
 include(mod, x) = Core.include(mod, x)
 
-# The @inline/@noinline macros that can be applied to a function declaration are not available
-# until after array.jl, and so we will mark them within a function body instead.
-macro inline()   Expr(:meta, :inline)   end
-macro noinline() Expr(:meta, :noinline) end
-
-convert(::Type{Any}, Core.@nospecialize x) = x
-convert(::Type{T}, x::T) where {T} = x
-
-# essential files and libraries
+## essential files and libraries
+import Core: @inline, @noinline
+sizeof(x) = Core.sizeof(x)
 include("essentials.jl")
 include("ctypes.jl")
 include("generator.jl")

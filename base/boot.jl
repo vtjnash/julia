@@ -453,17 +453,6 @@ convert(::Type{T}, x::T) where {T} = x
 cconvert(::Type{T}, x) where {T} = convert(T, x)
 unsafe_convert(::Type{T}, x::T) where {T} = x
 
-_is_internal(__module__) = __module__ === Core
-# can be used in place of `@assume_effects :foldable` (supposed to be used for bootstrapping)
-macro _foldable_meta()
-    return _is_internal(__module__) && Expr(:meta, Expr(:purity,
-        #=:consistent=#true,
-        #=:effect_free=#true,
-        #=:nothrow=#false,
-        #=:terminates_globally=#true,
-        #=:terminates_locally=#false,
-        #=:notaskstate=#false))
-end
 
 const NTuple{N,T} = Tuple{Vararg{T,N}}
 
@@ -499,20 +488,6 @@ Array{T}(A::AbstractArray{S,N}) where {T,N,S} = Array{T,N}(A)
 
 AbstractArray{T}(A::AbstractArray{S,N}) where {T,S,N} = AbstractArray{T,N}(A)
 
-# primitive Symbol constructors
-function Symbol(s::String)
-    @_foldable_meta
-    return ccall(:jl_symbol_n, Ref{Symbol}, (Ptr{UInt8}, Int),
-                 ccall(:jl_string_ptr, Ptr{UInt8}, (Any,), s),
-                 sizeof(s))
-end
-function Symbol(a::Array{UInt8,1})
-    return ccall(:jl_symbol_n, Ref{Symbol}, (Ptr{UInt8}, Int),
-                 ccall(:jl_array_ptr, Ptr{UInt8}, (Any,), a),
-                 Intrinsics.arraylen(a))
-end
-Symbol(s::Symbol) = s
-
 # module providing the IR object model
 module IR
 export CodeInfo, MethodInstance, CodeInstance, GotoNode, GotoIfNot, ReturnNode,
@@ -528,7 +503,7 @@ import Core: CodeInfo, MethodInstance, CodeInstance, GotoNode, GotoIfNot, Return
 end
 
 # docsystem basics
-const unescape = Symbol("hygienic-scope")
+const unescape = :var"hygienic-scope"
 macro doc(x...)
     docex = atdoc(__source__, __module__, x...)
     isa(docex, Expr) && docex.head === :escape && return docex
@@ -598,17 +573,17 @@ function (g::GeneratedFunctionStub)(@nospecialize args...)
         return body
     end
     lam = Expr(:lambda, g.argnames,
-               Expr(Symbol("scope-block"),
+               Expr(:var"scope-block",
                     Expr(:block,
                          LineNumberNode(g.line, g.file),
-                         Expr(:meta, :push_loc, g.file, Symbol("@generated body")),
+                         Expr(:meta, :push_loc, g.file, :var"@generated body"),
                          Expr(:return, body),
                          Expr(:meta, :pop_loc))))
     spnames = g.spnames
     if spnames === nothing
         return lam
     else
-        return Expr(Symbol("with-static-parameters"), lam, spnames...)
+        return Expr(:var"with-static-parameters", lam, spnames...)
     end
 end
 

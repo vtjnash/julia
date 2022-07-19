@@ -60,7 +60,7 @@ modifyproperty!(x, f::Symbol, op, v, order::Symbol=:notatomic) =
 replaceproperty!(x, f::Symbol, expected, desired, success_order::Symbol=:notatomic, fail_order::Symbol=success_order) =
     (@inline; Core.replacefield!(x, f, expected, convert(fieldtype(typeof(x), f), desired), success_order, fail_order))
 
-convert(::Type{Any}, Core.@nospecialize x) = x
+convert(::Type{Any}, @nospecialize x) = x
 convert(::Type{T}, x::T) where {T} = x
 include("coreio.jl")
 
@@ -94,6 +94,57 @@ Get the time in nanoseconds. The time corresponding to 0 is undefined, and wraps
 time_ns() = ccall(:jl_hrtime, UInt64, ())
 
 start_base_include = time_ns()
+
+"""
+    sizeof(T::DataType)
+    sizeof(obj)
+
+Size, in bytes, of the canonical binary representation of the given `DataType` `T`, if any.
+Or the size, in bytes, of object `obj` if it is not a `DataType`.
+
+See also [`Base.summarysize`](@ref).
+
+# Examples
+```jldoctest
+julia> sizeof(Float32)
+4
+
+julia> sizeof(ComplexF64)
+16
+
+julia> sizeof(1.0)
+8
+
+julia> sizeof(collect(1.0:10.0))
+80
+```
+
+If `DataType` `T` does not have a specific size, an error is thrown.
+
+```jldoctest
+julia> sizeof(AbstractArray)
+ERROR: Abstract type AbstractArray does not have a definite size.
+Stacktrace:
+[...]
+```
+"""
+sizeof(x) = Core.sizeof(x)
+
+"""
+    ifelse(condition::Bool, x, y)
+
+Return `x` if `condition` is `true`, otherwise return `y`. This differs from `?` or `if` in
+that it is an ordinary function, so all the arguments are evaluated first. In some cases,
+using `ifelse` instead of an `if` statement can eliminate the branch in generated code and
+provide higher performance in tight loops.
+
+# Examples
+```jldoctest
+julia> ifelse(1 > 2, 1, 2)
+2
+```
+"""
+ifelse(condition::Bool, x, y) = Core.ifelse(condition, x, y)
 
 ## Load essential files and libraries
 include("essentials.jl")

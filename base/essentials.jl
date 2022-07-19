@@ -127,14 +127,14 @@ one that is generic for any `AbstractArray`.
 However, the specific return type is still inferred for both `g` and `f`,
 and this is still used in optimizing the callers of `f` and `g`.
 """
-macro nospecialize(vars...)
-    if nfields(vars) === 1
-        # in argument position, need to fix `@nospecialize x=v` to `@nospecialize (kw x v)`
-        var = getfield(vars, 1)
-        if isa(var, Expr) && var.head === :(=)
-            var.head = :kw
-        end
+macro nospecialize(var)
+    # in argument position, need to fix `@nospecialize x=v` to `@nospecialize (kw x v)`
+    if isa(var, Expr) && var.head === :(=)
+        var.head = :kw
     end
+    return Expr(:meta, :nospecialize, var)
+end
+macro nospecialize(vars...)
     return Expr(:meta, :nospecialize, vars...)
 end
 
@@ -191,7 +191,8 @@ macro isdefined(s::Symbol)
 end
 
 function _is_internal(__module__)
-    if ccall(:jl_base_relative_to, Any, (Any,), __module__)::Module === Core.Compiler ||
+    if __module__ === Core ||
+        ccall(:jl_base_relative_to, Any, (Any,), __module__)::Module === Core.Compiler ||
        nameof(__module__) === :Base
         return true
     end
@@ -227,6 +228,32 @@ end
 macro _propagate_inbounds_meta()
     return Expr(:meta, :inline, :propagate_inbounds)
 end
+
+_is_internal(__module__) = __module__ === Core
+# can be used in place of `@assume_effects :foldable` (supposed to be used for bootstrapping)
+macro _foldable_meta()
+    return _is_internal(__module__) && Expr(:meta, Expr(:purity,
+        #=:consistent=#true,
+        #=:effect_free=#true,
+        #=:nothrow=#false,
+        #=:terminates_globally=#true,
+        #=:terminates_locally=#false,
+        #=:notaskstate=#false))
+end
+
+# primitive Symbol constructors
+function Symbol(s::String)
+    @_foldable_meta
+    return ccall(:jl_symbol_n, Ref{Symbol}, (Ptr{UInt8}, Int),
+                 ccall(:jl_string_ptr, Ptr{UInt8}, (Any,), s),
+                 sizeof(s))
+end
+function Symbol(a::Array{UInt8,1})
+    return ccall(:jl_symbol_n, Ref{Symbol}, (Ptr{UInt8}, Int),
+                 ccall(:jl_array_ptr, Ptr{UInt8}, (Any,), a),
+                 Intrinsics.arraylen(a))
+end
+Symbol(s::Symbol) = s
 
 function iterate end
 
@@ -512,57 +539,6 @@ julia> reinterpret(Float32, UInt32[1 2 3 4 5])
 ```
 """
 reinterpret(::Type{T}, x) where {T} = bitcast(T, x)
-
-"""
-    sizeof(T::DataType)
-    sizeof(obj)
-
-Size, in bytes, of the canonical binary representation of the given `DataType` `T`, if any.
-Or the size, in bytes, of object `obj` if it is not a `DataType`.
-
-See also [`Base.summarysize`](@ref).
-
-# Examples
-```jldoctest
-julia> sizeof(Float32)
-4
-
-julia> sizeof(ComplexF64)
-16
-
-julia> sizeof(1.0)
-8
-
-julia> sizeof(collect(1.0:10.0))
-80
-```
-
-If `DataType` `T` does not have a specific size, an error is thrown.
-
-```jldoctest
-julia> sizeof(AbstractArray)
-ERROR: Abstract type AbstractArray does not have a definite size.
-Stacktrace:
-[...]
-```
-"""
-sizeof(x) = Core.sizeof(x)
-
-"""
-    ifelse(condition::Bool, x, y)
-
-Return `x` if `condition` is `true`, otherwise return `y`. This differs from `?` or `if` in
-that it is an ordinary function, so all the arguments are evaluated first. In some cases,
-using `ifelse` instead of an `if` statement can eliminate the branch in generated code and
-provide higher performance in tight loops.
-
-# Examples
-```jldoctest
-julia> ifelse(1 > 2, 1, 2)
-2
-```
-"""
-ifelse(condition::Bool, x, y) = Core.ifelse(condition, x, y)
 
 # simple Array{Any} operations needed for bootstrap
 @eval setindex!(A::Array{Any}, @nospecialize(x), i::Int) = arrayset($(Expr(:boundscheck)), A, x, i)

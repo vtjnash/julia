@@ -1101,9 +1101,12 @@ static jl_value_t *jl_expand_macros(jl_value_t *expr, jl_module_t *inmodule, str
         if (!onelevel)
             result = jl_expand_macros(result, inmodule, wrap ? &newctx : macroctx, onelevel, world, throw_load_error);
         if (wrap) {
-            jl_exprargset(wrap, 0, result);
-            jl_exprargset(wrap, 1, newctx.m);
-            result = wrap;
+            if (!jl_is_expr(result) || (((jl_expr_t*)result)->head != jl_inert_sym &&
+                                        ((jl_expr_t*)result)->head != jl_meta_sym)) {
+                jl_exprargset(wrap, 0, result);
+                jl_exprargset(wrap, 1, newctx.m);
+                result = wrap;
+            }
         }
         JL_GC_POP();
         return result;
