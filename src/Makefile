@@ -154,7 +154,7 @@ endif
 
 COMMON_LIBPATHS := -L$(build_libdir) -L$(build_shlibdir)
 RT_LIBS := $(LIBUV) $(LIBUTF8PROC) $(NO_WHOLE_ARCHIVE) $(LIBUNWIND) $(RT_LLVMLINK) $(OSLIBS)
-CG_LIBS := $(NO_WHOLE_ARCHIVE) $(LIBUV) $(LIBUNWIND) $(CG_LLVMLINK) $(OSLIBS)
+CG_LIBS := $(NO_WHOLE_ARCHIVE) $(LIBUNWIND) $(CG_LLVMLINK) $(OSLIBS)
 RT_DEBUG_LIBS := $(COMMON_LIBPATHS) $(WHOLE_ARCHIVE) $(BUILDDIR)/flisp/libflisp-debug.a $(WHOLE_ARCHIVE) $(BUILDDIR)/support/libsupport-debug.a -ljulia-debug $(RT_LIBS)
 CG_DEBUG_LIBS := $(COMMON_LIBPATHS) $(WHOLE_ARCHIVE) $(WHOLE_ARCHIVE) $(CG_LIBS) -ljulia-debug -ljulia-internal-debug
 RT_RELEASE_LIBS := $(COMMON_LIBPATHS) $(WHOLE_ARCHIVE) $(BUILDDIR)/flisp/libflisp.a $(WHOLE_ARCHIVE) $(BUILDDIR)/support/libsupport.a -ljulia $(RT_LIBS)
