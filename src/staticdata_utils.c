@@ -569,10 +569,10 @@ static void jl_collect_edges(jl_array_t *edges, jl_array_t *ext_targets, jl_arra
 // Headers
 
 // serialize information about all loaded modules
-static void write_mod_list(ios_t *s, jl_array_t *a)
+// in the order given to us (which is dom-sorted on dependencies)
+static void write_mod_list(ios_t *s, jl_array_t *a) JL_NOTSAFEPOINT
 {
-    size_t i;
-    size_t len = jl_array_len(a);
+    size_t i, len = jl_array_len(a);
     for (i = 0; i < len; i++) {
         jl_module_t *m = (jl_module_t*)jl_array_ptr_ref(a, i);
         assert(jl_is_module(m));
@@ -589,6 +589,25 @@ static void write_mod_list(ios_t *s, jl_array_t *a)
     }
     write_int32(s, 0);
 }
+
+//// serialize information about all loaded modules
+//static void write_loaded_list(ios_t *s)
+//{
+//    // arraylist_t jl_image_ids; // id info for loaded objects: name (key), checksum
+//    size_t i;
+//    for (i = 0; i < jl_image_ids.len; i++) {
+//        jl_module_t *name = jl_image_ids.items[i];
+//        const char *modname = jl_symbol_name(m->name);
+//        size_t l = strlen(modname);
+//        write_int32(s, l);
+//        ios_write(s, modname, l);
+//        write_uint64(s, m->uuid.hi);
+//        write_uint64(s, m->uuid.lo);
+//        write_uint64(s, m->build_id.hi); // == checksum
+//        write_uint64(s, m->build_id.lo);
+//    }
+//    write_int32(s, 0);
+//}
 
 // OPT_LEVEL should always be the upper bits
 #define OPT_LEVEL 6
@@ -697,11 +716,12 @@ static int64_t write_dependency_list(ios_t *s, jl_array_t* worklist, jl_array_t 
     static jl_value_t *unique_func = NULL;
     if (!unique_func)
         unique_func = jl_get_global(jl_base_module, jl_symbol("unique"));
-    jl_value_t *uniqargs[2] = {unique_func, (jl_value_t*)deps};
     jl_task_t *ct = jl_current_task;
     size_t last_age = ct->world_age;
-    ct->world_age = jl_atomic_load_acquire(&jl_world_counter);
-    jl_array_t *udeps = (*udepsp = deps && unique_func ? (jl_array_t*)jl_apply(uniqargs, 2) : NULL);
+    ct->world_age = jl_base_world;
+    jl_array_t *udeps = NULL;
+    if (deps && unique_func)
+        *udepsp = udeps = (jl_array_t*)jl_apply_generic(unique_func, (jl_value_t**)&deps, 1);
     ct->world_age = last_age;
 
     // write a placeholder for total size so that we can quickly seek past all of the
@@ -748,18 +768,17 @@ static int64_t write_dependency_list(ios_t *s, jl_array_t* worklist, jl_array_t 
         jl_value_t * get_compiletime_prefs_func = jl_get_global(jl_base_module, jl_symbol("get_compiletime_preferences"));
 
         if (toplevel && prefs_hash_func && get_compiletime_prefs_func) {
-            // Temporary invoke in newest world age
+            // Temporary invoke in predictable world age
             size_t last_age = ct->world_age;
-            ct->world_age = jl_atomic_load_acquire(&jl_world_counter);
+            ct->world_age = jl_base_world;
 
             // call get_compiletime_prefs(__toplevel__)
-            jl_value_t *args[3] = {get_compiletime_prefs_func, (jl_value_t*)toplevel, NULL};
-            prefs_list = (jl_value_t*)jl_apply(args, 2);
+            jl_value_t *args[] = {(jl_value_t*)toplevel, NULL};
+            prefs_list = (jl_value_t*)jl_apply_generic(get_compiletime_prefs_func, args, 1);
 
             // Call get_preferences_hash(__toplevel__, prefs_list)
-            args[0] = prefs_hash_func;
-            args[2] = prefs_list;
-            prefs_hash = (jl_value_t*)jl_apply(args, 3);
+            args[1] = prefs_list;
+            prefs_hash = (jl_value_t*)jl_apply_generic(prefs_hash_func, args, 2);
 
             // Reset world age to normal
             ct->world_age = last_age;
@@ -802,7 +821,7 @@ static int64_t write_dependency_list(ios_t *s, jl_array_t* worklist, jl_array_t 
 // Deserialization
 
 // Add methods to external (non-worklist-owned) functions
-static void jl_insert_methods(jl_array_t *list)
+static void jl_insert_methods(jl_staticdata_cache_t *cache, jl_array_t *list)
 {
     size_t i, l = jl_array_len(list);
     for (i = 0; i < l; i++) {
@@ -830,17 +849,13 @@ static void jl_copy_roots(jl_array_t *method_roots_list, uint64_t key)
 
 
 // verify that these edges intersect with the same methods as before
-static jl_array_t *jl_verify_edges(jl_array_t *targets, size_t minworld)
+static void jl_verify_edges(jl_array_t *targets, size_t minworld, jl_array_t *maxvalids)
 {
     size_t i, l = jl_array_len(targets) / 3;
-    static jl_value_t *ulong_array JL_ALWAYS_LEAFTYPE = NULL;
-    if (ulong_array == NULL)
-        ulong_array = jl_apply_array_type((jl_value_t*)jl_ulong_type, 1);
-    jl_array_t *maxvalids = jl_alloc_array_1d(ulong_array, l);
     memset(jl_array_data(maxvalids), 0, l * sizeof(size_t));
     jl_value_t *loctag = NULL;
     jl_value_t *matches = NULL;
-    JL_GC_PUSH3(&maxvalids, &matches, &loctag);
+    JL_GC_PUSH2(&matches, &loctag);
     for (i = 0; i < l; i++) {
         jl_value_t *invokesig = jl_array_ptr_ref(targets, i * 3);
         jl_value_t *callee = jl_array_ptr_ref(targets, i * 3 + 1);
@@ -922,7 +937,6 @@ static jl_array_t *jl_verify_edges(jl_array_t *targets, size_t minworld)
         //ios_puts(valid ? "valid\n" : "INVALID\n", ios_stderr);
     }
     JL_GC_POP();
-    return maxvalids;
 }
 
 // Combine all edges relevant to a method to initialize the maxvalids list
@@ -1061,14 +1075,34 @@ static void jl_verify_graph(jl_array_t *edges, jl_array_t *maxvalids2)
 // Restore backedges to external targets
 // `edges` = [caller1, targets_indexes1, ...], the list of worklist-owned methods calling external methods.
 // `ext_targets` is [invokesig1, callee1, matches1, ...], the global set of non-worklist callees of worklist-owned methods.
-static void jl_insert_backedges(jl_array_t *edges, jl_array_t *ext_targets, jl_array_t *ci_list, size_t minworld)
+static void jl_insert_backedges(jl_staticdata_cache_t *cache, jl_array_t *edges, jl_array_t *ext_targets, jl_array_t *ci_list, size_t minworld)
 {
     // determine which CodeInstance objects are still valid in our image
-    jl_array_t *valids = jl_verify_edges(ext_targets, minworld);
+    size_t i, l = jl_array_len(ext_targets) / 3;
+    static jl_value_t *ulong_array JL_ALWAYS_LEAFTYPE = NULL;
+    if (ulong_array == NULL)
+        ulong_array = jl_apply_array_type((jl_value_t*)jl_ulong_type, 1);
+    jl_array_t *valids = jl_alloc_array_1d(ulong_array, l);
     JL_GC_PUSH1(&valids);
+    if (cache->valids) {
+        assert(jl_typeis(cache->valids, jl_array_uint8_type));
+        for (i = 0; i < l; i++) {
+            ((size_t*)jl_array_data(valids))[i] =
+                ((uint8_t*)jl_array_data(cache->valids))[i] ? ~(size_t)0 : 0;
+        }
+    }
+    else {
+        jl_verify_edges(ext_targets, minworld, valids);
+        cache->valids = jl_alloc_array_1d(jl_array_uint8_type, l);
+        for (i = 0; i < l; i++) {
+            ((uint8_t*)jl_array_data(cache->valids))[i] =
+                ((size_t*)jl_array_data(valids))[i] == ~(size_t)0;
+        }
+    }
     valids = jl_verify_methods(edges, valids); // consumes edges valids, initializes methods valids
     jl_verify_graph(edges, valids); // propagates methods valids for each edge
-    size_t i, l;
+
+    assert(jl_array_len(edges) == 2 * jl_array_len(valids));
 
     // next build a map from external MethodInstances to their CodeInstance for insertion
     l = jl_array_len(ci_list);
@@ -1147,7 +1181,26 @@ static void classify_callers(htable_t *callers_with_edges, jl_array_t *edges)
     }
 }
 
-static jl_value_t *read_verify_mod_list(ios_t *s, jl_array_t *depmods)
+static jl_sym_t *read_verify_mod(ios_t *s, size_t len, jl_module_t *m)
+{
+    char *name = (char*)alloca(len + 1);
+    ios_readall(s, name, len);
+    name[len] = '\0';
+    jl_uuid_t uuid;
+    uuid.hi = read_uint64(s);
+    uuid.lo = read_uint64(s);
+    jl_uuid_t build_id;
+    build_id.hi = read_uint64(s);
+    build_id.lo = read_uint64(s);
+    jl_sym_t *sym = _jl_symbol(name, len);
+    if (!m || !jl_is_module(m) || m->uuid.hi != uuid.hi || m->uuid.lo != uuid.lo || m->name != sym ||
+            m->build_id.hi != build_id.hi || m->build_id.lo != build_id.lo) {
+        return sym;
+    }
+    return NULL;
+}
+
+static jl_value_t *read_verify_mod_list(ios_t *s, jl_array_t *depmods, int8_t *matched)
 {
     if (!jl_main_module->build_id.lo) {
         return jl_get_exceptionf(jl_errorexception_type,
@@ -1160,24 +1213,20 @@ static jl_value_t *read_verify_mod_list(ios_t *s, jl_array_t *depmods)
             return NULL; // success
         if (len == 0 || i == l)
             return jl_get_exceptionf(jl_errorexception_type, "Wrong number of entries in module list.");
-        char *name = (char*)alloca(len + 1);
-        ios_readall(s, name, len);
-        name[len] = '\0';
-        jl_uuid_t uuid;
-        uuid.hi = read_uint64(s);
-        uuid.lo = read_uint64(s);
-        jl_uuid_t build_id;
-        build_id.hi = read_uint64(s);
-        build_id.lo = read_uint64(s);
-        jl_sym_t *sym = _jl_symbol(name, len);
         jl_module_t *m = (jl_module_t*)jl_array_ptr_ref(depmods, i);
-        if (!m || !jl_is_module(m) || m->uuid.hi != uuid.hi || m->uuid.lo != uuid.lo || m->name != sym ||
-                m->build_id.hi != build_id.hi || m->build_id.lo != build_id.lo) {
+        jl_sym_t *name = read_verify_mod(s, len, m);
+        if (name) {
             return jl_get_exceptionf(jl_errorexception_type,
-                "Invalid input in module list: expected %s.", name);
+                "Invalid input in module list: expected %s.", jl_symbol_name(name));
+        }
+        if (matched) {
+            size_t j = external_blob_index((jl_value_t*)m);
+            assert(j < n_linkage_blobs());
+            matched[j] = 1;
         }
     }
 }
+
 
 static int readstr_verify(ios_t *s, const char *str, int include_null)
 {

@@ -594,7 +594,6 @@ typedef struct _jl_module_t {
     arraylist_t usings;  // modules with all bindings potentially imported
     jl_uuid_t build_id;
     jl_uuid_t uuid;
-    size_t primary_world;
     _Atomic(uint32_t) counter;
     int32_t nospecialize;  // global bit flags: initialization for new methods
     int8_t optlevel;

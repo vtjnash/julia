@@ -183,13 +183,13 @@ end
 
 const slug_chars = String(['A':'Z'; 'a':'z'; '0':'9'])
 
-function slug(x::UInt32, p::Int)
-    y::UInt32 = x
+function slug(x::Unsigned, p::Int)
+    y::typeof(x) = x
     sprint(sizehint=p) do io
         n = length(slug_chars)
         for i = 1:p
             y, d = divrem(y, n)
-            write(io, slug_chars[1+d])
+            write(io, slug_chars[1 + Int(d)])
         end
     end
 end
@@ -2955,3 +2955,5 @@ precompile(include_package_for_output, (PkgId, String, Vector{String}, Vector{St
 precompile(include_package_for_output, (PkgId, String, Vector{String}, Vector{String}, Vector{String}, typeof(_concrete_dependencies), String))
 precompile(create_expr_cache, (PkgId, String, String, String, typeof(_concrete_dependencies), IO, IO))
 precompile(create_expr_cache, (PkgId, String, String, Nothing, typeof(_concrete_dependencies), IO, IO))
+
+include("loading_wip.jl")

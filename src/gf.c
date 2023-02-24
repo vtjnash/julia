@@ -617,6 +617,7 @@ static int reset_mt_caches(jl_methtable_t *mt, void *env)
 
 jl_function_t *jl_typeinf_func JL_GLOBALLY_ROOTED = NULL;
 JL_DLLEXPORT size_t jl_typeinf_world = 1;
+JL_DLLEXPORT size_t jl_base_world = 1;
 
 JL_DLLEXPORT void jl_set_typeinf_func(jl_value_t *f)
 {

@@ -320,6 +320,7 @@ JL_DLLEXPORT extern arraylist_t jl_image_relocs;  // external linkage: sysimg/pk
 extern JL_DLLEXPORT size_t jl_page_size;
 extern jl_function_t *jl_typeinf_func JL_GLOBALLY_ROOTED;
 extern JL_DLLEXPORT size_t jl_typeinf_world;
+extern JL_DLLEXPORT size_t jl_base_world;
 extern _Atomic(jl_typemap_entry_t*) call_cache[N_CALL_CACHE] JL_GLOBALLY_ROOTED;
 extern jl_array_t *jl_all_methods JL_GLOBALLY_ROOTED;
 
