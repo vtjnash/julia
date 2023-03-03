@@ -1396,9 +1396,220 @@ static int get_intersect_visitor(jl_typemap_entry_t *oldentry, struct typemap_in
     return 1;
 }
 
+
+JL_DLLEXPORT jl_value_t *jl_diagonalize_var(jl_value_t *body, jl_tvar_t *tv);
+
+static jl_value_t *diagonalize_var(jl_value_t *type, jl_tvar_t *tv, jl_unionall_t **result)
+{
+    // we must replace each covariant occurrence of newvar with a different newvar2<:newvar (diagonal rule)
+    if (type == (jl_value_t*)tv) {
+        *result = (jl_unionall_t*)jl_new_struct(jl_unionall_type, tv, *result);
+        jl_tvar_t *newvar = jl_new_typevar(tv->name, tv->lb, (jl_value_t*)tv);
+        (*result)->var = newvar;
+        jl_gc_wb(*result, newvar);
+        type = (jl_value_t*)newvar;
+    }
+    else if (jl_is_unionall(type)) {
+        jl_value_t *body = ((jl_unionall_t*)type)->body;
+        jl_tvar_t *var = ((jl_unionall_t*)type)->var;
+        if (var != tv) {
+            jl_value_t *newbody = diagonalize_var(body, tv, result);
+            jl_value_t *newvar = NULL;
+            JL_GC_PUSH2(&newbody, &newvar);
+            if (body == newbody || jl_has_typevar(newbody, var)) {
+                if (body != newbody) {
+                    newbody = jl_new_struct(jl_unionall_type, var, newbody);
+                    type = newbody;
+                }
+                // n.b. we do not widen lb, since that would be the wrong direction
+                newvar = diagonalize_var(var->ub, tv, result);
+                if (newvar != var->ub) {
+                    newvar = (jl_value_t*)jl_new_typevar(var->name, tv->lb, newvar);
+                    newbody = jl_apply_type1(newbody, newvar);
+                    newbody = jl_type_unionall((jl_tvar_t*)newvar, newbody);
+                    type = newbody;
+                }
+            }
+            JL_GC_POP();
+        }
+    }
+    else if (jl_is_uniontype(type)) {
+        jl_value_t *a = ((jl_uniontype_t*)type)->a;
+        jl_value_t *b = ((jl_uniontype_t*)type)->b;
+        jl_value_t *newa = NULL;
+        jl_value_t *newb = NULL;
+        JL_GC_PUSH2(&newa, &newb);
+        newa = diagonalize_var(a, tv, result);
+        newb = diagonalize_var(b, tv, result);
+        if (newa != a || newb != b)
+            type = jl_new_struct(jl_uniontype_type, newa, newb);
+        JL_GC_POP();
+    }
+    else if (jl_is_vararg(type)) {
+        jl_value_t *t = jl_unwrap_vararg(type);
+        //jl_unionall_t *bounds = (jl_unionall_t*)jl_nothing;
+        //jl_value_t *newt = NULL;
+        //JL_GC_PUSH1(&bounds, &newt);
+        //newt = diagonalize_var(t, tv, &bounds);
+        jl_value_t *newt = t;
+        if (t == (jl_value_t*)tv) // this is pathetic, but otherwise rewrap_unionall will fail us
+            newt = jl_new_struct(jl_uniontype_type, newt, newt);
+        JL_GC_PUSH1(&newt);
+        newt = jl_diagonalize_var(newt, tv);
+        if (t != newt) {
+        //    newt = jl_rewrap_unionall(newt, (jl_value_t*)bounds);
+        //    while (jl_is_typevar(newt)) // this is pathetic, but rewrap_unionall might have failed us
+        //        newt = ((jl_tvar_t*)newt)->ub;
+            jl_value_t *newn = jl_unwrap_vararg_num(type);
+            type = jl_new_struct(jl_vararg_type, newt, newn);
+        }
+        JL_GC_POP();
+    }
+    else if (jl_is_datatype(type)) {
+        if (jl_is_tuple_type(type)) {
+            jl_svec_t *newparams = NULL;
+            JL_GC_PUSH1(&newparams);
+            for (size_t i = jl_nparams(type); i-- > 0; ) {
+                jl_value_t *elt = jl_tparam(type, i);
+                jl_value_t *newelt = diagonalize_var(elt, tv, result);
+                if (elt != newelt) {
+                    if (!newparams) {
+                        newparams = (jl_svec_t*)newelt; // temporary root
+                        newparams = jl_svec_copy(((jl_datatype_t*)type)->parameters);
+                    }
+                    jl_svecset(newparams, i, newelt);
+                }
+            }
+            if (newparams)
+                type = (jl_value_t*)jl_apply_tuple_type(newparams);
+            JL_GC_POP();
+        }
+    }
+    return type;
+}
+
+
+JL_DLLEXPORT jl_value_t *jl_diagonalize_var(jl_value_t *body, jl_tvar_t *tv)
+{
+    jl_unionall_t *bounds = NULL;
+    JL_GC_PUSH1(&bounds);
+    jl_value_t *newbody = diagonalize_var(body, tv, &bounds);
+    if (bounds) {
+        // aka jl_rewrap_unionall(body, bounds)
+        jl_unionall_t *bb = bounds;
+        while (bb->body != NULL)
+            bb = (jl_unionall_t*)bb->body;
+        bb->body = newbody;
+        jl_gc_wb(bb, newbody);
+        newbody = (jl_value_t*)bounds;
+    }
+    JL_GC_POP();
+    return newbody;
+}
+
+
+// compute a minimal typejoin on a tupletype, which removes all covariant Unions
+// by type widening (e.g. removes depth=0 subtyping and intersection decision points)
+JL_DLLEXPORT jl_value_t *typejoin_ttype(jl_value_t *type)
+{
+    if (jl_is_unionall(type)) {
+        jl_value_t *body = ((jl_unionall_t*)type)->body;
+        jl_value_t *uw = jl_unwrap_unionall(body);
+        if (jl_is_datatype(uw) && ((jl_datatype_t*)uw)->name->wrapper == type)
+            return type;
+        jl_tvar_t *var = ((jl_unionall_t*)type)->var;
+        jl_value_t *newbody = typejoin_ttype(body);
+        if (body != newbody) {
+            uw = jl_unwrap_unionall(newbody);
+            if (jl_is_datatype(uw) && ((jl_datatype_t*)uw)->name->wrapper == newbody)
+                return newbody;
+        }
+        jl_value_t *newvar = NULL;
+        JL_GC_PUSH2(&newvar, &type);
+        if (body == newbody || jl_has_typevar(newbody, var)) {
+            if (body != newbody) {
+                type = newbody;
+                type = jl_new_struct(jl_unionall_type, var, type);
+            }
+            newvar = typejoin_ttype(var->ub);
+            if (newvar != var->ub || var->lb != jl_bottom_type) {
+                newvar = (jl_value_t*)jl_new_typevar(var->name, jl_bottom_type, newvar);
+                type = jl_apply_type1(type, newvar);
+                if (var_occurs_invariant(body, var, 0) && !var_occurs_invariant(newbody, var, 0))
+                    type = jl_diagonalize_var(type, (jl_tvar_t*)newvar);
+                type = jl_type_unionall((jl_tvar_t*)newvar, type);
+            }
+        }
+        JL_GC_POP();
+    }
+    else if (jl_is_uniontype(type)) {
+        jl_value_t *a = ((jl_uniontype_t*)type)->a;
+        jl_value_t *b = ((jl_uniontype_t*)type)->b;
+        jl_value_t *newa = NULL;
+        jl_value_t *newb = NULL;
+        JL_GC_PUSH2(&newa, &newb);
+        newa = typejoin_ttype(a);
+        newb = typejoin_ttype(b);
+        type = (jl_value_t*)jl_any_type;
+        if (newa == newb) {
+            type = newa;
+        }
+        else {
+            // TODO: change this to find the common supertype here
+            newa = jl_unwrap_unionall(newa);
+            newb = jl_unwrap_unionall(newb);
+            if (jl_is_datatype(newa) && jl_is_datatype(newb)) {
+                jl_typename_t *namea = ((jl_datatype_t*)newa)->name;
+                jl_typename_t *nameb = ((jl_datatype_t*)newb)->name;
+                if (namea == nameb)
+                    type = namea->wrapper;
+            }
+        }
+        JL_GC_POP();
+    }
+    else if (jl_is_vararg(type)) {
+        jl_value_t *t = jl_unwrap_vararg(type);
+        jl_value_t *n = jl_unwrap_vararg_num(type);
+        jl_value_t *newt = NULL;
+        jl_value_t *newn = NULL;
+        JL_GC_PUSH2(&newt, &newn);
+        newt = typejoin_ttype(t);
+        newn = typejoin_ttype(n);
+        if (t != newt || n != newn)
+            type = jl_new_struct(jl_vararg_type, newt, newn);
+        JL_GC_POP();
+    }
+    else if (jl_is_datatype(type)) {
+        if (jl_is_tuple_type(type)) {
+            jl_svec_t *newparams = NULL;
+            JL_GC_PUSH1(&newparams);
+            size_t i, np = jl_nparams(type);
+            for (i = 0; i < np; i++) {
+                jl_value_t *elt = jl_tparam(type, i);
+                jl_value_t *newelt = typejoin_ttype(elt);
+                if (elt != newelt) {
+                    if (!newparams) {
+                        newparams = (jl_svec_t*)newelt; // temporary root
+                        newparams = jl_svec_copy(((jl_datatype_t*)type)->parameters);
+                    }
+                    jl_svecset(newparams, i, newelt);
+                }
+            }
+            if (newparams)
+                type = (jl_value_t*)jl_apply_tuple_type(newparams);
+            JL_GC_POP();
+        }
+        //else if (!((jl_datatype_t*)type)->isconcretetype) {
+        //    type = ((jl_datatype_t*)type)->name->wrapper;
+        //}
+    }
+    return type;
+}
+
 static jl_value_t *get_intersect_matches(jl_typemap_t *defs, jl_typemap_entry_t *newentry)
 {
-    jl_tupletype_t *type = newentry->sig;
+    jl_tupletype_t *type = (jl_tupletype_t*)typejoin_ttype((jl_value_t*)newentry->sig);
+    //type = newentry->sig;
     jl_tupletype_t *ttypes = (jl_tupletype_t*)jl_unwrap_unionall((jl_value_t*)type);
     size_t l = jl_nparams(ttypes);
     jl_value_t *va = NULL;

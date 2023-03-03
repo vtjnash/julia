@@ -382,6 +382,13 @@ function rename_unionall(@nospecialize(u))
     return UnionAll(nv, body{nv})
 end
 
+# expand diagonal TypeVars to be unconstrained
+function diagonalize_unionall(T::UnionAll)
+    body = ccall(:jl_diagonalize_var, Any, (Any, Any), T.body, T.var)
+    body === T.body && return T
+    return UnionAll(T.var, body)
+end
+
 function isvarargtype(@nospecialize(t))
     return isa(t, Core.TypeofVararg)
 end

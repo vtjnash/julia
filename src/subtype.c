@@ -826,7 +826,7 @@ static int var_occurs_inside(jl_value_t *v, jl_tvar_t *var, int inside, int want
 
 typedef int (*tvar_callback)(void*, int8_t, jl_stenv_t *, int);
 
-static int var_occurs_invariant(jl_value_t *v, jl_tvar_t *var, int inv) JL_NOTSAFEPOINT
+int var_occurs_invariant(jl_value_t *v, jl_tvar_t *var, int inv) JL_NOTSAFEPOINT
 {
     return var_occurs_inside(v, var, 0, 1);
 }

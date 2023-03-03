@@ -680,6 +680,7 @@ JL_DLLEXPORT void jl_method_table_insert(jl_methtable_t *mt, jl_method_t *method
 jl_datatype_t *jl_mk_builtin_func(jl_datatype_t *dt, const char *name, jl_fptr_args_t fptr) JL_GC_DISABLED;
 int jl_obviously_unequal(jl_value_t *a, jl_value_t *b);
 JL_DLLEXPORT jl_array_t *jl_find_free_typevars(jl_value_t *v);
+int var_occurs_invariant(jl_value_t *v, jl_tvar_t *var, int inv) JL_NOTSAFEPOINT;
 int jl_has_fixed_layout(jl_datatype_t *t);
 JL_DLLEXPORT int jl_struct_try_layout(jl_datatype_t *dt);
 JL_DLLEXPORT int jl_type_mappable_to_c(jl_value_t *ty);
