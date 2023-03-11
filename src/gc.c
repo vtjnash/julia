@@ -1056,6 +1056,7 @@ void jl_gc_force_mark_old(jl_ptls_t ptls, jl_value_t *v) JL_NOTSAFEPOINT
 
 STATIC_INLINE void maybe_collect(jl_ptls_t ptls)
 {
+    //return;
     if (jl_atomic_load_relaxed(&ptls->gc_num.allocd) >= 0 || jl_gc_debug_check_other()) {
         jl_gc_collect(JL_GC_AUTO);
     }

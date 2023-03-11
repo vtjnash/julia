@@ -967,7 +967,10 @@ JL_DLLEXPORT void jl_init_restored_modules(jl_array_t *init_order)
     for (i = 0; i < l; i++) {
         jl_value_t *mod = jl_array_ptr_ref(init_order, i);
         if (!jl_generating_output() || jl_options.incremental) {
+            //uint64_t t0 = uv_hrtime();
             jl_module_run_initializer((jl_module_t*)mod);
+            //uint64_t t1 = uv_hrtime();
+            //ios_printf(ios_stdout, "\n%u\t%s\t", ((unsigned)(t1 - t0))/1000u, jl_symbol_name(((jl_module_t*)mod)->name));
         }
         else {
             if (jl_module_init_order == NULL)

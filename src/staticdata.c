@@ -3097,7 +3097,15 @@ static int  jl_restore_system_image_from_stream_(ios_t *f, jl_image_t *image, jl
                 arraylist_push(&cleanup_list, (void*)obj);
                 jl_value_t *specTypes = obj[1];
                 jl_value_t *sparams = obj[2];
+                uint64_t t0 = uv_hrtime() - jl_gc_total_hrtime();
+                uint64_t b0; jl_gc_get_total_bytes(&b0);
                 newobj = (jl_value_t*)jl_specializations_get_linfo((jl_method_t*)m, specTypes, (jl_svec_t*)sparams);
+                //uint64_t t1 = uv_hrtime() - jl_gc_total_hrtime();
+                //uint64_t b1; jl_gc_get_total_bytes(&b1);
+                //ios_printf(ios_stdout, "\n%u\t%u\t", ((unsigned)(t1 - t0))/1000u, ((unsigned)(b1 - b0))/1024u);
+                //jl_static_show((JL_STREAM*)ios_stdout, (jl_value_t*)specTypes);
+                //ios_printf(ios_stdout, "\t");
+                //jl_static_show((JL_STREAM*)ios_stdout, (jl_value_t*)m);
                 obj[0] = newobj;
             }
         }

@@ -1937,6 +1937,8 @@ static int is_replacing(jl_value_t *type, jl_method_t *m, jl_method_t *const *d,
 JL_DLLEXPORT void jl_method_table_insert(jl_methtable_t *mt, jl_method_t *method, jl_tupletype_t *simpletype)
 {
     JL_TIMING(ADD_METHOD);
+    uint64_t t0 = uv_hrtime() - jl_gc_total_hrtime();
+    uint64_t b0; jl_gc_get_total_bytes(&b0);
     assert(jl_is_method(method));
     assert(jl_is_mtable(mt));
     jl_value_t *type = method->sig;
@@ -2139,6 +2141,10 @@ JL_DLLEXPORT void jl_method_table_insert(jl_methtable_t *mt, jl_method_t *method
     }
     update_max_args(mt, type);
     JL_UNLOCK(&mt->writelock);
+    //uint64_t t1 = uv_hrtime() - jl_gc_total_hrtime();
+    //uint64_t b1; jl_gc_get_total_bytes(&b1);
+    //ios_printf(ios_stdout, "\n%u\t%d\t", ((unsigned)(t1 - t0))/1000u, ((unsigned)(b1 - b0)));
+    //jl_static_show((JL_STREAM*)ios_stdout, (jl_value_t*)type);
     JL_GC_POP();
 }
 
@@ -3030,7 +3036,13 @@ static jl_method_match_t *_gf_invoke_lookup(jl_value_t *types JL_PROPAGATES_ROOT
         mt = (jl_value_t*)jl_method_table_for(unw);
     if (mt == jl_nothing)
         mt = NULL;
+    //uint64_t t0 = uv_hrtime() - jl_gc_total_hrtime();
+    //uint64_t b0; jl_gc_get_total_bytes(&b0);
     jl_value_t *matches = ml_matches((jl_methtable_t*)mt, (jl_tupletype_t*)types, 1, 0, 0, world, 1, min_valid, max_valid, NULL);
+    //uint64_t t1 = uv_hrtime() - jl_gc_total_hrtime();
+    //uint64_t b1; jl_gc_get_total_bytes(&b1);
+    //jl_printf((JL_STREAM*)STDOUT_FILENO, "\n%u\t%u\t%d\t", ((unsigned)(t1 - t0))/1000u, ((unsigned)(b1 - b0))/1024u, (int)(matches == jl_nothing ? -1 : jl_array_len(matches)));
+    //jl_static_show((JL_STREAM*)STDOUT_FILENO, (jl_value_t*)types);
     if (matches == jl_nothing || jl_array_len(matches) != 1)
         return NULL;
     jl_method_match_t *matc = (jl_method_match_t*)jl_array_ptr_ref(matches, 0);

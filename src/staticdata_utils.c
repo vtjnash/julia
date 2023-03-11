@@ -862,6 +862,9 @@ static void jl_verify_edges(jl_array_t *targets, size_t minworld, jl_array_t *ma
         jl_value_t *expected = jl_array_ptr_ref(targets, i * 3 + 2);
         size_t min_valid = 0;
         size_t max_valid = ~(size_t)0;
+        //uint64_t t0 = uv_hrtime() - jl_gc_total_hrtime();
+        //uint64_t b0; jl_gc_get_total_bytes(&b0);
+        //if(1);else
         if (invokesig) {
             assert(callee && "unsupported edge");
             jl_methtable_t *mt = jl_method_get_table(((jl_method_instance_t*)callee)->def.method);
@@ -932,9 +935,16 @@ static void jl_verify_edges(jl_array_t *targets, size_t minworld, jl_array_t *ma
             jl_array_ptr_1d_push(_jl_debug_method_invalidation, loctag);
             jl_array_ptr_1d_push(_jl_debug_method_invalidation, matches);
         }
+        //uint64_t t1 = uv_hrtime() - jl_gc_total_hrtime();
+        //uint64_t b1; jl_gc_get_total_bytes(&b1);
+        //ios_printf(ios_stdout, "\n%u\t%u\t%d\t", ((unsigned)(t1 - t0))/1000u, ((unsigned)(b1 - b0))/1024u, max_valid == ~(size_t)0);
+        //jl_static_show((JL_STREAM*)ios_stdout, (jl_value_t*)invokesig);
+        //ios_printf(ios_stdout, "\t");
+        //jl_static_show((JL_STREAM*)ios_stdout, (jl_value_t*)callee);
+        //
         //jl_static_show((JL_STREAM*)ios_stderr, (jl_value_t*)invokesig);
         //jl_static_show((JL_STREAM*)ios_stderr, (jl_value_t*)callee);
-        //ios_puts(valid ? "valid\n" : "INVALID\n", ios_stderr);
+        //ios_puts(max_valid == ~(size_t)0 ? "valid\n" : "INVALID\n", ios_stderr);
     }
     JL_GC_POP();
 }
@@ -1084,11 +1094,12 @@ static void jl_insert_backedges(jl_staticdata_cache_t *cache, jl_array_t *edges,
         ulong_array = jl_apply_array_type((jl_value_t*)jl_ulong_type, 1);
     jl_array_t *valids = jl_alloc_array_1d(ulong_array, l);
     JL_GC_PUSH1(&valids);
-    if (cache->valids) {
+    if (1 && cache->valids) {
         assert(jl_typeis(cache->valids, jl_array_uint8_type));
         for (i = 0; i < l; i++) {
             ((size_t*)jl_array_data(valids))[i] =
                 ((uint8_t*)jl_array_data(cache->valids))[i] ? ~(size_t)0 : 0;
+            // TODO: if valid, then call cache_method, to get more use from this later too
         }
     }
     else {
