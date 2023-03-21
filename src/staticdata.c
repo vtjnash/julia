@@ -3179,6 +3179,14 @@ static int  jl_restore_system_image_from_stream_(ios_t *f, jl_image_t *image, jl
 
     if (s.incremental) {
         jl_root_new_gvars(&s, image, external_fns_begin);
+        // reverse toinsert list, for ease later
+        assert(toinsert); // make clang-sa happy that s.incremental is not modified
+        for (size_t i = 0; i < toinsert->len; i++) {
+            void *temp = toinsert->items[i];
+            toinsert->items[i] = toinsert->items[toinsert->len - i - 1];
+            toinsert->items[toinsert->len - i - 1] = temp;
+        }
+    }
     ios_close(&relocs);
     ios_close(&const_data);
     ios_close(&gvar_record);

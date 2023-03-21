@@ -145,6 +145,18 @@ static jl_method_instance_t *jl_specializations_get_linfo_(jl_method_t *m JL_PRO
         else {
             _Atomic(jl_method_instance_t*) *data = (_Atomic(jl_method_instance_t*)*)jl_svec_data(specializations);
             JL_GC_PUSH1(&specializations); // clang-sa doesn't realize this loop uses specializations
+            //for (i = cl - 1; i > 1; i--) {
+            //    // quicker scan, for egal
+            //    jl_method_instance_t *mi = jl_atomic_load_relaxed(&data[i]);
+            //    if ((jl_value_t*)mi == jl_nothing)
+            //        break;
+            //    if (jl_types_egal(mi->specTypes, type)) {
+            //        if (locked)
+            //            JL_UNLOCK(&m->writelock);
+            //        JL_GC_POP();
+            //        return mi;
+            //    }
+            //}
             // the last lastcl-i-1 elements are already checked when locked, so start search with the new elements only
             for (i += cl - lastcl; i > 0; i--) {
                 jl_method_instance_t *mi = jl_atomic_load_relaxed(&data[i]);
