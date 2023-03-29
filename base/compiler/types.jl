@@ -341,7 +341,7 @@ function NativeInterpreter(world::UInt = get_world_counter();
                            inf_params::InferenceParams = InferenceParams(),
                            opt_params::OptimizationParams = OptimizationParams())
     # Sometimes the caller is lazy and passes typemax(UInt).
-    # we cap it to the current world age for correctness
+    # we cap it to the current world age
     if world == typemax(UInt)
         world = get_world_counter()
     end
