@@ -1993,18 +1993,56 @@ STATIC_INLINE jl_value_t *gc_mark_obj8(jl_ptls_t ptls, char *obj8_parent, uint8_
     jl_gc_markqueue_t *mq = &ptls->mark_queue;
     assert(obj8_end - obj8_begin < 32);
     // we could bit pack these, but that introduces a loop-carried dependency
-    int64_t have_young[32 / 8] = {0};
-    //int8_t have_new[32] = {0};
-    uintptr_t have_new[32];
-    for (uint8_t *obj8 = obj8_begin, i = 0; obj8 < obj8_end; obj8++, i++) {
+    int8_t have_young = 0;
+    int8_t have_new[32];
+    uint8_t *obj8 = obj8_begin, i = 0;
+    while (obj8 < obj8_end - 1) {
+        uint16_t obj8_12;
+        memcpy(&obj8_12, obj8, 2);
+        obj8 += 2;
+        jl_value_t **slot1 = &((jl_value_t**)obj8_parent)[obj8_12 & 0xff];
+        jl_value_t **slot2 = &((jl_value_t**)obj8_parent)[obj8_12 >> 8];
+        jl_value_t *new_obj1 = *slot1;
+        jl_value_t *new_obj2 = *slot2;
+        jl_taggedvalue_t *o1 = jl_astaggedvalue(new_obj1);
+        jl_taggedvalue_t *o2 = jl_astaggedvalue(new_obj2);
+        uintptr_t tag1 = GC_OLD_MARKED;
+        uintptr_t tag2 = GC_OLD_MARKED;
+        if (new_obj1 && new_obj2) {
+            tag1 = o1->header;
+            tag2 = o2->header;
+        }
+        else if (new_obj1 != NULL) {
+            tag1 = o1->header;
+        }
+        else if (new_obj2 != NULL) {
+            tag2 = o2->header;
+        }
+        have_new[i] = !gc_marked(tag1);
+        have_young |= !gc_old(tag1);
+        i++;
+        have_new[i] = !gc_marked(tag2);
+        have_young |= !gc_old(tag2);
+        i++;
+        if (new_obj1 != NULL) {
+            verify_parent2("object", obj8_parent, slot1, "field(%d)",
+                            gc_slot_to_fieldidx(obj8_parent, slot1, (jl_datatype_t*)jl_typeof(obj8_parent)));
+            gc_heap_snapshot_record_object_edge((jl_value_t*)obj8_parent, slot1);
+        }
+        if (new_obj2 != NULL) {
+            verify_parent2("object", obj8_parent, slot2, "field(%d)",
+                            gc_slot_to_fieldidx(obj8_parent, slot2, (jl_datatype_t*)jl_typeof(obj8_parent)));
+            gc_heap_snapshot_record_object_edge((jl_value_t*)obj8_parent, slot2);
+        }
+    }
+    if (obj8 < obj8_end) {
         jl_value_t **slot = &((jl_value_t**)obj8_parent)[*obj8];
         jl_value_t *new_obj = *slot;
         if (new_obj != NULL) {
             jl_taggedvalue_t *o = jl_astaggedvalue(new_obj);
             uintptr_t tag = o->header;
-            int8_t young = !gc_old(tag);
-            memcpy(&((uint8_t*)have_young)[i], &young, 1);
-            have_new[i] = gc_marked(tag) ? 0 : tag;
+            have_new[i] = !gc_marked(tag);
+            have_young |= !gc_old(tag);
             verify_parent2("object", obj8_parent, slot, "field(%d)",
                             gc_slot_to_fieldidx(obj8_parent, slot, (jl_datatype_t*)jl_typeof(obj8_parent)));
             gc_heap_snapshot_record_object_edge((jl_value_t*)obj8_parent, slot);
@@ -2013,14 +2051,13 @@ STATIC_INLINE jl_value_t *gc_mark_obj8(jl_ptls_t ptls, char *obj8_parent, uint8_
             have_new[i] = 0;
         }
     }
-    nptr |= (have_young[0] | have_young[1] | have_young[2] | have_young[3]) != 0;
+    nptr |= (have_young != 0);
     gc_mark_push_remset(ptls, (jl_value_t *)obj8_parent, nptr);
     // Unroll marking of last item to avoid pushing
     // and popping it right away
     jl_value_t *last_obj = NULL;
     for (uint8_t *obj8 = obj8_begin, i = 0; obj8 < obj8_end; obj8++, i++) {
-        uintptr_t tag = have_new[i];
-        if (tag) {
+        if (have_new[i]) {
             uint8_t *obj8 = obj8_begin + i;
             jl_value_t **slot = &((jl_value_t**)obj8_parent)[*obj8];
             jl_value_t *next = jl_assume(*slot);
