@@ -41,6 +41,8 @@ JL_DLLEXPORT jl_sym_t *jl_lambda_sym;
 JL_DLLEXPORT jl_sym_t *jl_assign_sym;
 JL_DLLEXPORT jl_sym_t *jl_globalref_sym;
 JL_DLLEXPORT jl_sym_t *jl_do_sym;
+JL_DLLEXPORT jl_sym_t *jl_symbolicgoto_sym;
+JL_DLLEXPORT jl_sym_t *jl_symboliclabel_sym;
 JL_DLLEXPORT jl_sym_t *jl_method_sym;
 JL_DLLEXPORT jl_sym_t *jl_core_sym;
 JL_DLLEXPORT jl_sym_t *jl_enter_sym;
@@ -59,6 +61,7 @@ JL_DLLEXPORT jl_sym_t *jl_thunk_sym;
 JL_DLLEXPORT jl_sym_t *jl_foreigncall_sym;
 JL_DLLEXPORT jl_sym_t *jl_as_sym;
 JL_DLLEXPORT jl_sym_t *jl_global_sym;
+JL_DLLEXPORT jl_sym_t *jl_local_sym;
 JL_DLLEXPORT jl_sym_t *jl_list_sym;
 JL_DLLEXPORT jl_sym_t *jl_dot_sym;
 JL_DLLEXPORT jl_sym_t *jl_newvar_sym;
@@ -87,12 +90,14 @@ JL_DLLEXPORT jl_sym_t *jl_nospecializeinfer_sym;
 JL_DLLEXPORT jl_sym_t *jl_macrocall_sym;
 JL_DLLEXPORT jl_sym_t *jl_colon_sym;
 JL_DLLEXPORT jl_sym_t *jl_hygienicscope_sym;
+JL_DLLEXPORT jl_sym_t *jl_hygienicunscope_sym;
 JL_DLLEXPORT jl_sym_t *jl_throw_undef_if_not_sym;
 JL_DLLEXPORT jl_sym_t *jl_getfield_undefref_sym;
 JL_DLLEXPORT jl_sym_t *jl_gc_preserve_begin_sym;
 JL_DLLEXPORT jl_sym_t *jl_gc_preserve_end_sym;
 JL_DLLEXPORT jl_sym_t *jl_coverageeffect_sym;
 JL_DLLEXPORT jl_sym_t *jl_escape_sym;
+JL_DLLEXPORT jl_sym_t *jl_scopetag_sym;
 JL_DLLEXPORT jl_sym_t *jl_aliasscope_sym;
 JL_DLLEXPORT jl_sym_t *jl_popaliasscope_sym;
 JL_DLLEXPORT jl_sym_t *jl_optlevel_sym;
@@ -112,6 +117,9 @@ JL_DLLEXPORT jl_sym_t *jl_acquire_sym;
 JL_DLLEXPORT jl_sym_t *jl_release_sym;
 JL_DLLEXPORT jl_sym_t *jl_acquire_release_sym;
 JL_DLLEXPORT jl_sym_t *jl_sequentially_consistent_sym;
+
+JL_DLLEXPORT jl_sym_t *jl_let_sym;
+JL_DLLEXPORT jl_sym_t *jl_try_sym;
 
 
 static const uint8_t flisp_system_image[] = {
@@ -318,6 +326,7 @@ void jl_init_common_symbols(void)
     jl_opaque_closure_method_sym = jl_symbol("opaque_closure_method");
     jl_const_sym = jl_symbol("const");
     jl_global_sym = jl_symbol("global");
+    jl_local_sym = jl_symbol("local");
     jl_thunk_sym = jl_symbol("thunk");
     jl_toplevel_sym = jl_symbol("toplevel");
     jl_dot_sym = jl_symbol(".");
@@ -351,7 +360,9 @@ void jl_init_common_symbols(void)
     jl_max_methods_sym = jl_symbol("max_methods");
     jl_macrocall_sym = jl_symbol("macrocall");
     jl_escape_sym = jl_symbol("escape");
+    jl_scopetag_sym = jl_symbol("unescape");
     jl_hygienicscope_sym = jl_symbol("hygienic-scope");
+    jl_hygienicunscope_sym = jl_symbol("hygienic-unscope");
     jl_gc_preserve_begin_sym = jl_symbol("gc_preserve_begin");
     jl_gc_preserve_end_sym = jl_symbol("gc_preserve_end");
     jl_generated_sym = jl_symbol("generated");
@@ -359,6 +370,8 @@ void jl_init_common_symbols(void)
     jl_throw_undef_if_not_sym = jl_symbol("throw_undef_if_not");
     jl_getfield_undefref_sym = jl_symbol("##getfield##");
     jl_do_sym = jl_symbol("do");
+    jl_symbolicgoto_sym = jl_symbol("symbolicgoto");
+    jl_symboliclabel_sym = jl_symbol("symboliclabel");
     jl_coverageeffect_sym = jl_symbol("code_coverage_effect");
     jl_aliasscope_sym = jl_symbol("aliasscope");
     jl_popaliasscope_sym = jl_symbol("popaliasscope");
@@ -375,6 +388,9 @@ void jl_init_common_symbols(void)
     jl_release_sym = jl_symbol("release");
     jl_acquire_release_sym = jl_symbol("acquire_release");
     jl_sequentially_consistent_sym = jl_symbol("sequentially_consistent");
+
+    jl_let_sym = jl_symbol("let");
+    jl_try_sym = jl_symbol("try");
 }
 
 JL_DLLEXPORT void jl_lisp_prompt(void)
@@ -1028,6 +1044,10 @@ int jl_is_ast_node(jl_value_t *e) JL_NOTSAFEPOINT
 
 static int is_self_quoting_expr(jl_expr_t *e) JL_NOTSAFEPOINT
 {
+    // some Expr have symbols inside that will make Julia angry if we attempt to mark them with scope tags
+    //return (e->head == jl_inert_sym ||
+    //        e->head == jl_globalref_sym ||
+    //        e->head == jl_module_sym ||
     return (e->head == jl_inert_sym ||
             e->head == jl_core_sym ||
             e->head == jl_line_sym ||
@@ -1110,6 +1130,158 @@ static jl_value_t *jl_invoke_julia_macro(jl_array_t *args, jl_module_t *inmodule
     *lineinfo = margs[1];
     JL_GC_POP();
     return result;
+}
+
+static jl_value_t *wrap_scopetag(jl_value_t *expr, int escapes)
+{
+    assert(escapes > 0);
+    jl_value_t *wrap = (jl_value_t*)jl_exprn(jl_scopetag_sym, 2);
+    JL_GC_PUSH1(&wrap);
+    jl_exprargset(wrap, 0, expr);
+    jl_exprargset(wrap, 1, jl_box_long(escapes));
+    JL_GC_POP();
+    return wrap;
+}
+
+
+JL_DLLEXPORT jl_value_t *jl_expand_hygiene(jl_value_t *expr, int macroctxs, struct macroctx_stack *macroctx)
+{
+    if (!expr)
+        return expr;
+    if (macroctx && jl_is_symbol(expr)) {
+        // we encountered a hygienic symbol
+        int escapes = macroctxs - (size_t)macroctx->m;
+        return wrap_scopetag(expr, escapes);
+    }
+    if (!jl_is_expr(expr))
+        return expr;
+    jl_expr_t *e = (jl_expr_t*)expr;
+    if (is_self_quoting_expr(e))
+        return expr;
+    if (e->head == jl_hygienicunscope_sym)
+        return expr; // already in expanded form--not permitted to contain hygienicscope here
+    if (e->head == jl_hygienicscope_sym && jl_expr_nargs(e) >= 2) {
+        // we use macroctx_stack just as a linked list of monotonic macroctxs values
+        struct macroctx_stack newctx;
+        newctx.m = (void*)(size_t)macroctxs;
+        newctx.parent = macroctx;
+        jl_value_t *a = jl_exprarg(e, 0);
+        jl_value_t *a2 = jl_expand_hygiene(a, macroctxs + 1, &newctx);
+        if (a != a2)
+            jl_array_ptr_set(e->args, 0, a2);
+        e->head = jl_hygienicunscope_sym;
+        return expr;
+    }
+    if (e->head == jl_let_sym || e->head == jl_assign_sym || e->head == jl_try_sym ||
+        e->head == jl_const_sym || e->head == jl_global_sym || e->head == jl_local_sym ||
+        e->head == jl_symbolicgoto_sym || e->head == jl_symboliclabel_sym) {
+        // we encountered a hygienic block, but the macroexpand pass is
+        // absolutely terrible at handling escape in certain blocks so apply
+        // those scopes now instead of waiting until we hit a symbol
+        int escapes = macroctxs - (macroctx ? (size_t)macroctx->m + 1 : 0);
+        size_t i;
+        for (i = 0; i < jl_array_len(e->args); i++) {
+            jl_value_t *a = jl_array_ptr_ref(e->args, i);
+            jl_value_t *a2 = jl_expand_hygiene(a, macroctxs - escapes, macroctx);
+            if (a != a2)
+                jl_array_ptr_set(e->args, i, a2);
+        }
+        if (escapes) {
+            JL_GC_PUSH1(&expr);
+            expr = wrap_scopetag(expr, escapes + 1);
+            JL_GC_POP();
+        }
+        return expr;
+    }
+    if (macroctx && (e->head == jl_macrocall_sym || e->head == jl_quote_sym)) {
+        // macrocall is deferred syntax, so leave behind a hygienic placeholder for later
+        int escapes = macroctxs - (size_t)macroctx->m;
+        return wrap_scopetag(expr, escapes);
+    }
+    if (macroctx && e->head == jl_do_sym && jl_expr_nargs(e) == 2 && jl_is_expr(jl_exprarg(e, 0)) &&
+        ((jl_expr_t*)jl_exprarg(e, 0))->head == jl_macrocall_sym) {
+        // still a macrocall, but with do syntax
+        int escapes = macroctxs - (size_t)macroctx->m;
+        return wrap_scopetag(expr, escapes);
+    }
+    if (macroctx && e->head == jl_escape_sym) {
+        return jl_expand_hygiene(jl_exprarg(e, 0), macroctxs, macroctx->parent);
+    }
+
+    size_t i;
+    for (i = 0; i < jl_array_len(e->args); i++) {
+        jl_value_t *a = jl_array_ptr_ref(e->args, i);
+        jl_value_t *a2 = jl_expand_hygiene(a, macroctxs, macroctx);
+        if (a != a2)
+            jl_array_ptr_set(e->args, i, a2);
+    }
+    return expr;
+}
+
+// n.b. hygienicscope is permitted to contain a hygienicunscope but the behavior is
+// undefined for the reverse to happen (the macroctxs escape count will get confused)
+JL_DLLEXPORT jl_value_t *jl_unexpand_hygiene(jl_value_t *expr, int macroctxs)
+{
+    if (!expr)
+        return expr;
+    if (macroctxs && jl_is_symbol(expr)) {
+        // bare symbol gets completely unwrapped (as in a scopetag @macroctxs)
+        jl_value_t *a = expr;
+        JL_GC_PUSH1(&a);
+        while (macroctxs) {
+            macroctxs--;
+            jl_value_t *wrap = (jl_value_t*)jl_exprn(jl_escape_sym, 1);
+            jl_exprargset(wrap, 0, a);
+            a = wrap;
+        }
+        JL_GC_POP();
+        return a;
+    }
+    if (!jl_is_expr(expr))
+        return expr;
+    jl_expr_t *e = (jl_expr_t*)expr;
+    if (is_self_quoting_expr(e))
+        return expr;
+    if (e->head == jl_scopetag_sym && jl_expr_nargs(e) == 2) {
+        jl_value_t *a = jl_exprarg(e, 0);
+        jl_value_t *esc = jl_exprarg(e, 1);
+        JL_TYPECHK(hygienic-scope, long, esc);
+        int escapes = jl_unbox_long(esc);
+        JL_GC_PUSH1(&a);
+        if (!jl_is_symbol(a))
+            a = jl_unexpand_hygiene(a, macroctxs + 1 - escapes);
+        while (escapes > 1) {
+            escapes--;
+            jl_value_t *wrap = (jl_value_t*)jl_exprn(jl_escape_sym, 1);
+            jl_exprargset(wrap, 0, a);
+            a = wrap;
+        }
+        JL_GC_POP();
+        return a;
+    }
+    if (e->head == jl_hygienicunscope_sym && jl_expr_nargs(e) >= 2) {
+        macroctxs += 1;
+        e->head = jl_hygienicscope_sym; // now in unexpanded form
+    }
+    if (e->head == jl_macrocall_sym || e->head == jl_quote_sym) {
+        return expr;
+    }
+    if (e->head == jl_do_sym && jl_expr_nargs(e) == 2 && jl_is_expr(jl_exprarg(e, 0)) &&
+        ((jl_expr_t*)jl_exprarg(e, 0))->head == jl_macrocall_sym) {
+        return expr;
+    }
+    if (macroctxs && e->head == jl_escape_sym) {
+        macroctxs -= 1;
+    }
+
+    size_t i;
+    for (i = 0; i < jl_array_len(e->args); i++) {
+        jl_value_t *a = jl_array_ptr_ref(e->args, i);
+        jl_value_t *a2 = jl_unexpand_hygiene(a, macroctxs);
+        if (a != a2)
+            jl_array_ptr_set(e->args, i, a2);
+    }
+    return expr;
 }
 
 static jl_value_t *jl_expand_macros(jl_value_t *expr, jl_module_t *inmodule, struct macroctx_stack *macroctx, int onelevel, size_t world, int throw_load_error)
@@ -1212,7 +1384,9 @@ JL_DLLEXPORT jl_value_t *jl_macroexpand(jl_value_t *expr, jl_module_t *inmodule)
     JL_GC_PUSH1(&expr);
     expr = jl_copy_ast(expr);
     expr = jl_expand_macros(expr, inmodule, NULL, 0, jl_atomic_load_acquire(&jl_world_counter), 0);
-    expr = jl_call_scm_on_ast("jl-expand-macroscope", expr, inmodule);
+    expr = jl_expand_hygiene(expr, 0, NULL);
+    expr = jl_unexpand_hygiene(expr, 0); // jwn
+    expr = jl_call_scm_on_ast("jl-expand-macroscope", expr, inmodule); // jwn
     JL_GC_POP();
     return expr;
 }
@@ -1223,7 +1397,9 @@ JL_DLLEXPORT jl_value_t *jl_macroexpand1(jl_value_t *expr, jl_module_t *inmodule
     JL_GC_PUSH1(&expr);
     expr = jl_copy_ast(expr);
     expr = jl_expand_macros(expr, inmodule, NULL, 1, jl_atomic_load_acquire(&jl_world_counter), 0);
-    expr = jl_call_scm_on_ast("jl-expand-macroscope", expr, inmodule);
+    expr = jl_expand_hygiene(expr, 0, NULL);
+    expr = jl_unexpand_hygiene(expr, 0); // jwn
+    expr = jl_call_scm_on_ast("jl-expand-macroscope", expr, inmodule); // jwn
     JL_GC_POP();
     return expr;
 }
@@ -1250,6 +1426,8 @@ JL_DLLEXPORT jl_value_t *jl_expand_in_world(jl_value_t *expr, jl_module_t *inmod
     JL_GC_PUSH1(&expr);
     expr = jl_copy_ast(expr);
     expr = jl_expand_macros(expr, inmodule, NULL, 0, world, 1);
+    expr = jl_expand_hygiene(expr, 0, NULL); // jwn
+    expr = jl_unexpand_hygiene(expr, 0);
     expr = jl_call_scm_on_ast_and_loc("jl-expand-to-thunk", expr, inmodule, file, line);
     JL_GC_POP();
     return expr;
@@ -1265,6 +1443,8 @@ JL_DLLEXPORT jl_value_t *jl_expand_with_loc_warn(jl_value_t *expr, jl_module_t *
     JL_GC_PUSH2(&expr, &kwargs);
     expr = jl_copy_ast(expr);
     expr = jl_expand_macros(expr, inmodule, NULL, 0, ~(size_t)0, 1);
+    expr = jl_expand_hygiene(expr, 0, NULL); // jwn
+    expr = jl_unexpand_hygiene(expr, 0);
     jl_ast_context_t *ctx = jl_ast_ctx_enter(inmodule);
     fl_context_t *fl_ctx = &ctx->fl;
     value_t arg = julia_to_scm(fl_ctx, expr);
@@ -1312,6 +1492,8 @@ JL_DLLEXPORT jl_value_t *jl_expand_stmt_with_loc(jl_value_t *expr, jl_module_t *
     JL_GC_PUSH1(&expr);
     expr = jl_copy_ast(expr);
     expr = jl_expand_macros(expr, inmodule, NULL, 0, ~(size_t)0, 1);
+    expr = jl_expand_hygiene(expr, 0, NULL); // jwn
+    expr = jl_unexpand_hygiene(expr, 0);
     expr = jl_call_scm_on_ast_and_loc("jl-expand-to-thunk-stmt", expr, inmodule, file, line);
     JL_GC_POP();
     return expr;
