@@ -451,10 +451,12 @@
                         binds))
                  ,body)))
            ((hygienic-scope) ; TODO: move this lowering to resolve-scopes, instead of reimplementing it here badly
-             (let ((parent-scope (cons (list env m) parent-scope))
-                   (body (cadr e))
-                   (m (caddr e)))
-              (resolve-expansion-vars-with-new-env body env m parent-scope inarg #t)))
+             (let* ((parent-scope (cons (list env m) parent-scope))
+                    (body (cadr e))
+                    (m (caddr e))
+                    (lno  (cdddr e))
+                    (body (resolve-expansion-vars-with-new-env body env m parent-scope inarg #t)))
+               (if *keepmarkers* `(hygienic-scope (escape ,body) ,m ,@lno) body)))
            ((tuple)
             (cons (car e)
                   (map (lambda (x)
@@ -590,9 +592,11 @@
         ((eq? (car e) 'inert) e)
         ((eq? (car e) 'module) e)
         ((eq? (car e) 'hygienic-scope)
-         (let ((form (cadr e)) ;; form is the expression returned from expand-macros
-               (modu (caddr e))) ;; m is the macro's def module
-           (resolve-expansion-vars form modu)))
+          (let* ((form (cadr e)) ;; form is the expression returned from expand-macros
+                 (modu (caddr e)) ;; m is the macro's def module
+                 (lno  (cdddr e)) ;; lno is (optionally) the line number node
+                 (form (resolve-expansion-vars form modu)))
+            (if *keepmarkers* `(hygienic-scope (escape ,form) ,modu ,@lno) form)))
         (else
          (map julia-expand-macroscopes- e))))
 
@@ -602,8 +606,9 @@
    ((eq? (car e) 'hygienic-scope)
     (let ((parent-scope (list relabels parent-scope))
           (body (cadr e))
-          (m (caddr e)))
-      `(hygienic-scope ,(rename-symbolic-labels- (cadr e) (table) parent-scope) ,m)))
+          (m (caddr e))
+          (lno (cdddr e)))
+      `(hygienic-scope ,(rename-symbolic-labels- (cadr e) (table) parent-scope) ,m ,@lno)))
    ((and (eq? (car e) 'escape) (not (null? parent-scope)))
     `(escape ,(apply rename-symbolic-labels- (cadr e) parent-scope)))
    ((or (eq? (car e) 'symbolicgoto) (eq? (car e) 'symboliclabel))
@@ -620,13 +625,35 @@
 (define (rename-symbolic-labels e)
   (rename-symbolic-labels- e (table) '()))
 
+; find the first line number in this expression, before we eliminate them
+(define (first-lineno blk)
+  (cond ((not (pair? blk)) #f)
+        ((eq? (car blk) 'line) blk)
+        ((and (eq? (car blk) 'hygienic-scope) (pair? (cdddr blk)) (pair? (cadddr blk)) (eq? (car (cadddr blk)) 'line))
+         (cadddr blk))
+        ((memq (car blk) '(toplevel block escape hygienic-scope))
+           (let loop ((xs (cdr blk)))
+             (and (pair? xs)
+               (let ((elt (first-lineno (car xs))))
+                 (or elt (loop (cdr xs)))))))
+        (else #f)))
+
 ;; macro expander entry point
 
 ;; TODO: delete this file and fold this operation into resolve-scopes
-(define (julia-expand-macroscope e)
-  (julia-expand-macroscopes-
-   (rename-symbolic-labels
-    (julia-expand-quotes e))))
+(define (julia-expand-macroscope e (keepmarkers #f))
+  ; if we are expanding macro macroscopes too early, keep the hygiene markers around for later
+  ; they have line numbers attached to them, and we might need those again
+  ; if we are macro expanding as normal, then move the first line number we
+  ; find to the head position of the expression where we will not easily lose it later
+  (set! *keepmarkers* keepmarkers)
+  (let ((lno (and (not keepmarkers) (first-lineno e)))
+        (form (julia-expand-macroscopes-
+               (rename-symbolic-labels
+                (julia-expand-quotes e)))))
+        (if lno `(block ,lno ,form) form)))
 
 (define (julia-bq-macro x)
   (julia-bq-expand x 0))
+
+(define *keepmarkers* #f)

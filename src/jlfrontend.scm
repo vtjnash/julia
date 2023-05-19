@@ -175,7 +175,7 @@
 
 (define (jl-expand-macroscope expr)
   (error-wrap (lambda ()
-                (julia-expand-macroscope expr))))
+                (julia-expand-macroscope expr #t))))
 
 ;; construct default definitions of `eval` for non-bare modules
 ;; called by jl_eval_module_expr

@@ -517,7 +517,7 @@ Now, consider a slightly more complex macro:
 
 ```jldoctest sayhello2
 julia> macro sayhello(name)
-           return :( println("Hello, ", $name) )
+           return esc(:( println("Hello, ", $name) ))
        end
 @sayhello (macro with 1 method)
 ```
@@ -768,15 +768,20 @@ of expressions inside the macro body.
 ### Hygiene
 
 An issue that arises in more complex macros is that of [hygiene](https://en.wikipedia.org/wiki/Hygienic_macro).
-In short, macros must ensure that the variables they introduce in their returned expressions do
-not accidentally clash with existing variables in the surrounding code they expand into. Conversely,
-the expressions that are passed into a macro as arguments are often *expected* to evaluate in
-the context of the surrounding code, interacting with and modifying the existing variables. Another
-concern arises from the fact that a macro may be called in a different module from where it was
-defined. In this case we need to ensure that all global variables are resolved to the correct
-module. Julia already has a major advantage over languages with textual macro expansion (like
-C) in that it only needs to consider the returned expression. All the other variables (such as
-`msg` in `@assert` above) follow the [normal scoping block behavior](@ref scope-of-variables).
+We saw this a bit earlier with the calls to `esc` that wrapped the return value of the macros so far.
+
+This already gives Julia a major advantage over languages with textual macro expansion (like
+C) in that it only needs to consider the returned expression, and it cannot change the
+parsing of the expression surrounding it. Thus, all the other variables (such as `msg` in
+`@assert` above) follow the [normal scoping block behavior](@ref scope-of-variables).
+
+Hygiene markers exists because macros must ensure that the variables they introduce in their
+returned expressions do not accidentally clash with existing variables in the surrounding
+code they expand into. Conversely, the expressions that are passed into a macro as arguments
+are often *expected* to evaluate in the context of the surrounding code, interacting with
+and modifying the existing variables. Another concern arises from the fact that a macro may
+be called in a different module from where it was defined. In this case we need to ensure
+that all global variables are resolved to the correct module.
 
 To demonstrate these issues, let us consider writing a `@time` macro that takes an expression
 as its argument, records the time, evaluates the expression, records the time again, prints the
