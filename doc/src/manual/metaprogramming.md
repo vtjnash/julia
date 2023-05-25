@@ -517,7 +517,7 @@ Now, consider a slightly more complex macro:
 
 ```jldoctest sayhello2
 julia> macro sayhello(name)
-           return :( println("Hello, ", $name) )
+           return esc(:( println("Hello, ", $name) ))
        end
 @sayhello (macro with 1 method)
 ```
@@ -535,13 +535,14 @@ this is an extremely useful tool for debugging macros):
 
 ```julia-repl sayhello2
 julia> ex = macroexpand(Main, :(@sayhello("human")) )
-:(Main.println("Hello, ", "human"))
+:(println("Hello, ", "human"))
 
 julia> typeof(ex)
 Expr
 ```
 
-We can see that the `"human"` literal has been interpolated into the expression.
+We can see that the macro expression has been replaced by a `call` expression in
+its place and the `"human"` literal has been interpolated into the expression.
 
 There also exists a macro [`@macroexpand`](@ref) that is perhaps a bit more convenient than the `macroexpand` function:
 
@@ -563,7 +564,7 @@ the difference, consider the following example:
 ```julia-repl whymacros
 julia> macro twostep(arg)
            println("I execute at parse time. The argument is: ", arg)
-           return :(println("I execute at runtime. The argument is: ", $arg))
+           return esc(:(println("I execute at runtime. The argument is: ", $arg)))
        end
 @twostep (macro with 1 method)
 
@@ -706,7 +707,7 @@ following the last argument:
 julia> macro assert(ex, msgs...)
            msg_body = isempty(msgs) ? ex : msgs[1]
            msg = string(msg_body)
-           return :($ex ? nothing : throw(AssertionError($msg)))
+           return esc(:($ex ? nothing : throw(AssertionError($msg))))
        end
 @assert (macro with 1 method)
 ```
@@ -719,18 +720,18 @@ of a macro expansion with the aptly named [`@macroexpand`](@ref) macro:
 
 ```julia-repl assert2
 julia> @macroexpand @assert a == b
-:(if Main.a == Main.b
-        Main.nothing
-    else
-        Main.throw(Main.AssertionError("a == b"))
-    end)
+:(if $(Expr(:escape, :(a == b)))
+      nothing
+  else
+      throw(AssertionError("a == b"))
+  end)
 
 julia> @macroexpand @assert a==b "a should equal b!"
-:(if Main.a == Main.b
-        Main.nothing
-    else
-        Main.throw(Main.AssertionError("a should equal b!"))
-    end)
+:(if $(Expr(:escape, :(a == b)))
+      nothing
+  else
+      throw(AssertionError("a should equal b!"))
+  end)
 ```
 
 There is yet another case that the actual `@assert` macro handles: what if, in addition to printing
@@ -768,15 +769,20 @@ of expressions inside the macro body.
 ### Hygiene
 
 An issue that arises in more complex macros is that of [hygiene](https://en.wikipedia.org/wiki/Hygienic_macro).
-In short, macros must ensure that the variables they introduce in their returned expressions do
-not accidentally clash with existing variables in the surrounding code they expand into. Conversely,
-the expressions that are passed into a macro as arguments are often *expected* to evaluate in
-the context of the surrounding code, interacting with and modifying the existing variables. Another
-concern arises from the fact that a macro may be called in a different module from where it was
-defined. In this case we need to ensure that all global variables are resolved to the correct
-module. Julia already has a major advantage over languages with textual macro expansion (like
-C) in that it only needs to consider the returned expression. All the other variables (such as
-`msg` in `@assert` above) follow the [normal scoping block behavior](@ref scope-of-variables).
+We saw this a bit earlier with the calls to `esc` that wrapped the return value of the macros so far.
+
+This already gives Julia a major advantage over languages with textual macro expansion (like
+C) in that it only needs to consider the returned expression, and it cannot change the
+parsing of the expression surrounding it. Thus, all the other variables (such as `msg` in
+`@assert` above) follow the [normal scoping block behavior](@ref scope-of-variables).
+
+Hygiene markers exists because macros must ensure that the variables they introduce in their
+returned expressions do not accidentally clash with existing variables in the surrounding
+code they expand into. Conversely, the expressions that are passed into a macro as arguments
+are often *expected* to evaluate in the context of the surrounding code, interacting with
+and modifying the existing variables. Another concern arises from the fact that a macro may
+be called in a different module from where it was defined. In this case we need to ensure
+that all global variables are resolved to the correct module.
 
 To demonstrate these issues, let us consider writing a `@time` macro that takes an expression
 as its argument, records the time, evaluates the expression, records the time again, prints the

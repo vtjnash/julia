@@ -1045,10 +1045,13 @@ int jl_is_ast_node(jl_value_t *e) JL_NOTSAFEPOINT
 static int is_self_quoting_expr(jl_expr_t *e) JL_NOTSAFEPOINT
 {
     // some Expr have symbols inside that will make Julia angry if we attempt to mark them with scope tags
-    //return (e->head == jl_inert_sym ||
+    return (e->head == jl_inert_sym ||
     //        e->head == jl_globalref_sym ||
     //        e->head == jl_module_sym ||
-    return (e->head == jl_inert_sym ||
+    //        e->head == jl_export_sym ||
+    //        e->head == jl_inbounds_sym ||
+    //        e->head == jl_using_sym ||
+    //        e->head == jl_import_sym ||
             e->head == jl_core_sym ||
             e->head == jl_line_sym ||
             e->head == jl_lineinfo_sym ||
@@ -1142,7 +1145,6 @@ static jl_value_t *wrap_scopetag(jl_value_t *expr, int escapes)
     JL_GC_POP();
     return wrap;
 }
-
 
 JL_DLLEXPORT jl_value_t *jl_expand_hygiene(jl_value_t *expr, int macroctxs, struct macroctx_stack *macroctx)
 {

@@ -300,7 +300,7 @@ end
 # but ignoring scopes and line numbers
 function unescape(@nospecialize ex)
     ex = unblock(ex)
-    while isexpr(ex, :escape) || isexpr(ex, :var"hygienic-scope")
+    while isexpr(ex, :escape) || isexpr(ex, :var"hygienic-scope") || isexpr(ex, :unescape) || isexpr(ex, :var"hygienic-unscope")
        ex = unblock(ex.args[1])
     end
     return ex

@@ -1544,7 +1544,7 @@ let ex = Meta.parse("@test27521(2) do y; y; end")
     fex = Expr(:(->), Expr(:tuple, :y), Expr(:block, LineNumberNode(1,:none), :y))
     @test ex == Expr(:do, Expr(:macrocall, Symbol("@test27521"), LineNumberNode(1,:none), 2),
                      fex)
-    @test macroexpand(@__MODULE__, ex) == Expr(:tuple, fex, 2)
+    @test macroexpand(@__MODULE__, ex).args[1] == Expr(:tuple, fex, 2)
 end
 
 # issue #43018
@@ -3458,24 +3458,24 @@ end
              end)) == 42
 
 macro _macroexpand(x, m=__module__)
-    :($__source__; macroexpand($m, Expr(:var"hygienic-scope", $(esc(Expr(:quote, x))), $m)))
+    :($__source__; macroexpand($m, Expr(:var"hygienic-scope", $(esc(Expr(:quote, x))), $m)).args[1])
 end
-
+unesc(@nospecialize x) = Expr(:unescape, x, 1)
 @testset "unescaping in :global expressions" begin
     m = @__MODULE__
-    @test @_macroexpand(global x::T) == :(global x::$(GlobalRef(m, :T)))
-    @test @_macroexpand(global (x, $(esc(:y)))) == :(global (x, y))
+    @test @_macroexpand(global x::T) == :(global $(unesc(:x))::$(unesc(:T)))
+    @test @_macroexpand(global (x, $(esc(:y)))) == :(global ($(unesc(:x)), y))
     @test @_macroexpand(global (x::S, $(esc(:y))::$(esc(:T)))) ==
-        :(global (x::$(GlobalRef(m, :S)), y::T))
-    @test @_macroexpand(global (; x, $(esc(:y)))) == :(global (; x, y))
+        :(global ($(unesc(:x))::$(unesc(:S)), y::T))
+    @test @_macroexpand(global (; x, $(esc(:y)))) == :(global (; $(unesc(:x)), y))
     @test @_macroexpand(global (; x::S, $(esc(:y))::$(esc(:T)))) ==
-        :(global (; x::$(GlobalRef(m, :S)), y::T))
+        :(global (; $(unesc(:x))::$(unesc(:S)), y::T))
 
-    @test @_macroexpand(global x::T = a) == :(global x::$(GlobalRef(m, :T)) = $(GlobalRef(m, :a)))
-    @test @_macroexpand(global (x, $(esc(:y))) = a) == :(global (x, y) = $(GlobalRef(m, :a)))
+    @test @_macroexpand(global x::T = a) == :(global $(unesc(:x))::$(unesc(:T)) = $(unesc(:a)))
+    @test @_macroexpand(global (x, $(esc(:y))) = a) == :(global ($(unesc(:x)), y) = $(unesc(:a)))
     @test @_macroexpand(global (x::S, $(esc(:y))::$(esc(:T))) = a) ==
-        :(global (x::$(GlobalRef(m, :S)), y::T) = $(GlobalRef(m, :a)))
-    @test @_macroexpand(global (; x, $(esc(:y))) = a) == :(global (; x, y) = $(GlobalRef(m, :a)))
+        :(global ($(unesc(:x))::$(unesc(:S)), y::T) = $(unesc(:a)))
+    @test @_macroexpand(global (; x, $(esc(:y))) = a) == :(global (; $(unesc(:x)), y) = $(unesc(:a)))
     @test @_macroexpand(global (; x::S, $(esc(:y))::$(esc(:T))) = a) ==
-        :(global (; x::$(GlobalRef(m, :S)), y::T) = $(GlobalRef(m, :a)))
+        :(global (; $(unesc(:x))::$(unesc(:S)), y::T) = $(unesc(:a)))
 end

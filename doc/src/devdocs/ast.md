@@ -232,6 +232,9 @@ The result of a macro expansion is automatically wrapped in `(hygienic-scope blo
 to represent the result of the new scope. The user can insert `(escape block)` inside
 to interpolate code from the caller.
 
+These then are inverted into the pairs `hygienic-unscope` and `unescape` for every symbol.
+Before lowering, they will be inverted back, for legacy reasons.
+
 
 ## Lowered form
 
