@@ -3690,12 +3690,7 @@ f(x) = yt(x)
                        (cadr e))
                 e))))
     (let ((e2 (lift- e)))
-      (let ((stmts (apply append (reverse top))))
-        ;; move all type definitions first
-        (receive (structs others)
-                 (separate (lambda (x) (and (pair? x) (eq? (car x) 'thunk)))
-                           stmts)
-                 (cons e2 (append structs others)))))))
+      (cons e2 (reverse top)))))
 
 (define (first-non-meta blk)
   (let loop ((xs (cdr blk)))
@@ -3916,16 +3911,28 @@ f(x) = yt(x)
   (and (pair? e) (memq (car e) '(if elseif block trycatch tryfinally trycatchelse))))
 
 (define (map-cl-convert exprs fname lam namemap defined toplevel interp opaq (globals (table)) (locals (table)))
-  (if toplevel
-      (map (lambda (x)
-             (let ((tl (lift-toplevel (cl-convert x fname lam namemap defined
-                                                  (and toplevel (toplevel-preserving? x))
-                                                  interp opaq globals locals))))
-               (if (null? (cdr tl))
-                   (car tl)
-                   `(block ,@(cdr tl) ,(car tl)))))
-           exprs)
-      (map (lambda (x) (cl-convert x fname lam namemap defined #f interp opaq globals locals)) exprs)))
+  (let ((exprs (map (lambda (x) (cl-convert x fname lam namemap defined (and toplevel (toplevel-preserving? x)) interp opaq globals locals)) exprs)))
+       (if toplevel
+           (map (lambda (x)
+                  (let ((tl (lift-toplevel x)))
+                    (if (null? (cdr tl))
+                        (car tl)
+                        (let* ((thunks '())
+                               (stmt (car tl))
+                               (tl (map (lambda (es) (filter (lambda (e) (if (and (pair? e) (eq? 'thunk (car e)))
+                                            (begin ; ugly hack: lowering did not correctly preserve execution order earlier for closures with kwargs, we we move all thunks to run first, in the theory that that will usually fix the earlier mistakes without introducing too many new ones
+                                              (set! thunks (cons (compact-and-renumber (linearize e) 'none 0) thunks))
+                                              #f)
+                                            #t)) es)) (cdr tl)))
+                               (tl `(,@(map (lambda (e) (cond ((null? e) '(null))
+                                                               ((and (null? (cdr e)) (not (pair? (car e)))) (car e))
+                                                                 (else
+                                        (compact-and-renumber `(thunk ,(linearize `(lambda () (() () 0 ()) (block ,@e (return (null)))))) 'none 0))))
+                                                              tl)))
+                               (stmt (compact-and-renumber `(thunk ,(linearize `(lambda () (() () 0 ()) (block (return ,stmt))))) 'none 0)))
+                              `(toplevel ,@(reverse thunks) ,@tl ,stmt)))))
+                exprs)
+           exprs)))
 
 (define (prepare-lambda! lam)
   ;; mark all non-arguments as assigned, since locals that are never assigned

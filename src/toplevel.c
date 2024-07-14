@@ -748,7 +748,7 @@ JL_DLLEXPORT void jl_eval_const_decl(jl_module_t *m, jl_value_t *arg, jl_value_t
     }
 }
 
-JL_DLLEXPORT jl_value_t *jl_toplevel_eval_flex(jl_module_t *JL_NONNULL m, jl_value_t *e, int fast, int expanded, const char **toplevel_filename, int *toplevel_lineno)
+JL_DLLEXPORT jl_value_t *jl_toplevel_eval_flex(jl_module_t *JL_NONNULL m, jl_value_t *volatile e, int fast, int expanded, const char **toplevel_filename, int *toplevel_lineno)
 {
     jl_task_t *ct = jl_current_task;
     if (!jl_is_expr(e)) {
@@ -956,6 +956,23 @@ JL_DLLEXPORT jl_value_t *jl_toplevel_eval_flex(jl_module_t *JL_NONNULL m, jl_val
                 "syntax: %s", jl_string_data(jl_exprarg(ex, 0)));
         jl_eval_throw(m, jl_exprarg(ex, 0), *toplevel_filename, *toplevel_lineno);
     }
+    else if (0 && head == jl_method_sym) {
+        assert(jl_expr_nargs(ex) == 1);
+        jl_sym_t *fname = (jl_sym_t*)jl_exprarg(ex, 0);
+        jl_module_t *modu = m;
+        if (jl_is_globalref(fname)) {
+            modu = jl_globalref_mod(fname);
+            fname = jl_globalref_name(fname);
+        }
+        if (!jl_is_symbol(fname)) {
+            jl_error("method: invalid declaration");
+        }
+        jl_binding_t *b = jl_get_binding_for_method_def(modu, fname);
+        _Atomic(jl_value_t*) *bp = &b->value;
+        jl_value_t *gf = jl_generic_function_def(fname, modu, bp, b);
+        JL_GC_POP();
+        return gf;
+    }
     else if (jl_is_symbol(ex)) {
         JL_GC_POP();
         return jl_eval_global_var(m, (jl_sym_t*)ex);
@@ -1002,7 +1019,10 @@ JL_DLLEXPORT jl_value_t *jl_toplevel_eval_flex(jl_module_t *JL_NONNULL m, jl_val
         if (has_opaque) {
             jl_resolve_globals_in_ir((jl_array_t*)thk->code, m, NULL, 0);
         }
+        size_t world = jl_atomic_load_acquire(&jl_world_counter);
+        ct->world_age = world;
         result = jl_interpret_toplevel_thunk(m, thk);
+        ct->world_age = last_age;
     }
 
     JL_GC_POP();

@@ -307,7 +307,8 @@ end
 #  @ tuple.jl:200
 # [4] eltype(t::Type{<:Tuple})
 #  @ tuple.jl:209
-typeof(function eltype end).name.max_methods = UInt8(4)
+function eltype end
+typeof(eltype).name.max_methods = UInt8(4)
 
 # key/val types
 keytype(@nospecialize t::Tuple) = keytype(typeof(t))

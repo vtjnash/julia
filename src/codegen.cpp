@@ -8993,7 +8993,7 @@ static jl_llvm_functions_t
     Instruction &prologue_end = ctx.builder.GetInsertBlock()->back();
 
     // step 11a. For top-level code, load the world age
-    if (toplevel && !ctx.is_opaque_closure) {
+    if (0 && toplevel && !ctx.is_opaque_closure) {
         LoadInst *world = ctx.builder.CreateAlignedLoad(ctx.types().T_size,
             prepare_global_in(jl_Module, jlgetworld_global), ctx.types().alignof_ptr);
         world->setOrdering(AtomicOrdering::Acquire);
@@ -9642,7 +9642,7 @@ static jl_llvm_functions_t
                         I.setDebugLoc(topdebugloc);
                     }
                 }
-                if (toplevel && !ctx.is_opaque_closure && !in_prologue) {
+                if (0 && toplevel && !ctx.is_opaque_closure && !in_prologue) {
                     // we're at toplevel; insert an atomic barrier between every instruction
                     // TODO: inference is invalid if this has any effect (which it often does)
                     LoadInst *world = new LoadInst(ctx.types().T_size,

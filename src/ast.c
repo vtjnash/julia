@@ -465,8 +465,8 @@ static jl_value_t *scm_to_julia(fl_context_t *fl_ctx, value_t e, jl_module_t *mo
     }
     JL_CATCH {
         // if expression cannot be converted, replace with error expr
-        //jl_(jl_current_exception(jl_current_task));
-        //jlbacktrace();
+        jl_(jl_current_exception(jl_current_task));
+        jlbacktrace();
         jl_expr_t *ex = jl_exprn(jl_error_sym, 1);
         v = (jl_value_t*)ex;
         jl_array_ptr_set(ex->args, 0, jl_cstr_to_string("invalid AST"));
@@ -555,7 +555,7 @@ static jl_value_t *scm_to_julia_(fl_context_t *fl_ctx, value_t e, jl_module_t *m
         else
             n++;
         // nodes with special representations
-        jl_value_t *ex = NULL, *temp = NULL;
+        jl_value_t *volatile ex = NULL, *temp = NULL;
         if (sym == jl_line_sym && (n == 1 || n == 2)) {
             jl_value_t *linenum = scm_to_julia_(fl_ctx, car_(e), mod);
             jl_value_t *file = jl_nothing;
@@ -661,6 +661,8 @@ static jl_value_t *scm_to_julia_(fl_context_t *fl_ctx, value_t e, jl_module_t *m
     if (iscvalue(e) && cv_class((cvalue_t*)ptr(e)) == jl_ast_ctx(fl_ctx)->jvtype) {
         return *(jl_value_t**)cv_data((cvalue_t*)ptr(e));
     }
+    fl_print(fl_ctx, ios_stderr, e);
+    ios_putc('\n', ios_stderr);
     jl_error("malformed tree");
 }
 
