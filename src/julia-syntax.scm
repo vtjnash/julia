@@ -3911,32 +3911,7 @@ f(x) = yt(x)
   (and (pair? e) (memq (car e) '(if elseif block trycatch tryfinally trycatchelse))))
 
 (define (map-cl-convert exprs fname lam namemap defined toplevel interp opaq (globals (table)) (locals (table)))
-  (let ((exprs (map (lambda (x) (cl-convert x fname lam namemap defined (and toplevel (toplevel-preserving? x)) interp opaq globals locals)) exprs)))
-       (if toplevel
-           (let* ((toplevels '())
-                  (stmts (map (lambda (x)
-                       (let ((tl (lift-toplevel x)))
-                            (set! toplevels (cons (cdr tl) toplevels))
-                            (car tl))) exprs))
-                  (toplevels (apply append (reverse toplevels)))
-                  (thunks '())
-                  (toplevels (map (lambda (es) (filter (lambda (e) (if (and (pair? e) (eq? 'thunk (car e)))
-                                                 (begin
-                                                   ; ugly hack: lowering did not correctly preserve execution order earlier for closures with kwargs,
-                                                   ; we we move all thunks to run first, in the theory that that will usually fix the earlier mistakes without introducing too many new ones
-                                                   (set! thunks (cons (compact-and-renumber (linearize e) 'none 0) thunks))
-                                                   #f)
-                                                 #t)) es)) toplevels))
-                  (toplevels `(,@(map (lambda (e) (cond ((null? e) '(null))
-                                                                    ((and (null? (cdr e)) (not (pair? (car e)))) (car e))
-                                                                      (else
-                                             (compact-and-renumber `(thunk ,(linearize `(lambda () (() () 0 ()) (block ,@e (return (null)))))) 'none 0))))
-                                                                   toplevels))))
-                (if (and (null? thunks) (null? toplevels))
-                  stmts
-                  ; `((toplevel ,@(reverse thunks) ,@toplevels) ,@stmts)))
-                  `((toplevel ,@(reverse thunks) ,@toplevels) ,@stmts)))
-           exprs)))
+  (map (lambda (x) (cl-convert x fname lam namemap defined (and toplevel (toplevel-preserving? x)) interp opaq globals locals)) exprs))
 
 (define (prepare-lambda! lam)
   ;; mark all non-arguments as assigned, since locals that are never assigned
@@ -4259,16 +4234,33 @@ f(x) = yt(x)
            (for-each (lambda (vi) (vinfo:set-asgn! vi #t))
                      (list-tail (car (lam:vinfo e)) (length (lam:args e))))
            (lambda-optimize-vars! e)
-           (let ((body (map-cl-convert (cdr (lam:body e)) 'anon
-                                       e
-                                       (table)
-                                       (table)
-                                       (null? (cadr e)) ;; only toplevel thunks have 0 args
-                                       interp opaq globals (vinfo-to-table (car (lam:vinfo e))))))
-             `(lambda ,(cadr e)
-                (,(clear-capture-bits (car (lam:vinfo e)))
-                 () ,@(cddr (lam:vinfo e)))
-                (block ,@body))))
+           (let* ((toplevel (null? (cadr e))) ;; only toplevel thunks have 0 args
+                  (body (map-cl-convert (cdr (lam:body e)) 'anon e (table) (table) toplevel interp opaq globals (vinfo-to-table (car (lam:vinfo e)))))
+                  (toplevels '())
+                  (body (if toplevel (map (lambda (x)
+                                (let ((tl (lift-toplevel x)))
+                                     (set! toplevels (cons (cdr tl) toplevels))
+                                     (car tl))) body) body))
+                  (toplevels (apply append (reverse toplevels)))
+                  (thunks '())
+                  (toplevels (map (lambda (es) (filter (lambda (e) (if (and (pair? e) (eq? 'thunk (car e)))
+                                                 (begin
+                                                   ; ugly hack: lowering did not correctly preserve execution order earlier for closures with kwargs,
+                                                   ; we we move all thunks to run first, in the theory that that will usually fix the earlier mistakes without introducing too many new ones
+                                                   (set! thunks (cons e thunks))
+                                                   #f)
+                                                 #t)) es)) toplevels))
+                  (toplevels `(,@(map (lambda (e) (cond ((null? e) '(null))
+                                                                    ((and (null? (cdr e)) (not (pair? (car e)))) (car e))
+                                                                      (else `(thunk (lambda () (() () 0 ()) (block ,@e (return (null))))))))
+                                                                   toplevels)))
+                  (lam `(lambda ,(cadr e)
+                          (,(clear-capture-bits (car (lam:vinfo e)))
+                           () ,@(cddr (lam:vinfo e)))
+                       (block ,@body))))
+                 (if (and (null? thunks) (null? toplevels))
+                   lam
+                   `(toplevel ,@(reverse thunks) ,@toplevels (thunk ,lam)))))
           ;; remaining `::` expressions are type assertions
           ((|::|)
            (cl-convert `(call (core typeassert) ,@(cdr e)) fname lam namemap defined toplevel interp opaq globals locals))
