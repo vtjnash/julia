@@ -4,13 +4,13 @@
 # generic #
 ###########
 
-if !@isdefined(var"@timeit")
+#if !@isdefined(var"@timeit")
     # This is designed to allow inserting timers when loading a second copy
     # of inference for performing performance experiments.
     macro timeit(args...)
         esc(args[end])
     end
-end
+#end
 
 # avoid cycle due to over-specializing `any` when used by inference
 function _any(@nospecialize(f), a)

@@ -497,7 +497,7 @@ minmax(x::Real, y::Real) = minmax(promote(x, y)...)
 if isdefined(Core, :Compiler)
     const _return_type = Core.Compiler.return_type
 else
-    _return_type(@nospecialize(f), @nospecialize(t)) = Any
+    @eval _return_type(@nospecialize(f), @nospecialize(t)) = Any
 end
 
 function TupleOrBottom(tt...)

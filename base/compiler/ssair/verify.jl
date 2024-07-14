@@ -7,7 +7,7 @@ function maybe_show_ir(ir::IRCode)
     end
 end
 
-if !isdefined(@__MODULE__, Symbol("@verify_error"))
+#if !isdefined(@__MODULE__, Symbol("@verify_error"))
     macro verify_error(arg)
         arg isa String && return esc(:(print && println(stderr, $arg)))
         isexpr(arg, :string) || error("verify_error macro expected a string expression")
@@ -19,7 +19,7 @@ if !isdefined(@__MODULE__, Symbol("@verify_error"))
             maybe_show_ir(ir)
         end)
     end
-end
+#end
 
 is_toplevel_expr_head(head::Symbol) = head === :global || head === :method || head === :thunk
 is_value_pos_expr_head(head::Symbol) = head === :static_parameter

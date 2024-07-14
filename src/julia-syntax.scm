@@ -3911,7 +3911,20 @@ f(x) = yt(x)
   (and (pair? e) (memq (car e) '(if elseif block trycatch tryfinally trycatchelse))))
 
 (define (map-cl-convert exprs fname lam namemap defined toplevel interp opaq (globals (table)) (locals (table)))
-  (map (lambda (x) (cl-convert x fname lam namemap defined (and toplevel (toplevel-preserving? x)) interp opaq globals locals)) exprs))
+  (let ((stmts (map (lambda (x) (cl-convert x fname lam namemap defined (and toplevel (toplevel-preserving? x)) interp opaq globals locals)) exprs)))
+        (if toplevel
+            (map (lambda (e)
+                   (let* ((tl (lift-toplevel e))
+                          (stmt (car tl))
+                          ;; TODO: for consistency, we should actually reuse the code from 'lambda rather than implementing it a bit worse here
+                          (tl (apply append (cdr tl)))
+                          ;; ugly hack: move all type definitions first
+                          (tl (receive (structs others)
+                                       (separate (lambda (x) (and (pair? x) (eq? (car x) 'thunk)))
+                                                 tl)
+                                       (append structs others))))
+                     (if (null? tl) stmt `(block ,@tl ,stmt)))) stmts)
+            stmts)))
 
 (define (prepare-lambda! lam)
   ;; mark all non-arguments as assigned, since locals that are never assigned
@@ -4234,10 +4247,11 @@ f(x) = yt(x)
            (for-each (lambda (vi) (vinfo:set-asgn! vi #t))
                      (list-tail (car (lam:vinfo e)) (length (lam:args e))))
            (lambda-optimize-vars! e)
-           (let* ((toplevel (null? (cadr e))) ;; only toplevel thunks have 0 args
-                  (body (map-cl-convert (cdr (lam:body e)) 'anon e (table) (table) toplevel interp opaq globals (vinfo-to-table (car (lam:vinfo e)))))
+           (let* ((toplevel? (null? (cadr e))) ;; only toplevel thunks have 0 args
+                  (tl-only? (and toplevel? (top-level-only? (lam:body e))))
+                  (body (map-cl-convert (cdr (lam:body e)) 'anon e (table) (table) tl-only? interp opaq globals (vinfo-to-table (car (lam:vinfo e)))))
                   (toplevels '())
-                  (body (if toplevel
+                  (body (if (and (not tl-only?) toplevel?)
                           (map (lambda (x)
                                 (let ((tl (lift-toplevel x)))
                                      (set! toplevels (cons (cdr tl) toplevels))
@@ -4333,6 +4347,15 @@ f(x) = yt(x)
       ((line null) #t)
       (else #f))
     #t))
+
+(define (top-level-only? e)
+  ; determine if this expression contains any toplevel-only expressions, resulting in the use of slightly different rules for hoisting
+  ; this is because closures (esp kwargs) in constructors shouldn't get hoisted over their struct definition, but other closures usually should be hoisted to toplevel scope
+  (and (pair? e)
+       (case (car e)
+         ((module import using export public thunk toplevel) #t)
+         ((toplevel-only) (not (memq (cadr e) '(method set_binding_type!))))
+         (else (any top-level-only? (cdr e))))))
 
 ;; this pass behaves like an interpreter on the given code.
 ;; to perform stateful operations, it calls `emit` to record that something

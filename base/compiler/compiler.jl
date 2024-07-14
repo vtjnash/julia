@@ -192,9 +192,9 @@ if length(ARGS) > 2 && ARGS[2] === "--buildsettings"
 end
 end
 
-if false
-    import Base: Base, @show
-else
+#if false
+#    import Base: Base, @show
+#else
     macro show(ex...)
         blk = Expr(:block)
         for s in ex
@@ -204,7 +204,7 @@ else
         isempty(ex) || push!(blk.args, :value)
         blk
     end
-end
+#end
 
 include("compiler/cicache.jl")
 include("compiler/methodtable.jl")
