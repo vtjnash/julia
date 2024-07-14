@@ -3913,25 +3913,29 @@ f(x) = yt(x)
 (define (map-cl-convert exprs fname lam namemap defined toplevel interp opaq (globals (table)) (locals (table)))
   (let ((exprs (map (lambda (x) (cl-convert x fname lam namemap defined (and toplevel (toplevel-preserving? x)) interp opaq globals locals)) exprs)))
        (if toplevel
-           (map (lambda (x)
-                  (let ((tl (lift-toplevel x)))
-                    (if (null? (cdr tl))
-                        (car tl)
-                        (let* ((thunks '())
-                               (stmt (car tl))
-                               (tl (map (lambda (es) (filter (lambda (e) (if (and (pair? e) (eq? 'thunk (car e)))
-                                            (begin ; ugly hack: lowering did not correctly preserve execution order earlier for closures with kwargs, we we move all thunks to run first, in the theory that that will usually fix the earlier mistakes without introducing too many new ones
-                                              (set! thunks (cons (compact-and-renumber (linearize e) 'none 0) thunks))
-                                              #f)
-                                            #t)) es)) (cdr tl)))
-                               (tl `(,@(map (lambda (e) (cond ((null? e) '(null))
-                                                               ((and (null? (cdr e)) (not (pair? (car e)))) (car e))
-                                                                 (else
-                                        (compact-and-renumber `(thunk ,(linearize `(lambda () (() () 0 ()) (block ,@e (return (null)))))) 'none 0))))
-                                                              tl)))
-                               (stmt (compact-and-renumber `(thunk ,(linearize `(lambda () (() () 0 ()) (block (return ,stmt))))) 'none 0)))
-                              `(toplevel ,@(reverse thunks) ,@tl ,stmt)))))
-                exprs)
+           (let* ((toplevels '())
+                  (stmts (map (lambda (x)
+                       (let ((tl (lift-toplevel x)))
+                            (set! toplevels (cons (cdr tl) toplevels))
+                            (car tl))) exprs))
+                  (toplevels (apply append (reverse toplevels)))
+                  (thunks '())
+                  (toplevels (map (lambda (es) (filter (lambda (e) (if (and (pair? e) (eq? 'thunk (car e)))
+                                                 (begin
+                                                   ; ugly hack: lowering did not correctly preserve execution order earlier for closures with kwargs,
+                                                   ; we we move all thunks to run first, in the theory that that will usually fix the earlier mistakes without introducing too many new ones
+                                                   (set! thunks (cons (compact-and-renumber (linearize e) 'none 0) thunks))
+                                                   #f)
+                                                 #t)) es)) toplevels))
+                  (toplevels `(,@(map (lambda (e) (cond ((null? e) '(null))
+                                                                    ((and (null? (cdr e)) (not (pair? (car e)))) (car e))
+                                                                      (else
+                                             (compact-and-renumber `(thunk ,(linearize `(lambda () (() () 0 ()) (block ,@e (return (null)))))) 'none 0))))
+                                                                   toplevels))))
+                (if (and (null? thunks) (null? toplevels))
+                  stmts
+                  ; `((toplevel ,@(reverse thunks) ,@toplevels) ,@stmts)))
+                  `((toplevel ,@(reverse thunks) ,@toplevels) ,@stmts)))
            exprs)))
 
 (define (prepare-lambda! lam)
