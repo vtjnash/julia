@@ -7036,6 +7036,19 @@ static void emit_specsig_to_specsig(
     emit_specsig_to_specsig(gf_thunk, returninfo.cc, returninfo.return_roots, calltype, rettype, is_for_opaque_closure, nargs, params, target, targetsig, targetrt, targetspec, rettype_const);
 }
 
+static jl_value_t *sigt_to_callt(jl_value_t *sigt) {
+    assert(jl_is_datatype(sigt));
+    jl_value_t *ft = jl_tparam0(sigt);
+    if (jl_is_datatype(ft) && (is_uniquerep_Type(ft) || jl_is_datatype_singleton((jl_datatype_t*)ft))) // aka abi_is_ghost
+        return sigt;
+    jl_svec_t *callt = jl_svec_copy(((jl_datatype_t*)sigt)->parameters);
+    jl_svecset(callt, 0, jl_any_type);
+    JL_GC_PUSH1(&callt);
+    jl_value_t *calltt = jl_apply_tuple_type(callt, 0);
+    JL_GC_POP();
+    return calltt;
+}
+
 std::string emit_abi_converter(Module *M, jl_codegen_params_t &params, jl_value_t *declrt, jl_value_t *sigt, size_t nargs, bool specsig, jl_code_instance_t *codeinst, Value *target, bool target_specsig)
 {
     // this builds a method that calls a method with the same arguments but a different specsig
@@ -7048,22 +7061,25 @@ std::string emit_abi_converter(Module *M, jl_codegen_params_t &params, jl_value_
     jl_method_instance_t *mi = jl_get_ci_mi(codeinst);
     std::string gf_thunk_name = get_function_name(specsig, needsparams, name_from_method_instance(mi), params.TargetTriple);
     gf_thunk_name += "_gfthunk";
+    jl_value_t *callt = specsig ? sigt_to_callt(sigt) : NULL ;
+    JL_GC_PUSH1(&callt);
     if (target_specsig) {
         jl_value_t *abi = get_ci_abi(codeinst);
         jl_returninfo_t targetspec = get_specsig_function(params, M, target, "", abi, codeinst->rettype, is_opaque_closure);
         if (specsig)
-            emit_specsig_to_specsig(M, gf_thunk_name, sigt, declrt, is_opaque_closure, nargs, params,
+            emit_specsig_to_specsig(M, gf_thunk_name, callt, declrt, is_opaque_closure, nargs, params,
                     target, mi->specTypes, codeinst->rettype, &targetspec, nullptr);
         else
             gen_invoke_wrapper(mi, abi, codeinst->rettype, declrt, targetspec, nargs, -1, is_opaque_closure, gf_thunk_name, M, params);
     }
     else {
         if (specsig)
-            emit_specsig_to_specsig(M, gf_thunk_name, sigt, declrt, is_opaque_closure, nargs, params,
+            emit_specsig_to_specsig(M, gf_thunk_name, callt, declrt, is_opaque_closure, nargs, params,
                     target, mi->specTypes, codeinst->rettype, nullptr, nullptr);
         else
             emit_fptr1_wrapper(M, gf_thunk_name, target, nullptr, declrt, codeinst->rettype, params);
     }
+    JL_GC_POP();
     return gf_thunk_name;
 }
 
@@ -7085,22 +7101,30 @@ std::string emit_abi_dispatcher(Module *M, jl_codegen_params_t &params, jl_value
     else
         raw_string_ostream(gf_thunk_name) << "j_";
     raw_string_ostream(gf_thunk_name) << jl_atomic_fetch_add_relaxed(&globalUniqueGeneratedNames, 1) << "_gfthunk";
-    if (specsig)
+    if (specsig) {
+        jl_value_t *callt = sigt_to_callt(sigt);
+        JL_GC_PUSH1(&callt);
         emit_specsig_to_specsig(M, gf_thunk_name, sigt, declrt, is_opaque_closure, nargs, params,
                 target, sigt, codeinst ? codeinst->rettype : (jl_value_t*)jl_any_type, nullptr, nullptr);
-    else
+        JL_GC_POP();
+    }
+    else {
         emit_fptr1_wrapper(M, gf_thunk_name, target, nullptr, declrt, codeinst ? codeinst->rettype : (jl_value_t*)jl_any_type, params);
+    }
     return gf_thunk_name;
 }
 
-std::string emit_abi_constreturn(Module *M, jl_codegen_params_t &params, jl_value_t *declrt, jl_value_t *sigt, size_t nargs, bool specsig, jl_value_t *rettype_const)
+static std::string emit_abi_constreturn(Module *M, jl_codegen_params_t &params, jl_value_t *declrt, jl_value_t *sigt, size_t nargs, bool specsig, jl_value_t *rettype_const, bool cfunc)
 {
     bool is_opaque_closure = false;
     std::string gf_thunk_name;
     raw_string_ostream(gf_thunk_name) << "jconst_" << jl_atomic_fetch_add_relaxed(&globalUniqueGeneratedNames, 1);
     if (specsig) {
-        emit_specsig_to_specsig(M, gf_thunk_name, sigt, declrt, is_opaque_closure, nargs, params,
-                nullptr, sigt, jl_typeof(rettype_const), nullptr, rettype_const);
+        jl_value_t *callt = cfunc ? sigt_to_callt(sigt) : sigt;
+        JL_GC_PUSH1(&callt);
+        emit_specsig_to_specsig(M, gf_thunk_name, callt, declrt, is_opaque_closure, nargs, params,
+                nullptr, callt, jl_typeof(rettype_const), nullptr, rettype_const);
+        JL_GC_POP();
     }
     else {
         emit_fptr1_wrapper(M, gf_thunk_name, nullptr, rettype_const, declrt, jl_typeof(rettype_const), params);
@@ -7108,10 +7132,15 @@ std::string emit_abi_constreturn(Module *M, jl_codegen_params_t &params, jl_valu
     return gf_thunk_name;
 }
 
+std::string emit_abi_constreturn(Module *M, jl_codegen_params_t &params, jl_value_t *declrt, jl_value_t *sigt, size_t nargs, bool specsig, jl_value_t *rettype_const)
+{
+    return emit_abi_constreturn(M, params, declrt, sigt, nargs, specsig, rettype_const, true);
+}
+
 std::string emit_abi_constreturn(Module *M, jl_codegen_params_t &params, bool specsig, jl_code_instance_t *codeinst)
 {
     jl_value_t *abi = get_ci_abi(codeinst);
-    return emit_abi_constreturn(M, params, codeinst->rettype, abi, specsig ? jl_nparams(abi) : 0, specsig, codeinst->rettype_const);
+    return emit_abi_constreturn(M, params, codeinst->rettype, abi, specsig ? jl_nparams(abi) : 0, specsig, codeinst->rettype_const, false);
 }
 
 // release jl_world_counter
@@ -7176,16 +7205,15 @@ static jl_cgval_t emit_abi_call(jl_codectx_t &ctx, jl_value_t *declrt, jl_value_
             });
         ctx.emission_context.cfuncs.push_back({declrt, sigt, nargs, specsig, theFptr, cfuncdata});
         if (specsig) {
-            // TODO: could we force this to guarantee passing a box for `f` here (since we
+            // We force this to guarantee passing a box for `f` here (since we
             // know we had it here) and on the receiver end (emit_abi_converter /
             // emit_abi_dispatcher), force it to know that it can simply use this pointer
-            // instead of re-boxing it if it needs to the boxed copy of it. This comes up
-            // very rarely since usually the ABI calls are concrete and match exactly and
-            // aren't closures, but sometimes there are cases like that because of
-            // `::Function` de-specialization heuristics, such as for the `Returns` callable
-            // given that it is `@nospecialize`.
-            jl_returninfo_t targetspec = get_specsig_function(ctx.emission_context, M, target, "", sigt, declrt, is_opaque_closure);
-            retval = emit_call_specfun_other(ctx, is_opaque_closure, sigt, declrt, targetspec, inputargs, nargs);
+            // instead of re-boxing it if it needs to the boxed copy of it.
+            jl_value_t *callt = sigt_to_callt(sigt);
+            JL_GC_PUSH1(&callt);
+            jl_returninfo_t targetspec = get_specsig_function(ctx.emission_context, M, target, "", callt, declrt, is_opaque_closure);
+            retval = emit_call_specfun_other(ctx, is_opaque_closure, callt, declrt, targetspec, inputargs, nargs);
+            JL_GC_POP();
         }
         else {
             retval = mark_julia_type(ctx, emit_jlcall(ctx, target, nullptr, inputargs, nargs, julia_call), true, declrt);

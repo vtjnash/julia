@@ -349,6 +349,127 @@ static const inline char *name_from_method_instance(jl_method_instance_t *li) JL
     return jl_is_method(li->def.method) ? jl_symbol_name(li->def.method->name) : "top-level scope";
 }
 
+static bool jl_is_concrete_immutable(jl_value_t* t)
+{
+    return jl_is_immutable_datatype(t) && ((jl_datatype_t*)t)->isconcretetype;
+}
+
+// these queries must be the same as in codegen.cpp
+static int deserves_stack(jl_value_t* t)
+{
+    if (!jl_is_concrete_immutable(t))
+        return false;
+    jl_datatype_t *dt = (jl_datatype_t*)t;
+    return jl_is_datatype_singleton(dt) || jl_datatype_isinlinealloc(dt, 0);
+}
+static int deserves_argbox(jl_value_t* t)
+{
+    return !deserves_stack(t);
+}
+static int deserves_retbox(jl_value_t* t)
+{
+    return deserves_argbox(t);
+}
+static bool type_has_unique_rep(jl_value_t *t)
+{
+    if (t == (jl_value_t*)jl_typeofbottom_type)
+        return false;
+    if (t == jl_bottom_type)
+        return true;
+    if (jl_is_typevar(t))
+        return false;
+    if (!jl_is_kind(jl_typeof(t)))
+        return true;
+    if (jl_is_concrete_type(t))
+        return true;
+    if (jl_is_datatype(t)) {
+        jl_datatype_t *dt = (jl_datatype_t*)t;
+        if (dt->name != jl_tuple_typename) {
+            for (size_t i = 0; i < jl_nparams(dt); i++)
+                if (!type_has_unique_rep(jl_tparam(dt, i)))
+                    return false;
+            return true;
+        }
+    }
+    return false;
+}
+static bool is_uniquerep_Type(jl_value_t *t)
+{
+    return jl_is_type_type(t) && type_has_unique_rep(jl_tparam0(t));
+}
+
+static bool abi_is_ghost(jl_value_t *t)
+{
+    return jl_is_datatype(t) && (is_uniquerep_Type(t) || jl_is_datatype_singleton((jl_datatype_t*)t));
+}
+
+static bool abi_is_box(jl_value_t *t)
+{
+    assert(!abi_is_ghost(t));
+    return deserves_argbox(t);
+}
+
+static bool abi_is_pointer(jl_value_t *t)
+{
+    assert(!abi_is_box(t));
+    if (jl_is_primitivetype(t))
+        return 0;
+    if (jl_is_vecelement_type(t))
+        return 0; // might not be a pointer, not going to bother checking
+    const jl_datatype_layout_t *layout = ((jl_datatype_t*)t)->layout;
+    if (!layout)
+        return 0; // unknown?
+    if (layout->npointers == 0)
+        return 1;
+    if (layout->npointers * sizeof(void*) == jl_datatype_size(t))
+        return 1;
+    return 0;
+}
+
+// compute whether the cfunction ABI for target is the same as the julia ABI for edge
+static int jl_egal_abi_call(jl_value_t *cfun, jl_value_t *abi, size_t nargs)
+{
+    if (!jl_is_datatype(cfun) || jl_nparams(abi) != nargs || jl_is_va_tuple((jl_datatype_t*)abi))
+        return 0;
+    for (size_t i = 0; i < nargs; i++) {
+        jl_value_t *cfun_i = jl_tparam(cfun, i);
+        jl_value_t *abi_i = jl_tparam(abi, i);
+        if (jl_egal(cfun_i, abi_i))
+            continue;
+        int ghost_i = abi_is_ghost(abi_i);
+        if (ghost_i != abi_is_ghost(cfun_i))
+            return 0;
+        if (ghost_i)
+            continue;
+        int box_i = abi_is_box(abi_i);
+        if (box_i != (i == 0 || abi_is_box(cfun_i))) {
+            if (box_i)
+                return 0;
+            int pointer_i = abi_is_pointer(abi_i);
+            if (pointer_i != (i == 0 || abi_is_box(cfun_i) || abi_is_pointer(cfun_i))) // box => pointer decay permitted
+                return 0;
+        }
+    }
+    return 1;
+}
+
+// compute whether the cfunction ABI for target is the same as the julia ABI for edge
+// including that abi is a subtype of cfun
+static int jl_egal_abi_ret(jl_value_t *cfun, jl_value_t *abi)
+{
+    if (jl_egal(cfun, abi))
+        return 1;
+    if (cfun == (jl_value_t*)jl_bottom_type || abi == (jl_value_t*)jl_bottom_type ||
+        (jl_is_structtype(abi) && jl_is_datatype_singleton((jl_datatype_t*)abi)) ||
+        (jl_is_structtype(cfun) && jl_is_datatype_singleton((jl_datatype_t*)cfun)) ||
+        jl_is_uniontype(cfun) || jl_is_uniontype(abi) ||
+        !deserves_retbox(cfun) || !deserves_retbox(abi))
+        return 0;
+    if (!jl_subtype(abi, cfun))
+        return 0;
+    return 1;
+}
+
 static jl_mutex_t cfun_lock;
 // release jl_world_counter
 // store theFptr
@@ -444,7 +565,7 @@ void *jl_get_abi_converter(jl_task_t *ct, _Atomic(void*) *fptr, _Atomic(size_t) 
             }
             else if (specsigflags & 0b1) {
                 assert(f);
-                if (specsig && jl_egal(mi->specTypes, sigt) && jl_egal(declrt, astrt))
+                if (specsig && jl_egal_abi_call(mi->specTypes, sigt, nargs) && jl_egal_abi_ret(declrt, astrt))
                     return assign_fptr(f);
                 return assign_fptr(jl_jit_abi_converter(ct, cfuncdata->unspecialized, declrt, sigt, nargs, specsig, codeinst, invoke, f, true));
             }
