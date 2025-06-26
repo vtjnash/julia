@@ -1884,27 +1884,19 @@ static int get_intersect_visitor(jl_typemap_entry_t *oldentry, struct typemap_in
     assert(oldentry != closure->newentry && "entry already added");
     assert(jl_atomic_load_relaxed(&oldentry->min_world) <= jl_atomic_load_relaxed(&closure->newentry->min_world) && "old method cannot be newer than new method");
     assert(jl_atomic_load_relaxed(&oldentry->max_world) != jl_atomic_load_relaxed(&closure->newentry->min_world) && "method cannot be added at the same time as method deleted");
-    // don't need to consider other similar methods if this oldentry will always fully intersect with them and dominates all of them
     jl_method_t *oldmethod = oldentry->func.method;
+    int only = (jl_atomic_load_relaxed(&oldmethod->dispatch_status) & METHOD_SIG_LATEST_WHICH) == METHOD_SIG_LATEST_WHICH;
+    assert(only == (jl_atomic_load_relaxed(&oldentry->max_world) == ~(size_t)0)); (void)only;
+    // don't need to consider other similar methods if this oldentry will always fully intersect with them and dominates all of them
     if (closure->match.issubty // e.g. jl_subtype(closure->newentry.sig, oldentry->sig)
+        && oldentry->max_world == ~(size_t)0
         && jl_subtype(oldmethod->sig, (jl_value_t*)closure->newentry->sig)) { // e.g. jl_type_equal(closure->newentry->sig, oldentry->sig)
         if (closure->replaced == NULL || jl_atomic_load_relaxed(&closure->replaced->min_world) < jl_atomic_load_relaxed(&oldentry->min_world))
             closure->replaced = oldentry; // must pick the newest insertion (both are still valid)
     }
     if (closure->shadowed == NULL)
         closure->shadowed = (jl_value_t*)jl_alloc_vec_any(0);
-    if (closure->match.issubty) { // this should be rarely true (in fact, get_intersect_visitor should be rarely true), but might as well skip the rest of the scan fast anyways since we can
-        int only = jl_atomic_load_relaxed(&oldmethod->dispatch_status) & METHOD_SIG_LATEST_ONLY;
-        if (only) {
-            size_t len = jl_array_nrows(closure->shadowed);
-            if (len > 0)
-                jl_array_del_end((jl_array_t*)closure->shadowed, len);
-            jl_array_ptr_1d_push((jl_array_t*)closure->shadowed, (jl_value_t*)oldmethod);
-            return 0;
-        }
-    }
     jl_array_ptr_1d_push((jl_array_t*)closure->shadowed, (jl_value_t*)oldmethod);
-    typemap_slurp_search(oldentry, &closure->match);
     return 1;
 }
 
@@ -1923,7 +1915,7 @@ static jl_value_t *get_intersect_matches(jl_typemap_t *defs, jl_typemap_entry_t 
     }
     // search for all intersecting methods active in the previous world, to determine the changes needed to be made for the next world
     struct matches_env env = {{get_intersect_visitor, (jl_value_t*)type, va, /* .search_slurp = */ 0,
-            /* .min_valid = */ world, /* .max_valid = */ world,
+            /* .min_valid = */ 2, /* .max_valid = */ world,
             /* .ti = */ NULL, /* .env = */ jl_emptysvec, /* .issubty = */ 0},
         /* .newentry = */ newentry, /* .shadowed */ NULL, /* .replaced */ NULL};
     JL_GC_PUSH3(&env.match.env, &env.match.ti, &env.shadowed);
@@ -2592,7 +2584,7 @@ JL_DLLEXPORT void jl_method_table_disable(jl_method_t *method)
         jl_error("Method changes have been disabled via a call to disable_new_worlds.");
     int enabled = jl_atomic_load_relaxed(&methodentry->max_world) == ~(size_t)0;
     if (enabled) {
-            // Narrow the world age on the method to make it uncallable
+        // Narrow the world age on the method to make it uncallable
         size_t world = jl_atomic_load_relaxed(&jl_world_counter);
         assert(method == methodentry->func.method);
         jl_atomic_store_relaxed(&method->dispatch_status, 0);
@@ -2600,7 +2592,7 @@ JL_DLLEXPORT void jl_method_table_disable(jl_method_t *method)
         jl_atomic_store_relaxed(&methodentry->max_world, world);
         jl_method_table_invalidate(method, world);
         jl_atomic_store_release(&jl_world_counter, world + 1);
-        }
+    }
     JL_UNLOCK(&world_counter_lock);
     if (!enabled)
         jl_errorf("Method of %s already disabled", jl_symbol_name(method->name));
@@ -2660,16 +2652,20 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
 
     int invalidated = 0;
     int only = !(jl_atomic_load_relaxed(&method->dispatch_status) & METHOD_SIG_PRECOMPILE_MANY); // will compute if this will be currently the only result that would returned from `ml_matches` given `sig`
+    size_t intersection_count = 0; // count of intersecting methods not more specific
     if (replaced) {
         oldvalue = (jl_value_t*)replaced;
         jl_method_t *m = replaced->func.method;
         invalidated = 1;
         method_overwrite(newentry, m);
-        // this is an optimized version of below, given we know the type-intersection is exact
+        // This is an optimized version of below, given we know the type-intersection is exact
         jl_method_table_invalidate(m, max_world);
         int m_dispatch = jl_atomic_load_relaxed(&m->dispatch_status);
         jl_atomic_store_relaxed(&m->dispatch_status, 0);
         only = m_dispatch & METHOD_SIG_LATEST_ONLY;
+        intersection_count = jl_atomic_load_relaxed(&m->intersection_count);
+        if (intersection_count < UINT8_MAX)
+            jl_atomic_store_relaxed(&m->intersection_count, intersection_count + 1);
     }
     else {
         jl_method_t *const *d;
@@ -2690,6 +2686,7 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
                 jl_method_t *m = d[j];
                 if (morespec[j] == (char)morespec_is) {
                     only = 0;
+                    intersection_count++;
                     continue;
                 }
                 loctag = jl_atomic_load_relaxed(&m->specializations); // use loctag for a gcroot
@@ -2731,6 +2728,10 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
                         int invalidatedmi = _invalidate_dispatch_backedges(mi, type, m, d, n, replaced_dispatch, ambig, max_world, morespec);
                         if (replaced_dispatch)
                             jl_atomic_store_relaxed(&mi->dispatch_status, 0);
+                        // Increment intersection count
+                        uint8_t old_count = jl_atomic_load_relaxed(&mi->intersection_count);
+                        if (old_count < UINT8_MAX)
+                            jl_atomic_store_relaxed(&mi->intersection_count, old_count + 1);
                         jl_array_ptr_1d_push(oldmi, (jl_value_t*)mi);
                         if (_jl_debug_method_invalidation && invalidatedmi) {
                             jl_array_ptr_1d_push(_jl_debug_method_invalidation, (jl_value_t*)mi);
@@ -2741,18 +2742,26 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
                     }
                 }
                 // now compute and store updates to METHOD_SIG_LATEST_ONLY
+                if (morespec[j] == (char)morespec_unknown)
+                    morespec[j] = (char)(jl_type_morespecific(m->sig, type) ? morespec_is : morespec_isnot);
                 int m_dispatch = jl_atomic_load_relaxed(&m->dispatch_status);
                 if (m_dispatch & METHOD_SIG_LATEST_ONLY) {
-                    if (morespec[j] == (char)morespec_unknown)
-                        morespec[j] = (char)(jl_type_morespecific(m->sig, type) ? morespec_is : morespec_isnot);
-                    if (morespec[j] == (char)morespec_isnot)
+                    if (morespec[j] == (char)morespec_isnot) {
                         jl_atomic_store_relaxed(&m->dispatch_status, ~METHOD_SIG_LATEST_ONLY & m_dispatch);
-                }
-                if (only) {
-                    if (morespec[j] == (char)morespec_is || ambig == morespec_is ||
-                        (ambig == morespec_unknown && !jl_type_morespecific(type, m->sig))) {
-                        only = 0;
+                        // Increment intersection count for methods that are not more specific
+                        uint8_t old_count = jl_atomic_load_relaxed(&m->intersection_count);
+                        if (old_count < UINT8_MAX)
+                            jl_atomic_store_relaxed(&m->intersection_count, old_count + 1);
                     }
+                }
+                // Count methods that intersect but are not more specific
+                if (morespec[j] == (char)morespec_is || ambig == morespec_is ||
+                    (ambig == morespec_unknown && !jl_type_morespecific(type, m->sig))) {
+                    intersection_count++; // for insertion
+                    if (jl_atomic_load_relaxed(&m->dispatch_status) & METHOD_SIG_LATEST_WHICH)
+                        only = 0;
+                    else
+                        intersection_count++; // for deletion
                 }
             }
         }
@@ -2803,6 +2812,7 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
     }
     jl_atomic_store_relaxed(&newentry->max_world, ~(size_t)0);
     jl_atomic_store_relaxed(&method->dispatch_status, METHOD_SIG_LATEST_WHICH | (only ? METHOD_SIG_LATEST_ONLY : 0)); // TODO: this should be sequenced fully after the world counter store
+    jl_atomic_store_relaxed(&method->intersection_count, intersection_count > UINT8_MAX ? UINT8_MAX : intersection_count);
     JL_GC_POP();
 }
 
