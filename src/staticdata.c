@@ -1842,7 +1842,6 @@ static void jl_write_values(jl_serializer_state *s) JL_GC_DISABLED
                         jl_atomic_store_relaxed(&newm->primary_world, ~(size_t)0); // min-world
                         int dispatch_status = jl_atomic_load_relaxed(&newm->dispatch_status);
                         jl_atomic_store_relaxed(&newm->dispatch_status, dispatch_status & METHOD_SIG_LATEST_ONLY ? 0 : METHOD_SIG_PRECOMPILE_MANY);
-                        jl_atomic_store_relaxed(&newm->intersection_count, 0);
                         arraylist_push(&s->fixup_objs, (void*)reloc_offset);
                     }
                 }
@@ -1856,7 +1855,6 @@ static void jl_write_values(jl_serializer_state *s) JL_GC_DISABLED
                 jl_atomic_store_relaxed(&newmi->flags, 0);
                 if (s->incremental) {
                     jl_atomic_store_relaxed(&newmi->dispatch_status, 0);
-                    jl_atomic_store_relaxed(&newmi->intersection_count, 0);
                 }
             }
             else if (jl_is_code_instance(v)) {

@@ -1883,13 +1883,12 @@ static int get_intersect_visitor(jl_typemap_entry_t *oldentry, struct typemap_in
     struct matches_env *closure = container_of(closure0, struct matches_env, match);
     assert(oldentry != closure->newentry && "entry already added");
     assert(jl_atomic_load_relaxed(&oldentry->min_world) <= jl_atomic_load_relaxed(&closure->newentry->min_world) && "old method cannot be newer than new method");
-    assert(jl_atomic_load_relaxed(&oldentry->max_world) != jl_atomic_load_relaxed(&closure->newentry->min_world) && "method cannot be added at the same time as method deleted");
+    //assert(jl_atomic_load_relaxed(&oldentry->max_world) != jl_atomic_load_relaxed(&closure->newentry->min_world) && "method cannot be added at the same time as method deleted");
+    assert((jl_atomic_load_relaxed(&oldentry->max_world) == ~(size_t)0));
+    assert((jl_atomic_load_relaxed(&oldmethod->dispatch_status) & METHOD_SIG_LATEST_WHICH) == METHOD_SIG_LATEST_WHICH);
     jl_method_t *oldmethod = oldentry->func.method;
-    int only = (jl_atomic_load_relaxed(&oldmethod->dispatch_status) & METHOD_SIG_LATEST_WHICH) == METHOD_SIG_LATEST_WHICH;
-    assert(only == (jl_atomic_load_relaxed(&oldentry->max_world) == ~(size_t)0)); (void)only;
     // don't need to consider other similar methods if this oldentry will always fully intersect with them and dominates all of them
     if (closure->match.issubty // e.g. jl_subtype(closure->newentry.sig, oldentry->sig)
-        && oldentry->max_world == ~(size_t)0
         && jl_subtype(oldmethod->sig, (jl_value_t*)closure->newentry->sig)) { // e.g. jl_type_equal(closure->newentry->sig, oldentry->sig)
         if (closure->replaced == NULL || jl_atomic_load_relaxed(&closure->replaced->min_world) < jl_atomic_load_relaxed(&oldentry->min_world))
             closure->replaced = oldentry; // must pick the newest insertion (both are still valid)
@@ -1915,7 +1914,7 @@ static jl_value_t *get_intersect_matches(jl_typemap_t *defs, jl_typemap_entry_t 
     }
     // search for all intersecting methods active in the previous world, to determine the changes needed to be made for the next world
     struct matches_env env = {{get_intersect_visitor, (jl_value_t*)type, va, /* .search_slurp = */ 0,
-            /* .min_valid = */ 2, /* .max_valid = */ world,
+            /* .min_valid = */ world, /* .max_valid = */ world,
             /* .ti = */ NULL, /* .env = */ jl_emptysvec, /* .issubty = */ 0},
         /* .newentry = */ newentry, /* .shadowed */ NULL, /* .replaced */ NULL};
     JL_GC_PUSH3(&env.match.env, &env.match.ti, &env.shadowed);
@@ -2133,7 +2132,6 @@ static int jl_type_intersection2(jl_value_t *t1, jl_value_t *t2, jl_value_t **is
 
 
 enum morespec_options {
-    morespec_unknown,
     morespec_isnot,
     morespec_is
 };
@@ -2147,8 +2145,6 @@ static int is_replacing(char ambig, jl_value_t *type, jl_method_t *m, jl_method_
         // see if m2 also fully covered this intersection
         if (m == m2 || !(jl_subtype(isect, m2->sig) || (isect2 && jl_subtype(isect2, m2->sig))))
             continue;
-        if (morespec[k] == (char)morespec_unknown)
-            morespec[k] = (char)(jl_type_morespecific(m2->sig, type) ? morespec_is : morespec_isnot);
         if (morespec[k] == (char)morespec_is)
             // not actually shadowing this--m2 will still be better
             return 0;
@@ -2621,6 +2617,18 @@ jl_typemap_entry_t *jl_method_table_add(jl_methtable_t *mt, jl_method_t *method,
     return newentry;
 }
 
+static int has_key(jl_genericmemory_t *keys, jl_value_t *key)
+{
+    for (size_t l = keys->length, i = 0; i < l; i++) {
+        jl_value_t *k = jl_genericmemory_ptr_ref(keys, i);
+        if (k == NULL)
+            return 0;
+        if (jl_genericmemory_ptr_ref(keys, i) == key)
+            return 1;
+    }
+    return 0;
+}
+
 void jl_method_table_activate(jl_typemap_entry_t *newentry)
 {
     JL_TIMING(ADD_METHOD, ADD_METHOD);
@@ -2645,14 +2653,18 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
     jl_value_t *isect = NULL;
     jl_value_t *isect2 = NULL;
     jl_value_t *isect3 = NULL;
-    JL_GC_PUSH6(&oldvalue, &oldmi, &loctag, &isect, &isect2, &isect3);
+    jl_genericmemory_t *interferences = NULL;
+    JL_GC_PUSH7(&oldvalue, &oldmi, &loctag, &isect, &isect2, &isect3, &interferences);
     jl_typemap_entry_t *replaced = NULL;
-    // then check what entries we replaced
+    // Check what entries this intersects with in the prior world.
     oldvalue = get_intersect_matches(jl_atomic_load_relaxed(&mt->defs), newentry, &replaced, max_world);
 
+    // These get updated from their state stored in the caches files, since content in cache files gets added "all at once".
     int invalidated = 0;
-    int only = !(jl_atomic_load_relaxed(&method->dispatch_status) & METHOD_SIG_PRECOMPILE_MANY); // will compute if this will be currently the only result that would returned from `ml_matches` given `sig`
-    size_t intersection_count = 0; // count of intersecting methods not more specific
+    // This will store if this method will be currently the only result that would returned from `ml_matches` given `sig`.
+    int only = !(jl_atomic_load_relaxed(&method->dispatch_status) & METHOD_SIG_PRECOMPILE_MANY);
+    // The set of intersecting methods not more specific than this.
+    interferences = (jl_genericmemory_t*)jl_atomic_load_relaxed(&method->interferences);
     if (replaced) {
         oldvalue = (jl_value_t*)replaced;
         jl_method_t *m = replaced->func.method;
@@ -2663,9 +2675,20 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
         int m_dispatch = jl_atomic_load_relaxed(&m->dispatch_status);
         jl_atomic_store_relaxed(&m->dispatch_status, 0);
         only = m_dispatch & METHOD_SIG_LATEST_ONLY;
-        intersection_count = jl_atomic_load_relaxed(&m->intersection_count);
-        if (intersection_count < UINT8_MAX)
-            jl_atomic_store_relaxed(&m->intersection_count, intersection_count + 1);
+        // Take over the interference list from the replaced method
+        jl_genericmemory_t *m_interferences = jl_atomic_load_relaxed(&m->interferences);
+        if (interferences->length == 0) {
+            interferences = jl_genericmemory_copy(m_interferences);
+        }
+        else {
+            for (size_t i = 0; i < m_interferences->length; i++) {
+                jl_value_t *k = jl_genericmemory_ptr_ref(m_interferences, i);
+                if (!has_key(interferences, (jl_value_t*)k)) {
+                    ssize_t idx;
+                    interferences = jl_idset_put_key(interferences, (jl_value_t*)k, &idx);
+                }
+            }
+        }
     }
     else {
         jl_method_t *const *d;
@@ -2681,14 +2704,35 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
 
             oldmi = jl_alloc_vec_any(0);
             char *morespec = (char*)alloca(n);
-            memset(morespec, morespec_unknown, n);
             for (j = 0; j < n; j++) {
                 jl_method_t *m = d[j];
-                if (morespec[j] == (char)morespec_is) {
-                    only = 0;
-                    intersection_count++;
-                    continue;
+                morespec[j] = (char)(jl_type_morespecific(m->sig, type) ? morespec_is : morespec_isnot);
+            }
+            for (j = 0; j < n; j++) {
+                jl_method_t *m = d[j];
+                enum morespec_options not_morespec = morespec[j] == morespec_is || !jl_type_morespecific(type, m->sig) ? morespec_is : morespec_isnot;
+                // Add methods that intersect but are not more specific to interference list
+                if (not_morespec == morespec_is) {
+                    // Add this method to the interference list
+                    ssize_t idx;
+                    if (!has_key(interferences, (jl_value_t*)m))
+                        interferences = jl_idset_put_key(interferences, (jl_value_t*)m, &idx);
+                    if (jl_atomic_load_relaxed(&m->dispatch_status) & METHOD_SIG_LATEST_WHICH)
+                        only = 0;
                 }
+                if (morespec[j] == morespec_is)
+                    continue;
+                int m_dispatch = jl_atomic_load_relaxed(&m->dispatch_status);
+                if (m_dispatch & METHOD_SIG_LATEST_ONLY)
+                    jl_atomic_store_relaxed(&m->dispatch_status, ~METHOD_SIG_LATEST_ONLY & m_dispatch);
+                // Add the new method to its interference set
+                jl_genericmemory_t *m_interferences = jl_atomic_load_relaxed(&m->interferences);
+                ssize_t idx;
+                m_interferences = jl_idset_put_key(m_interferences, (jl_value_t*)method, &idx);
+                jl_atomic_store_release(&m->interferences, m_interferences);
+                jl_gc_wb(m, m_interferences);
+
+                // Now examine if this caused any invalidations.
                 loctag = jl_atomic_load_relaxed(&m->specializations); // use loctag for a gcroot
                 _Atomic(jl_method_instance_t*) *data;
                 size_t l;
@@ -2700,38 +2744,27 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
                     data = (_Atomic(jl_method_instance_t*)*) &loctag;
                     l = 1;
                 }
-                enum morespec_options ambig = morespec_unknown;
                 for (size_t i = 0; i < l; i++) {
                     jl_method_instance_t *mi = jl_atomic_load_relaxed(&data[i]);
                     if ((jl_value_t*)mi == jl_nothing)
                         continue;
                     isect3 = jl_type_intersection(m->sig, (jl_value_t*)mi->specTypes);
                     if (jl_type_intersection2(type, isect3, &isect, &isect2)) {
+                        // Replacing a method--see if this really was the selected method previously
+                        // over the intersection (not ambiguous) and the new method will be selected now (morespec_is).
                         // TODO: this only checks pair-wise for ambiguities, but the ambiguities could arise from the interaction of multiple methods
-                        // and thus might miss a case where we introduce an ambiguity between two existing methods
+                        // and thus might miss a case where we introduce an ambiguity between`.u two existing methods
                         // We could instead work to sort this into 3 groups `morespecific .. ambiguous .. lesspecific`, with `type` in ambiguous,
                         // such that everything in `morespecific` dominates everything in `ambiguous`, and everything in `ambiguous` dominates everything in `lessspecific`
                         // And then compute where each isect falls, and whether it changed group--necessitating invalidation--or not.
-                        if (morespec[j] == (char)morespec_unknown)
-                            morespec[j] = (char)(jl_type_morespecific(m->sig, type) ? morespec_is : morespec_isnot);
-                        if (morespec[j] == (char)morespec_is)
-                            // not actually shadowing--the existing method is still better
-                            break;
-                        if (ambig == morespec_unknown)
-                            ambig = jl_type_morespecific(type, m->sig) ? morespec_isnot : morespec_is;
-                        // replacing a method--see if this really was the selected method previously
-                        // over the intersection (not ambiguous) and the new method will be selected now (morespec_is)
-                        int replaced_dispatch = is_replacing(ambig, type, m, d, n, isect, isect2, morespec);
+                        int replaced_dispatch = is_replacing(not_morespec, type, m, d, n, isect, isect2, morespec);
                         // found that this specialization dispatch got replaced by m
                         // call invalidate_backedges(mi, max_world, "jl_method_table_insert");
                         // but ignore invoke-type edges
-                        int invalidatedmi = _invalidate_dispatch_backedges(mi, type, m, d, n, replaced_dispatch, ambig, max_world, morespec);
+                        int invalidatedmi = _invalidate_dispatch_backedges(mi, type, m, d, n, replaced_dispatch, not_morespec, max_world, morespec);
                         if (replaced_dispatch)
                             jl_atomic_store_relaxed(&mi->dispatch_status, 0);
-                        // Increment intersection count
-                        uint8_t old_count = jl_atomic_load_relaxed(&mi->intersection_count);
-                        if (old_count < UINT8_MAX)
-                            jl_atomic_store_relaxed(&mi->intersection_count, old_count + 1);
+                        // No longer tracking intersection count on method instances
                         jl_array_ptr_1d_push(oldmi, (jl_value_t*)mi);
                         if (_jl_debug_method_invalidation && invalidatedmi) {
                             jl_array_ptr_1d_push(_jl_debug_method_invalidation, (jl_value_t*)mi);
@@ -2741,29 +2774,7 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
                         invalidated |= invalidatedmi;
                     }
                 }
-                // now compute and store updates to METHOD_SIG_LATEST_ONLY
-                if (morespec[j] == (char)morespec_unknown)
-                    morespec[j] = (char)(jl_type_morespecific(m->sig, type) ? morespec_is : morespec_isnot);
-                int m_dispatch = jl_atomic_load_relaxed(&m->dispatch_status);
-                if (m_dispatch & METHOD_SIG_LATEST_ONLY) {
-                    if (morespec[j] == (char)morespec_isnot) {
-                        jl_atomic_store_relaxed(&m->dispatch_status, ~METHOD_SIG_LATEST_ONLY & m_dispatch);
-                        // Increment intersection count for methods that are not more specific
-                        uint8_t old_count = jl_atomic_load_relaxed(&m->intersection_count);
-                        if (old_count < UINT8_MAX)
-                            jl_atomic_store_relaxed(&m->intersection_count, old_count + 1);
-                    }
-                }
-                // Count methods that intersect but are not more specific
-                if (morespec[j] == (char)morespec_is || ambig == morespec_is ||
-                    (ambig == morespec_unknown && !jl_type_morespecific(type, m->sig))) {
-                    intersection_count++; // for insertion
-                    if (jl_atomic_load_relaxed(&m->dispatch_status) & METHOD_SIG_LATEST_WHICH)
-                        only = 0;
-                    else
-                        intersection_count++; // for deletion
-                }
-            }
+           }
         }
 
         jl_methcache_t *mc = jl_method_table->cache;
@@ -2812,7 +2823,8 @@ void jl_method_table_activate(jl_typemap_entry_t *newentry)
     }
     jl_atomic_store_relaxed(&newentry->max_world, ~(size_t)0);
     jl_atomic_store_relaxed(&method->dispatch_status, METHOD_SIG_LATEST_WHICH | (only ? METHOD_SIG_LATEST_ONLY : 0)); // TODO: this should be sequenced fully after the world counter store
-    jl_atomic_store_relaxed(&method->intersection_count, intersection_count > UINT8_MAX ? UINT8_MAX : intersection_count);
+    jl_atomic_store_release(&method->interferences, interferences);
+    jl_gc_wb(method, interferences);
     JL_GC_POP();
 }
 

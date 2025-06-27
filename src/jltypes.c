@@ -3543,7 +3543,7 @@ void jl_init_types(void) JL_GC_DISABLED
                             "file",
                             "line",
                             "dispatch_status", // atomic
-                            "intersection_count", // atomic
+                            "interferences", // atomic
                             "primary_world", // atomic
                             "sig",
                             "specializations", // !const
@@ -3577,7 +3577,7 @@ void jl_init_types(void) JL_GC_DISABLED
                             jl_symbol_type,
                             jl_int32_type,
                             jl_uint8_type,
-                            jl_uint8_type,
+                            jl_genericmemory_type,
                             jl_ulong_type,
                             jl_type_type,
                             jl_any_type, // union(jl_simplevector_type, jl_method_instance_type),
@@ -3615,7 +3615,7 @@ void jl_init_types(void) JL_GC_DISABLED
     jl_method_instance_type =
         jl_new_datatype(jl_symbol("MethodInstance"), core,
                         jl_any_type, jl_emptysvec,
-                        jl_perm_symsvec(9,
+                        jl_perm_symsvec(8,
                             "def",
                             "specTypes",
                             "sparam_vals",
@@ -3623,9 +3623,8 @@ void jl_init_types(void) JL_GC_DISABLED
                             "cache",
                             "cache_with_orig",
                             "flags",
-                            "dispatch_status",
-                            "intersection_count"),
-                        jl_svec(9,
+                            "dispatch_status"),
+                        jl_svec(8,
                             jl_new_struct(jl_uniontype_type, jl_method_type, jl_module_type),
                             jl_any_type,
                             jl_simplevector_type,
@@ -3633,13 +3632,12 @@ void jl_init_types(void) JL_GC_DISABLED
                             jl_any_type/*jl_code_instance_type*/,
                             jl_bool_type,
                             jl_bool_type,
-                            jl_uint8_type,
                             jl_uint8_type),
                         jl_emptysvec,
                         0, 1, 3);
     // These fields should be constant, but Serialization wants to mutate them in initialization
-    //const static uint32_t method_instance_constfields[1] = { 0b000000111 }; // fields 1, 2, 3
-    const static uint32_t method_instance_atomicfields[1]  = { 0b111010000 }; // fields 5, 7, 8, 9
+    //const static uint32_t method_instance_constfields[1] = { 0b00000111 }; // fields 1, 2, 3
+    const static uint32_t method_instance_atomicfields[1]  = { 0b11010000 }; // fields 5, 7, 8
     //Fields 4 and 5 must be protected by method->write_lock, and thus all operations on jl_method_instance_t are threadsafe.
     //jl_method_instance_type->name->constfields = method_instance_constfields;
     jl_method_instance_type->name->atomicfields = method_instance_atomicfields;
