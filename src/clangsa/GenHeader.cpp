@@ -10,10 +10,14 @@
 // `compile_commands.json`. This avoids duplicating the build's flag logic in
 // the Makefile -- each file is parsed exactly as it is compiled.
 //
-// For each input file (e.g. `foo.c`) it produces a header containing, in order:
-//   1. the type declarations referenced by the emitted prototypes/globals,
-//      collected at the top: named struct/union forward declarations, typedefs
-//      (e.g. `typedef struct A_ A;`) and full enum definitions;
+// All types are expanded to their canonical form (typedefs are not emitted), so
+// the only type declarations needed are the underlying tags. For each input file
+// (e.g. `foo.c`) it produces a header containing, in order:
+//   1. the tag types referenced by the emitted prototypes/globals, collected at
+//      the top: named struct/union forward declarations and full enum
+//      definitions. An anonymous tag named only through a typedef
+//      (`typedef struct {} A;`) is given that name and bound with a typedef so
+//      the canonical references to it resolve;
 //   2. all file-scope global variables without an initializer, as `extern`;
 //   3. all non-static function prototypes (bodies removed), covering both
 //      external declarations and definitions found in the file.
@@ -35,6 +39,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
+#include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Type.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -42,7 +48,7 @@
 #include "clang-tidy/ClangTidyCheck.h"
 #include "clang-tidy/ClangTidyModule.h"
 #include "clang-tidy/ClangTidyModuleRegistry.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FileSystem.h"
@@ -59,31 +65,25 @@ using namespace clang::ast_matchers;
 
 namespace {
 
-// Collects, in dependency order, the typedefs and tag types (struct/union/enum)
-// transitively referenced by the declarations we emit, so the generated header
-// is self-contained.
+// Collects, in dependency order, the tag types (struct/union/enum) transitively
+// referenced by the declarations we emit, so the generated header is
+// self-contained. Typedefs are not collected: every type is expanded to its
+// canonical form, so only the underlying tags need to be declared.
 class TypeCollector {
 public:
     explicit TypeCollector(ASTContext &Ctx) : Ctx(Ctx) {}
 
     // Ordered, deduplicated outputs.
-    std::vector<const TypedefNameDecl *> Typedefs;
     std::vector<const TagDecl *> Tags;
-
-    void addTypedef(const TypedefNameDecl *TD) {
-        const Decl *Key = TD->getCanonicalDecl();
-        if (!VisitedTypedefs.insert(Key).second)
-            return;
-        // Emit dependencies of the underlying type before the typedef itself.
-        collect(TD->getUnderlyingType());
-        Typedefs.push_back(TD);
-    }
+    std::vector<const ClassTemplateDecl *> Templates;
 
     void addTag(const TagDecl *TD) {
         TD = TD->getCanonicalDecl();
-        // Anonymous tags cannot be referred to by name; they are handled inline
-        // by whatever typedef wraps them, but we still pull in the field types.
-        if (!TD->getIdentifier()) {
+        // A truly anonymous tag (no name and not named via a typedef) cannot be
+        // forward-declared; pull in its field types but emit nothing for it.
+        // An anonymous tag named through a typedef (`typedef struct {} A;`) is
+        // forward-declarable using that typedef name, so fall through.
+        if (!TD->getIdentifier() && !TD->getTypedefNameForAnonDecl()) {
             if (VisitedTags.insert(TD).second)
                 collectMembers(TD);
             return;
@@ -96,6 +96,9 @@ public:
     void collect(QualType QT) {
         if (QT.isNull())
             return;
+        // Expand to the canonical type so typedefs and other sugar disappear;
+        // we only need to declare the underlying tags.
+        QT = QT.getCanonicalType();
         const Type *T = QT.getTypePtr();
         switch (T->getTypeClass()) {
         case Type::Builtin:
@@ -113,8 +116,8 @@ public:
         case Type::MemberPointer: {
             const auto *MP = cast<MemberPointerType>(T);
             collect(MP->getPointeeType());
-            if (const Type *Cls = MP->getClass())
-                collect(QualType(Cls, 0));
+            if (const CXXRecordDecl *Cls = MP->getMostRecentCXXRecordDecl())
+                addTag(Cls);
             break;
         }
         case Type::ConstantArray:
@@ -143,47 +146,59 @@ public:
         case Type::FunctionNoProto:
             collect(cast<FunctionNoProtoType>(T)->getReturnType());
             break;
-        case Type::Paren:
-            collect(cast<ParenType>(T)->getInnerType());
+        case Type::Record: {
+            const auto *RD = cast<RecordType>(T)->getDecl();
+            if (const auto *Spec =
+                    dyn_cast<ClassTemplateSpecializationDecl>(RD)) {
+                // A template specialization (e.g. `unique_ptr<Module>`) is
+                // referenced by name; forward-declare its primary template and
+                // collect the types used as template arguments.
+                addTemplate(Spec->getSpecializedTemplate());
+                for (const TemplateArgument &A :
+                     Spec->getTemplateArgs().asArray())
+                    collectTemplateArg(A);
+            } else {
+                addTag(RD);
+            }
             break;
-        case Type::Decayed:
-            collect(cast<DecayedType>(T)->getDecayedType());
-            break;
-        case Type::Adjusted:
-            collect(cast<AdjustedType>(T)->getAdjustedType());
-            break;
-        case Type::Attributed:
-            collect(cast<AttributedType>(T)->getModifiedType());
-            break;
-        case Type::Elaborated:
-            collect(cast<ElaboratedType>(T)->getNamedType());
-            break;
-        case Type::Typedef:
-            addTypedef(cast<TypedefType>(T)->getDecl());
-            break;
-        case Type::Record:
-            addTag(cast<RecordType>(T)->getDecl());
-            break;
+        }
         case Type::Enum:
             addTag(cast<EnumType>(T)->getDecl());
             break;
         default:
-            // Any other sugar (TypeOf, Decltype, Using, MacroQualified, ...):
-            // peel one layer toward the canonical type and try again.
-            if (!QT.isCanonical()) {
-                QualType Desugared = QT.getSingleStepDesugaredType(Ctx);
-                if (Desugared.getTypePtr() != T)
-                    collect(Desugared);
-                else
-                    collect(QT.getCanonicalType());
-            }
+            // Canonical types carry no typedef/elaborated/other sugar, so any
+            // remaining class references no tag we need to declare.
+            break;
+        }
+    }
+
+    void addTemplate(const ClassTemplateDecl *CTD) {
+        if (!CTD)
+            return;
+        CTD = cast<ClassTemplateDecl>(CTD->getCanonicalDecl());
+        if (VisitedTemplates.insert(CTD).second)
+            Templates.push_back(CTD);
+    }
+
+    void collectTemplateArg(const TemplateArgument &A) {
+        switch (A.getKind()) {
+        case TemplateArgument::Type:
+            collect(A.getAsType());
+            break;
+        case TemplateArgument::Pack:
+            for (const TemplateArgument &E : A.pack_elements())
+                collectTemplateArg(E);
+            break;
+        default:
+            // Integral/expression/template arguments reference no tag we must
+            // declare for the reference to compile.
             break;
         }
     }
 
 private:
-    // For an anonymous record/enum we print the full definition, so make sure
-    // the types of its members are available too.
+    // A truly anonymous tag is printed inline (with its body) wherever it is
+    // used, so make sure the types of its members are declared too.
     void collectMembers(const TagDecl *TD) {
         if (const auto *RD = dyn_cast<RecordDecl>(TD)) {
             if (RD->isThisDeclarationADefinition())
@@ -196,9 +211,286 @@ private:
     }
 
     ASTContext &Ctx;
-    llvm::SmallPtrSet<const Decl *, 64> VisitedTypedefs;
-    llvm::SmallPtrSet<const TagDecl *, 64> VisitedTags;
+    llvm::DenseSet<const TagDecl *> VisitedTags;
+    llvm::DenseSet<const ClassTemplateDecl *> VisitedTemplates;
 };
+
+// True when D is declared directly at file scope (the translation unit or an
+// `extern "C"`/`extern "C++"` block), i.e. not inside a namespace or record.
+static bool isFileScope(const Decl *D) {
+    for (const DeclContext *DC = D->getDeclContext(); DC; DC = DC->getParent()) {
+        if (DC->isTranslationUnit())
+            return true;
+        if (DC->isExternCContext() || isa<LinkageSpecDecl>(DC))
+            continue;
+        return false;
+    }
+    return true;
+}
+
+// True for a struct/union named only through a typedef whose canonical type we
+// can print elaborated (`struct X`) so a plain forward declaration resolves it.
+static bool isElaboratableAnonRecord(const RecordDecl *RD) {
+    return !RD->getIdentifier() && RD->getTypedefNameForAnonDecl() &&
+           isFileScope(RD);
+}
+
+// True if TD can be declared at file scope, i.e. it is nested only in namespaces
+// (or the translation unit / an `extern "C"` block) and not inside a record. A
+// tag nested in a record can only be named as `Outer::Inner`, which requires
+// Outer to be complete and so cannot be used with a mere forward declaration.
+static bool tagDeclarableAtFileScope(const TagDecl *TD) {
+    for (const DeclContext *DC = TD->getDeclContext();
+         DC && !DC->isTranslationUnit(); DC = DC->getParent()) {
+        if (DC->isExternCContext() || isa<LinkageSpecDecl>(DC))
+            continue;
+        if (isa<NamespaceDecl>(DC))
+            continue;
+        return false;
+    }
+    return true;
+}
+
+// Build the nested-name-specifier for the named namespaces enclosing D (e.g.
+// `std::`), skipping inline and anonymous namespaces. Sets Ok=false (and returns
+// null) if D is nested in a record, where no namespace qualifier applies.
+static NestedNameSpecifier *namespaceNNS(ASTContext &Ctx, const Decl *D,
+                                         bool &Ok) {
+    Ok = true;
+    llvm::SmallVector<const NamespaceDecl *, 4> Names;
+    for (const DeclContext *DC = D->getDeclContext();
+         DC && !DC->isTranslationUnit(); DC = DC->getParent()) {
+        if (DC->isExternCContext() || isa<LinkageSpecDecl>(DC))
+            continue;
+        const auto *ND = dyn_cast<NamespaceDecl>(DC);
+        if (!ND) {
+            Ok = false;
+            return nullptr;
+        }
+        if (ND->isAnonymousNamespace() || ND->isInline())
+            continue;
+        Names.push_back(ND);
+    }
+    NestedNameSpecifier *NNS = nullptr;
+    for (const NamespaceDecl *ND : llvm::reverse(Names))
+        NNS = NestedNameSpecifier::Create(Ctx, NNS, ND);
+    return NNS;
+}
+
+static TemplateArgument elaborateTemplateArg(ASTContext &Ctx,
+                                             const TemplateArgument &A);
+
+// Rebuild QT in canonical form, but print references to file-scope struct/union
+// types named only through a typedef using their elaborated `struct X` spelling.
+// The type printer would otherwise render such a type as the bare typedef name,
+// which a plain forward declaration does not provide; `struct X` lets a
+// `struct X;` forward declaration suffice (so no typedef need be emitted).
+//
+// Enums nested in a record (e.g. `Outer::Kind`) are replaced by their underlying
+// integer type, since naming them would require Outer to be complete. Template
+// specializations are rebuilt so this substitution also applies to their
+// arguments (e.g. `std::initializer_list<Outer::Kind>`).
+static QualType elaborateAnonTags(ASTContext &Ctx, QualType QT) {
+    QT = QT.getCanonicalType();
+    SplitQualType Split = QT.split();
+    const Type *T = Split.Ty;
+    QualType R(T, 0);
+    switch (T->getTypeClass()) {
+    case Type::Pointer:
+        R = Ctx.getPointerType(
+            elaborateAnonTags(Ctx, cast<PointerType>(T)->getPointeeType()));
+        break;
+    case Type::LValueReference:
+        R = Ctx.getLValueReferenceType(
+            elaborateAnonTags(Ctx, cast<ReferenceType>(T)->getPointeeType()));
+        break;
+    case Type::RValueReference:
+        R = Ctx.getRValueReferenceType(
+            elaborateAnonTags(Ctx, cast<ReferenceType>(T)->getPointeeType()));
+        break;
+    case Type::ConstantArray: {
+        const auto *AT = cast<ConstantArrayType>(T);
+        R = Ctx.getConstantArrayType(elaborateAnonTags(Ctx, AT->getElementType()),
+                                     AT->getSize(), AT->getSizeExpr(),
+                                     AT->getSizeModifier(),
+                                     AT->getIndexTypeCVRQualifiers());
+        break;
+    }
+    case Type::IncompleteArray: {
+        const auto *AT = cast<IncompleteArrayType>(T);
+        R = Ctx.getIncompleteArrayType(elaborateAnonTags(Ctx, AT->getElementType()),
+                                       AT->getSizeModifier(),
+                                       AT->getIndexTypeCVRQualifiers());
+        break;
+    }
+    case Type::Atomic:
+        R = Ctx.getAtomicType(
+            elaborateAnonTags(Ctx, cast<AtomicType>(T)->getValueType()));
+        break;
+    case Type::FunctionProto: {
+        const auto *FP = cast<FunctionProtoType>(T);
+        llvm::SmallVector<QualType, 16> Params;
+        for (QualType P : FP->getParamTypes())
+            Params.push_back(elaborateAnonTags(Ctx, P));
+        R = Ctx.getFunctionType(elaborateAnonTags(Ctx, FP->getReturnType()),
+                                Params, FP->getExtProtoInfo());
+        break;
+    }
+    case Type::Record: {
+        const RecordDecl *RD = cast<RecordType>(T)->getDecl();
+        if (const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD)) {
+            // Rebuild the specialization so nested-enum substitution reaches its
+            // template arguments (e.g. `initializer_list<Outer::Kind>`), keeping
+            // the namespace qualifier so the reference resolves.
+            bool Ok;
+            NestedNameSpecifier *NNS =
+                namespaceNNS(Ctx, CTSD->getSpecializedTemplate(), Ok);
+            if (Ok) {
+                llvm::SmallVector<TemplateArgument, 8> Args;
+                for (const TemplateArgument &A : CTSD->getTemplateArgs().asArray())
+                    Args.push_back(elaborateTemplateArg(Ctx, A));
+                llvm::SmallVector<TemplateArgument, 8> Canon;
+                for (const TemplateArgument &A : Args)
+                    Canon.push_back(Ctx.getCanonicalTemplateArgument(A));
+                QualType TST = Ctx.getTemplateSpecializationType(
+                    TemplateName(CTSD->getSpecializedTemplate()), Args, Canon);
+                R = NNS ? Ctx.getElaboratedType(ElaboratedTypeKeyword::None, NNS,
+                                                TST)
+                        : TST;
+            }
+        }
+        else if (isElaboratableAnonRecord(RD)) {
+            R = Ctx.getElaboratedType(
+                TypeWithKeyword::getKeywordForTagTypeKind(RD->getTagKind()),
+                nullptr, QualType(T, 0));
+        }
+        break;
+    }
+    case Type::Enum: {
+        const EnumDecl *ED = cast<EnumType>(T)->getDecl();
+        // A nested enum (`Outer::Kind`) cannot be named with Outer only
+        // forward-declared; use its underlying integer type instead.
+        if (!tagDeclarableAtFileScope(ED))
+            R = ED->getIntegerType().getCanonicalType();
+        break;
+    }
+    default:
+        // Any other type: keep its canonical form (no anonymous tag to elaborate
+        // that we can usefully forward-declare).
+        break;
+    }
+    return Ctx.getQualifiedType(R, Split.Quals);
+}
+
+// Apply elaborateAnonTags to the type(s) inside a template argument.
+static TemplateArgument elaborateTemplateArg(ASTContext &Ctx,
+                                             const TemplateArgument &A) {
+    switch (A.getKind()) {
+    case TemplateArgument::Type:
+        return TemplateArgument(elaborateAnonTags(Ctx, A.getAsType()));
+    case TemplateArgument::Pack: {
+        llvm::SmallVector<TemplateArgument, 8> Elts;
+        for (const TemplateArgument &E : A.pack_elements())
+            Elts.push_back(elaborateTemplateArg(Ctx, E));
+        return TemplateArgument::CreatePackCopy(Ctx, Elts);
+    }
+    default:
+        return A;
+    }
+}
+
+// Emit the named namespaces enclosing D as `namespace a { namespace b {` into
+// Open and the matching closers into Close (inline and anonymous namespaces are
+// skipped). Returns false if D is nested in a context that cannot be reopened at
+// file scope (e.g. a record), meaning it cannot be forward-declared here.
+static bool namespaceWrappers(const Decl *D, std::string &Open,
+                              std::string &Close) {
+    llvm::SmallVector<StringRef, 4> Names;
+    for (const DeclContext *DC = D->getDeclContext();
+         DC && !DC->isTranslationUnit(); DC = DC->getParent()) {
+        if (DC->isExternCContext() || isa<LinkageSpecDecl>(DC))
+            continue;
+        const auto *ND = dyn_cast<NamespaceDecl>(DC);
+        if (!ND)
+            return false;
+        if (ND->isAnonymousNamespace() || ND->isInline())
+            continue;
+        Names.push_back(ND->getName());
+    }
+    for (StringRef N : llvm::reverse(Names)) {
+        Open += "namespace ";
+        Open += N;
+        Open += " { ";
+        Close += "} ";
+    }
+    return true;
+}
+
+static void printDummyTemplateParams(llvm::raw_ostream &OS,
+                                     const TemplateParameterList *TPL,
+                                     const PrintingPolicy &PP);
+
+// Print a single template parameter, keeping only its kind (and `...` for a
+// pack). No name or default argument is emitted: a default cannot be repeated
+// across declarations, and references print all arguments (see
+// SuppressDefaultTemplateArgs) so the arity already matches.
+static void printDummyTemplateParam(llvm::raw_ostream &OS, const NamedDecl *P,
+                                    const PrintingPolicy &PP) {
+    if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(P)) {
+        OS << "class";
+        if (TTP->isParameterPack())
+            OS << "...";
+    }
+    else if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(P)) {
+        NTTP->getType().print(OS, PP);
+        if (NTTP->isParameterPack())
+            OS << "...";
+    }
+    else if (const auto *TTPD = dyn_cast<TemplateTemplateParmDecl>(P)) {
+        printDummyTemplateParams(OS, TTPD->getTemplateParameters(), PP);
+        OS << "class";
+        if (TTPD->isParameterPack())
+            OS << "...";
+    }
+    else {
+        OS << "class";
+    }
+}
+
+// Print a `template <...>` parameter list with dummy (unnamed) parameters.
+static void printDummyTemplateParams(llvm::raw_ostream &OS,
+                                     const TemplateParameterList *TPL,
+                                     const PrintingPolicy &PP) {
+    OS << "template <";
+    bool First = true;
+    for (const NamedDecl *P : *TPL) {
+        if (!First)
+            OS << ", ";
+        First = false;
+        printDummyTemplateParam(OS, P, PP);
+    }
+    OS << "> ";
+}
+
+// Emit a self-contained enum definition: `enum [TagName] [: underlying] { ... }`.
+// The fixed underlying type (if any) is printed canonically so it does not depend
+// on a typedef such as `uint8_t`, and each enumerator is given its explicit
+// integer value so the definition stands alone.
+static void printEnumBody(llvm::raw_ostream &OS, const EnumDecl *ED,
+                          StringRef TagName, const PrintingPolicy &PP) {
+    OS << "enum";
+    if (!TagName.empty())
+        OS << " " << TagName;
+    if (ED->isFixed())
+        OS << " : " << ED->getIntegerType().getCanonicalType().getAsString(PP);
+    OS << " { ";
+    for (const EnumConstantDecl *EC : ED->enumerators()) {
+        llvm::SmallString<16> Val;
+        EC->getInitVal().toString(Val);
+        OS << EC->getName() << " = " << Val << ", ";
+    }
+    OS << "}";
+}
 
 class GenHeaderCheck : public ClangTidyCheck {
 public:
@@ -269,10 +561,7 @@ private:
         if (Loc.isInvalid() || SM.getFileID(Loc) != MainID)
             return;
 
-        if (const auto *TD = dyn_cast<TypedefNameDecl>(D)) {
-            Collector.addTypedef(TD);
-        }
-        else if (const auto *Tag = dyn_cast<TagDecl>(D)) {
+        if (const auto *Tag = dyn_cast<TagDecl>(D)) {
             if (Tag->isThisDeclarationADefinition() && Tag->getIdentifier())
                 Collector.addTag(Tag);
         }
@@ -306,11 +595,6 @@ private:
         return VD->getFormalLinkage() == Linkage::External;
     }
 
-    static bool isAnonymousTagUnderlying(QualType QT) {
-        const TagDecl *TD = QT.getCanonicalType()->getAsTagDecl();
-        return TD && !TD->getIdentifier();
-    }
-
     // Sanitize a name into an include-guard-safe identifier.
     static std::string guardName(StringRef Kind, StringRef Name) {
         std::string G = "JL_GENH_";
@@ -330,6 +614,10 @@ private:
         Terse.SuppressInitializers = true;
         Terse.IncludeTagDefinition = false;
         Terse.AnonymousTagLocations = false;
+        Terse.SuppressTagKeyword = false;        // always print `struct X`/`enum X`
+        Terse.SuppressDefaultTemplateArgs = false; // print all template args so
+                                                   // they match the dummy,
+                                                   // default-free declarations
 
         PrintingPolicy Full = Terse;
         Full.TerseOutput = false;
@@ -342,43 +630,99 @@ private:
         if (isC)
             OS << "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n";
 
-        // 1. Types (forward declarations, typedefs, enum definitions).
+        // 1. Types (forward declarations and enum definitions). Typedefs are
+        // not emitted; every type below is printed in canonical form. Each
+        // declaration is wrapped in its enclosing namespaces so the qualified
+        // references below resolve.
         OS << "// --- types ---\n";
         for (const TagDecl *TD : Collector.Tags) {
+            std::string Open, Close;
+            if (!namespaceWrappers(TD, Open, Close))
+                continue; // nested in a record: cannot forward-declare here
+
+            // An anonymous tag named only through a typedef (`typedef struct {}
+            // A;`) has no tag name. A file-scope struct/union is referenced via
+            // its elaborated `struct A` spelling, so we adopt that name for the
+            // tag and forward-declare it. Otherwise (enums, or non-file-scope)
+            // bind the typedef name, which is how those are referenced.
+            StringRef Name = TD->getName();
+            const TypedefNameDecl *Anon =
+                Name.empty() ? TD->getTypedefNameForAnonDecl() : nullptr;
+            if (Anon)
+                Name = Anon->getName();
+
             if (const auto *ED = dyn_cast<EnumDecl>(TD)) {
                 // Enums cannot be portably forward-declared; emit the full
                 // definition once, guarded against repeated inclusion.
-                std::string G = guardName("enum", ED->getName());
-                OS << "#ifndef " << G << "\n#define " << G << "\n";
-                ED->print(OS, Full);
-                OS << ";\n#endif\n";
+                std::string G = guardName("enum", Name);
+                OS << "#ifndef " << G << "\n#define " << G << "\n" << Open;
+                if (Anon) {
+                    OS << "typedef ";
+                    printEnumBody(OS, ED, /*TagName=*/"", Full);
+                    OS << " " << Name;
+                } else {
+                    printEnumBody(OS, ED, Name, Full);
+                }
+                OS << ";" << Close << "\n#endif\n";
+            }
+            else if (Anon && !isElaboratableAnonRecord(cast<RecordDecl>(TD))) {
+                // Anonymous struct/union we cannot elaborate (not file scope):
+                // name it and bind the typedef so its bare-name references work.
+                OS << Open << "typedef " << TD->getKindName() << " " << Name
+                   << " " << Name << ";" << Close << "\n";
             }
             else {
-                // struct/union/class forward declaration (repeatable).
-                OS << TD->getKindName() << " " << TD->getName() << ";\n";
+                // Named tag, or a file-scope anonymous struct/union adopting its
+                // typedef name: a forward declaration (repeatable) suffices.
+                OS << Open << TD->getKindName() << " " << Name << ";" << Close
+                   << "\n";
             }
         }
-        for (const TypedefNameDecl *TD : Collector.Typedefs) {
-            const bool anon = isAnonymousTagUnderlying(TD->getUnderlyingType());
-            std::string G = guardName("typedef", TD->getName());
-            OS << "#ifndef " << G << "\n#define " << G << "\n";
-            TD->print(OS, anon ? Full : Terse);
-            OS << ";\n#endif\n";
+
+        // Class templates whose specializations are referenced: forward-declare
+        // the primary template with dummy parameters so `Tmpl<Args>` references
+        // resolve. With no default arguments the declaration is repeatable, so
+        // no include guard is needed.
+        for (const ClassTemplateDecl *CTD : Collector.Templates) {
+            std::string Open, Close;
+            if (!namespaceWrappers(CTD, Open, Close))
+                continue;
+            OS << Open;
+            printDummyTemplateParams(OS, CTD->getTemplateParameters(), Terse);
+            OS << CTD->getTemplatedDecl()->getKindName() << " " << CTD->getName()
+               << ";" << Close << "\n";
         }
+
+        // In a C++ header (a .c header is wrapped in `extern "C"` wholesale
+        // above), individually preserve the C language linkage of declarations
+        // that were written `extern "C"`, so their names keep C linkage.
+        auto emitDecl = [&](bool ExternC, auto Print) {
+            if (ExternC)
+                OS << "extern \"C\" { ";
+            Print();
+            OS << ";";
+            if (ExternC)
+                OS << " }";
+            OS << "\n";
+        };
 
         // 2. Globals.
         OS << "\n// --- globals ---\n";
         for (const VarDecl *VD : Vars) {
-            OS << "extern ";
-            VD->getType().print(OS, Terse, VD->getName());
-            OS << ";\n";
+            emitDecl(!isC && VD->isExternC(), [&] {
+                OS << "extern ";
+                elaborateAnonTags(Ctx, VD->getType()).print(OS, Terse,
+                                                            VD->getName());
+            });
         }
 
         // 3. Prototypes.
         OS << "\n// --- prototypes ---\n";
         for (const FunctionDecl *FD : Funcs) {
-            FD->print(OS, Terse);
-            OS << ";\n";
+            emitDecl(!isC && FD->isExternC(), [&] {
+                elaborateAnonTags(Ctx, FD->getType()).print(OS, Terse,
+                                                            FD->getName());
+            });
         }
 
         if (isC)
