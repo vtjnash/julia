@@ -282,6 +282,7 @@ DevDocs = [
         "devdocs/external_profilers.md",
         "devdocs/sanitizers.md",
         "devdocs/probes.md",
+        "devdocs/genheader.md",
     ],
     "Building Julia" => [
         "devdocs/build/build.md",
