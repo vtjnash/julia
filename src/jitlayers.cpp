@@ -2480,12 +2480,12 @@ CISymbolPtr *JuliaOJIT::linkCISymbol(jl_code_instance_t *CI)
     void *SpecPtr;
 
     // Tell the analyzer no safepoint is possible with waitcompile = 0
-#ifdef __clang_safetyanalysis__
+#if defined(__clang_safetyanalysis__) || defined(__clang_gcanalyzer__)
     #define jl_read_codeinst_invoke jl_read_codeinst_invoke_nosafepoint
 #endif
     void jl_read_codeinst_invoke(jl_code_instance_t *, uint8_t *, jl_callptr_t *, void **, int) JL_NOTSAFEPOINT;
     jl_read_codeinst_invoke(CI, &Flags, &Invoke, &SpecPtr, 0);
-#ifdef __clang_safetyanalysis__
+#if defined(__clang_safetyanalysis__) || defined(__clang_gcanalyzer__)
     #undef jl_read_codeinst_invoke
 #endif
 

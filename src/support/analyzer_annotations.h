@@ -43,11 +43,7 @@
 //
 // -- Safepoint annotations (on function prototypes) --
 //
-//   JL_NOTSAFEPOINT   The function never reaches a GC safepoint, so callers may
-//                     keep values unrooted across a call to it. Under the
-//                     GCChecker this is the opt-in default (it carries no
-//                     annotation: a function is assumed no-safepoint unless it
-//                     opts in with JL_CANSAFEPOINT or a region transition).
+//   JL_NOTSAFEPOINT   legacy annotation (unused).
 //   JL_CANSAFEPOINT   The function may reach a GC safepoint (may trigger GC), so
 //                     callers must keep live values rooted across the call.
 //   JL_NOTSAFEPOINT_ENTER   The function enters a no-safepoint region (e.g.
@@ -136,17 +132,17 @@
 #ifdef __clang_gcanalyzer__
 
 #define JL_PROPAGATES_ROOT __attribute__((annotate("julia_propagates_root")))
-#define JL_NOTSAFEPOINT __attribute__((annotate("julia_not_safepoint")))
+#define JL_NOTSAFEPOINT
 #define JL_CANSAFEPOINT __attribute__((annotate("julia_can_safepoint")))
-#define JL_CANSAFEPOINT_ENTER_LEAVE __attribute__((annotate("julia_notsafepoint_leave"),annotate("julia_notsafepoint_enter")))
-#define JL_NOTSAFEPOINT_LEAVE_ENTER JL_NOTSAFEPOINT
-#define JL_CANSAFEPOINT_ENTER __attribute__((annotate("julia_notsafepoint_leave")))
-#define JL_CANSAFEPOINT_LEAVE __attribute__((annotate("julia_notsafepoint_enter")))
-#define JL_NO_SAFEPOINT_ANALYSIS __attribute__((annotate("julia_no_safepoint_analysis")))
-#define JL_NOTSAFEPOINT_ENTER __attribute__((annotate("julia_notsafepoint_enter")))
-#define JL_NOTSAFEPOINT_ENTER_CONDITIONAL(success) __attribute__((annotate("julia_notsafepoint_enter_conditional:" #success)))
-#define JL_NOTSAFEPOINT_LEAVE __attribute__((annotate("julia_notsafepoint_leave")))
-#define JL_NOTSAFEPOINT_LEAVE_WITH_CANSAFEPOINT __attribute__((annotate("julia_notsafepoint_leave")))
+#define JL_CANSAFEPOINT_ENTER_LEAVE __attribute__((annotate("julia_can_safepoint")))
+#define JL_NOTSAFEPOINT_LEAVE_ENTER
+#define JL_CANSAFEPOINT_ENTER __attribute__((annotate("julia_can_safepoint")))
+#define JL_CANSAFEPOINT_LEAVE __attribute__((annotate("julia_can_safepoint")))
+#define JL_NO_SAFEPOINT_ANALYSIS
+#define JL_NOTSAFEPOINT_ENTER
+#define JL_NOTSAFEPOINT_ENTER_CONDITIONAL(success)
+#define JL_NOTSAFEPOINT_LEAVE
+#define JL_NOTSAFEPOINT_LEAVE_WITH_CANSAFEPOINT __attribute__((annotate("julia_can_safepoint")))
 #define JL_CANCALLBACK __attribute__((annotate("julia_can_safepoint")))
 #define JL_MAYBE_UNROOTED __attribute__((annotate("julia_maybe_unrooted")))
 #define JL_GLOBALLY_ROOTED __attribute__((annotate("julia_globally_rooted")))

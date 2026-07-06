@@ -30,43 +30,6 @@ PDP GCChecker::GCBugVisitor::VisitNode(const ExplodedNode *N,
   return nullptr;
 }
 
-PDP GCChecker::SafepointBugVisitor::VisitNode(const ExplodedNode *N,
-                                       BugReporterContext &BRC, PathSensitiveBugReport &BR) {
-  const ExplodedNode *PrevN = N->getFirstPred();
-  unsigned NewSafepointDisabled = N->getState()->get<SafepointDisabledAt>();
-  unsigned OldSafepointDisabled = PrevN->getState()->get<SafepointDisabledAt>();
-  if (NewSafepointDisabled != OldSafepointDisabled) {
-    const Decl *D = &N->getCodeDecl();
-    PathDiagnosticLocation Pos;
-    if (OldSafepointDisabled == (unsigned)-1) {
-      const AnnotateAttr *Ann = declHasAnnotation(D, "julia_not_safepoint");
-      if (!Ann)
-        Ann = declHasAnnotation(D, "julia_notsafepoint_leave");
-      if (Ann) {
-        Pos = PathDiagnosticLocation{Ann->getLoc(), BRC.getSourceManager()};
-        return makePDP(Pos, "Tracking JL_NOTSAFEPOINT annotation here.");
-      }
-      PathDiagnosticLocation Pos = PathDiagnosticLocation::createDeclBegin(
-          N->getLocationContext(), BRC.getSourceManager());
-      if (Pos.isValid())
-        return makePDP(Pos, "Tracking JL_NOTSAFEPOINT annotation here.");
-    } else if (NewSafepointDisabled == (unsigned)-1) {
-      const AnnotateAttr *Ann = declHasAnnotation(D, "julia_safepoint_enter");
-      if (Ann) {
-        Pos = PathDiagnosticLocation{Ann->getLoc(), BRC.getSourceManager()};
-        return makePDP(Pos, "Tracking JL_NOTSAFEPOINT annotation here.");
-      }
-      PathDiagnosticLocation Pos = PathDiagnosticLocation::createDeclBegin(
-          N->getLocationContext(), BRC.getSourceManager());
-      if (Pos.isValid())
-        return makePDP(Pos, "Safepoints re-enabled here");
-    }
-    // n.b. there may be no position here to report if they were disabled by julia_notsafepoint_enter/leave
-    // N->getLocation().dump();
-  }
-  return nullptr;
-}
-
 PDP GCChecker::GCValueBugVisitor::ExplainNoPropagationFromExpr(
     const clang::Expr *FromWhere, const ExplodedNode *N,
     PathDiagnosticLocation Pos, BugReporterContext &BRC, PathSensitiveBugReport &BR) {
@@ -185,8 +148,7 @@ PDP GCChecker::GCValueBugVisitor::VisitNode(const ExplodedNode *N,
       return makePDP(Pos, "Started tracking value here (root was inherited).");
     } else {
       if (NewSymbolState->FD) {
-        bool isFunctionSafepoint =
-            !isFDAnnotatedNotSafepoint(NewSymbolState->FD, BRC.getSourceManager());
+        bool isFunctionSafepoint = declCanSafepoint(NewSymbolState->FD);
         bool maybeUnrooted =
             declHasAnnotation(NewSymbolState->PVD, "julia_maybe_unrooted");
         assert(isFunctionSafepoint || maybeUnrooted);
@@ -194,8 +156,8 @@ PDP GCChecker::GCValueBugVisitor::VisitNode(const ExplodedNode *N,
         Pos =
             PathDiagnosticLocation{NewSymbolState->PVD, BRC.getSourceManager()};
         if (!isFunctionSafepoint)
-          return makePDP(Pos, "Argument not rooted, because function was "
-                              "annotated as not a safepoint");
+          return makePDP(Pos, "Argument not rooted, because function is not "
+                              "annotated as a safepoint (JL_CANSAFEPOINT)");
         else
           return makePDP(Pos, "Argument was annotated as MAYBE_UNROOTED.");
       } else {

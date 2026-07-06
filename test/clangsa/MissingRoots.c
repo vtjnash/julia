@@ -5,31 +5,31 @@
 #include "julia.h"
 #include "julia_internal.h"
 
-extern void look_at_value(jl_value_t *v);
-extern void process_unrooted(jl_value_t *maybe_unrooted JL_MAYBE_UNROOTED);
-extern void jl_gc_safepoint();
-extern void jl_gc_push_arraylist(jl_ptls_t ptls, arraylist_t *list) JL_NOTSAFEPOINT;
+extern void look_at_value(jl_value_t *v) JL_CANSAFEPOINT;
+extern void process_unrooted(jl_value_t *maybe_unrooted JL_MAYBE_UNROOTED) JL_CANSAFEPOINT;
+extern void jl_gc_safepoint() JL_CANSAFEPOINT;
+extern void jl_gc_push_arraylist(jl_ptls_t ptls, arraylist_t *list);
 
-void unrooted_argument() {
+void unrooted_argument() JL_CANSAFEPOINT {
     look_at_value((jl_value_t*)jl_svec1(NULL)); // expected-warning{{Passing non-rooted value as argument to function that may GC}}
                                                 // expected-note@-1{{Passing non-rooted value as argument to function}}
                                                 // expected-note@-2{{Started tracking value here}}
 };
 
-void simple_svec() {
+void simple_svec() JL_CANSAFEPOINT {
     // This is ok, because jl_svecref is non-allocating
     jl_svec_t *val = jl_svec1(NULL);
     assert(jl_svecref(val, 0) == NULL);
 }
 
-jl_value_t *simple_missing_root() {
+jl_value_t *simple_missing_root() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
     jl_gc_safepoint(); // expected-note{{Value may have been GCed here}}
     return jl_svecref(val, 0); // expected-warning{{Argument value may have been GCed}}
                                // expected-note@-1{{Argument value may have been GCed}}
 };
 
-jl_value_t *root_value() {
+jl_value_t *root_value() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec2(NULL, NULL);
     JL_GC_PUSH1(&val);
     jl_gc_safepoint();
@@ -38,7 +38,7 @@ jl_value_t *root_value() {
     return ret;
 };
 
-void root_value_data() {
+void root_value_data() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
     jl_value_t **data = jl_svec_data(val);
     JL_GC_PUSH1(&val); // expected-note{{GC frame changed here}}
@@ -52,7 +52,7 @@ void root_value_data() {
                           // expected-note@-1{{Creating derivative of value that may have been GCed}}
 };
 
-void root_value_data2() {
+void root_value_data2() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
     jl_value_t **data = jl_svec_data(val);
     JL_GC_PUSH1(&val); // expected-note{{GC frame changed here}}
@@ -67,7 +67,7 @@ void root_value_data2() {
 };
 
 
-void root_value_data3() {
+void root_value_data3() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
     jl_value_t **data = jl_svec_data(val);
     JL_GC_PUSH1(&val); // expected-note{{GC frame changed here}}
@@ -82,7 +82,7 @@ void root_value_data3() {
 };
 
 
-jl_value_t *existing_root() {
+jl_value_t *existing_root() JL_CANSAFEPOINT {
     jl_svec_t *val = NULL;
     JL_GC_PUSH1(&val);
     val = jl_svec1(NULL);
@@ -92,7 +92,7 @@ jl_value_t *existing_root() {
     return ret;
 };
 
-jl_value_t *late_root() {
+jl_value_t *late_root() JL_CANSAFEPOINT {
     jl_svec_t *val = NULL;
     val = jl_svec1(NULL); // expected-note {{Started tracking value here}}
     jl_gc_safepoint(); // expected-note {{Value may have been GCed here}}
@@ -103,7 +103,7 @@ jl_value_t *late_root() {
     return ret;
 };
 
-jl_value_t *late_root2() {
+jl_value_t *late_root2() JL_CANSAFEPOINT {
     jl_svec_t *val = NULL;
     jl_svec_t *val2 = NULL;
     JL_GC_PUSH1(&val); // expected-note {{GC frame changed here}}
@@ -116,7 +116,7 @@ jl_value_t *late_root2() {
     return ret;
 };
 
-jl_value_t *already_freed() {
+jl_value_t *already_freed() JL_CANSAFEPOINT {
     jl_svec_t *val = NULL;
     JL_GC_PUSH1(&val); // expected-note{{GC frame changed here}}
     val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
@@ -130,14 +130,14 @@ jl_value_t *already_freed() {
 };
 
 
-int field_access() {
+int field_access() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL); // expected-note {{Started tracking value here}}
     jl_gc_safepoint(); // expected-note{{Value may have been GCed here}}
     return val->length == 1; // expected-warning{{Trying to access value which may have been GCed}}
                              // expected-note@-1{{Trying to access value which may have been GCed}}
 }
 
-int pushargs_roots() {
+int pushargs_roots() JL_CANSAFEPOINT {
   jl_value_t **margs;
   jl_svec_t *val = jl_svec1(NULL);;
   JL_GC_PUSHARGS(margs, 2);
@@ -148,7 +148,7 @@ int pushargs_roots() {
 }
 
 // Root array slots remain roots when accessed through saved slot pointers.
-int pushargs_slot_pointer_roots() {
+int pushargs_slot_pointer_roots() JL_CANSAFEPOINT {
   jl_value_t **margs;
   jl_svec_t *val = jl_svec1(NULL);
   JL_GC_PUSHARGS(margs, 2);
@@ -160,7 +160,7 @@ int pushargs_slot_pointer_roots() {
   return 0;
 }
 
-int pushargs_slot_pointer_assignment_roots() {
+int pushargs_slot_pointer_assignment_roots() JL_CANSAFEPOINT {
   jl_value_t **margs;
   jl_svec_t *val = jl_svec1(NULL);
   JL_GC_PUSHARGS(margs, 2);
@@ -172,7 +172,7 @@ int pushargs_slot_pointer_assignment_roots() {
   return 0;
 }
 
-int pushargs_slot_pointer_after_pop_freed() {
+int pushargs_slot_pointer_after_pop_freed() JL_CANSAFEPOINT {
   jl_value_t **margs;
   jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
   JL_GC_PUSHARGS(margs, 1); // expected-note{{GC frame changed here}}
@@ -185,7 +185,7 @@ int pushargs_slot_pointer_after_pop_freed() {
                            // expected-note@-1{{Trying to access value which may have been GCed}}
 }
 
-int scalar_root_slot_pointer_assignment_roots() {
+int scalar_root_slot_pointer_assignment_roots() JL_CANSAFEPOINT {
   jl_svec_t *val = jl_svec1(NULL);
   jl_value_t *root = NULL;
   JL_GC_PUSH1(&root);
@@ -197,7 +197,7 @@ int scalar_root_slot_pointer_assignment_roots() {
   return 0;
 }
 
-int scalar_root_overwrite_releases_old_value() {
+int scalar_root_overwrite_releases_old_value() JL_CANSAFEPOINT {
   jl_svec_t *root = jl_svec1(NULL); // expected-note{{Started tracking value here}}
   jl_svec_t *alias = root;
   JL_GC_PUSH1(&root); // expected-note{{GC frame changed here}}
@@ -208,7 +208,7 @@ int scalar_root_overwrite_releases_old_value() {
                              // expected-note@-1{{Trying to access value which may have been GCed}}
 }
 
-int permanent_root_slot_overwrite_is_conservative(jl_value_t **slot JL_REQUIRE_ROOTED_SLOT) {
+int permanent_root_slot_overwrite_is_conservative(jl_value_t **slot JL_REQUIRE_ROOTED_SLOT) JL_CANSAFEPOINT {
   jl_svec_t *val = jl_svec1(NULL);
   jl_svec_t *alias = val;
   *slot = (jl_value_t*)val;
@@ -217,13 +217,13 @@ int permanent_root_slot_overwrite_is_conservative(jl_value_t **slot JL_REQUIRE_R
   return alias->length == 1;
 }
 
-void rooted_slot_svecref_keeps_child_live(jl_svec_t **slot JL_REQUIRE_ROOTED_SLOT) {
+void rooted_slot_svecref_keeps_child_live(jl_svec_t **slot JL_REQUIRE_ROOTED_SLOT) JL_CANSAFEPOINT {
   jl_value_t *param = jl_svecref(*slot, 0);
   jl_gc_safepoint();
   look_at_value(param);
 }
 
-int multiple_root_overwrite_keeps_value_rooted() {
+int multiple_root_overwrite_keeps_value_rooted() JL_CANSAFEPOINT {
   jl_svec_t *val = jl_svec1(NULL);
   jl_value_t *root1 = NULL;
   jl_value_t *root2 = NULL;
@@ -239,7 +239,7 @@ int multiple_root_overwrite_keeps_value_rooted() {
 
 // Storing an already rooted value into a rooted object should not replace the
 // value's existing longer-lived root.
-void rooted_field_store_preserves_existing_root(jl_typename_t *tn) {
+void rooted_field_store_preserves_existing_root(jl_typename_t *tn) JL_CANSAFEPOINT {
   jl_datatype_t *dt = NULL;
   JL_GC_PUSH1(&dt);
   dt = (jl_datatype_t*)jl_svec1(NULL);
@@ -249,7 +249,7 @@ void rooted_field_store_preserves_existing_root(jl_typename_t *tn) {
   look_at_value((jl_value_t*)tn);
 }
 
-int pushargs_roots_freed() {
+int pushargs_roots_freed() JL_CANSAFEPOINT {
   jl_value_t **margs;
   jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
   JL_GC_PUSHARGS(margs, 1); // expected-note{{GC frame changed here}}
@@ -261,7 +261,7 @@ int pushargs_roots_freed() {
                            // expected-note@-1{{Trying to access value which may have been GCed}}
 }
 
-int arraylist_push_pop_releases_items(jl_ptls_t ptls) {
+int arraylist_push_pop_releases_items(jl_ptls_t ptls) JL_CANSAFEPOINT {
   jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
   arraylist_t list = {3, 3, (void**)&val, {NULL}};
   jl_gc_push_arraylist(ptls, &list); // expected-note{{GC frame changed here}}
@@ -275,7 +275,7 @@ int arraylist_push_pop_releases_items(jl_ptls_t ptls) {
                            // expected-note@-1{{Trying to access value which may have been GCed}}
 }
 
-int unrooted() {
+int unrooted() JL_CANSAFEPOINT {
   jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
   // This is ok
   process_unrooted((jl_value_t*)val); // expected-note{{Value may have been GCed here}}
@@ -285,7 +285,7 @@ int unrooted() {
 }
 
 extern jl_value_t *global_value JL_GLOBALLY_ROOTED;
-void globally_rooted() {
+void globally_rooted() JL_CANSAFEPOINT {
   jl_value_t *val = global_value;
   jl_gc_safepoint();
   look_at_value(val);
@@ -298,14 +298,14 @@ void globally_rooted() {
 }
 
 extern jl_value_t *first_array_elem(jl_array_t *a JL_PROPAGATES_ROOT);
-extern jl_expr_t *new_expr_for_analyzer(void);
-void root_propagation(jl_expr_t *expr) {
+extern jl_expr_t *new_expr_for_analyzer(void) JL_CANSAFEPOINT;
+void root_propagation(jl_expr_t *expr) JL_CANSAFEPOINT {
   jl_value_t *val = first_array_elem(expr->args);
   jl_gc_safepoint();
   look_at_value(val);
 }
 
-void rooted_argument_derivatives_keep_roots(jl_value_t *v) {
+void rooted_argument_derivatives_keep_roots(jl_value_t *v) JL_CANSAFEPOINT {
   jl_value_t **data = (jl_value_t**)v;
   jl_value_t *first = data[0];
   jl_value_t *second = data[1];
@@ -314,14 +314,14 @@ void rooted_argument_derivatives_keep_roots(jl_value_t *v) {
   look_at_value(second);
 }
 
-void rooted_argument_cast_derivative_keeps_root(jl_value_t *v) {
+void rooted_argument_cast_derivative_keeps_root(jl_value_t *v) JL_CANSAFEPOINT {
   jl_sym_t **data = (jl_sym_t**)v;
   jl_sym_t *sym = data[0];
   jl_gc_safepoint();
   look_at_value((jl_value_t*)sym);
 }
 
-void rooted_svec_data_pointer_arithmetic_keeps_root(jl_svec_t *cache) {
+void rooted_svec_data_pointer_arithmetic_keeps_root(jl_svec_t *cache) JL_CANSAFEPOINT {
   jl_value_t **data = jl_svec_data(cache);
   jl_value_t *val = data[0];
   jl_gc_safepoint();
@@ -333,14 +333,14 @@ static jl_value_t *rooted_svec_data_inlined_helper(jl_svec_t *cache) {
   return data[0];
 }
 
-void rooted_svec_data_inlined_call_keeps_root(jl_svec_t *cache) {
+void rooted_svec_data_inlined_call_keeps_root(jl_svec_t *cache) JL_CANSAFEPOINT {
   jl_svec_t *local = cache;
   jl_value_t *val = rooted_svec_data_inlined_helper(local);
   jl_gc_safepoint();
   look_at_value(val);
 }
 
-void rooted_exprarg_siblings_keep_roots(jl_expr_t *warning) {
+void rooted_exprarg_siblings_keep_roots(jl_expr_t *warning) JL_CANSAFEPOINT {
   JL_GC_PUSH1(&warning);
   jl_value_t *level = jl_exprarg(warning, 0);
   jl_value_t *group = jl_exprarg(warning, 1);
@@ -351,7 +351,7 @@ void rooted_exprarg_siblings_keep_roots(jl_expr_t *warning) {
   JL_GC_POP();
 }
 
-void rooted_returned_exprarg_siblings_keep_roots(void) {
+void rooted_returned_exprarg_siblings_keep_roots(void) JL_CANSAFEPOINT {
   jl_expr_t *warning = new_expr_for_analyzer();
   JL_GC_PUSH1(&warning);
   jl_value_t *level = jl_exprarg(warning, 0);
@@ -363,7 +363,7 @@ void rooted_returned_exprarg_siblings_keep_roots(void) {
   JL_GC_POP();
 }
 
-static inline jl_value_t *root_array_outparam_value(jl_value_t **out) {
+static inline jl_value_t *root_array_outparam_value(jl_value_t **out) JL_CANSAFEPOINT {
   jl_value_t **margs;
   JL_GC_PUSHARGS(margs, 1);
   margs[0] = (jl_value_t*)new_expr_for_analyzer();
@@ -372,7 +372,7 @@ static inline jl_value_t *root_array_outparam_value(jl_value_t **out) {
   return margs[0];
 }
 
-void root_outparam_after_safepointing_call(void) {
+void root_outparam_after_safepointing_call(void) JL_CANSAFEPOINT {
   jl_value_t *out = NULL;
   jl_value_t *result = root_array_outparam_value(&out);
   (void)result;
@@ -380,28 +380,28 @@ void root_outparam_after_safepointing_call(void) {
   JL_GC_POP();
 }
 
-static inline void rooted_outparam_value(jl_value_t **out) {
+static inline void rooted_outparam_value(jl_value_t **out) JL_CANSAFEPOINT {
   jl_svec_t *v = jl_svec1(NULL);
   JL_GC_PUSH1(&v);
   *out = (jl_value_t*)v;
   JL_GC_POP();
 }
 
-void root_outparam_after_inlined_call(void) {
+void root_outparam_after_inlined_call(void) JL_CANSAFEPOINT {
   jl_value_t *out = NULL;
-  rooted_outparam_value(&out);
   JL_GC_PUSH1(&out);
+  rooted_outparam_value(&out);
   JL_GC_POP();
 }
 
-void apply_single_rooted_value(void) {
+void apply_single_rooted_value(void) JL_CANSAFEPOINT {
   jl_value_t *f = jl_svec1(NULL);
   JL_GC_PUSH1(&f);
   (void)jl_apply(&f, 1);
   JL_GC_POP();
 }
 
-void argument_propagation(jl_value_t *a) {
+void argument_propagation(jl_value_t *a) JL_CANSAFEPOINT {
   jl_svec_t *types = jl_svec2(NULL, NULL);
   JL_GC_PUSH1(&types);
   jl_value_t *val = jl_svecset(types, 0, jl_typeof(a));
@@ -411,7 +411,7 @@ void argument_propagation(jl_value_t *a) {
   JL_GC_POP();
 }
 
-void rooted_svec_parent_keeps_child(void) {
+void rooted_svec_parent_keeps_child(void) JL_CANSAFEPOINT {
   jl_value_t *child = (jl_value_t*)new_expr_for_analyzer();
   jl_value_t *alias = child;
   jl_svec_t *parent = NULL;
@@ -423,7 +423,7 @@ void rooted_svec_parent_keeps_child(void) {
   JL_GC_POP();
 }
 
-void rooted_svec_data_element_store_keeps_child(void) {
+void rooted_svec_data_element_store_keeps_child(void) JL_CANSAFEPOINT {
   jl_value_t *child = (jl_value_t*)new_expr_for_analyzer();
   jl_value_t *alias = child;
   jl_svec_t *parent = NULL;
@@ -437,7 +437,7 @@ void rooted_svec_data_element_store_keeps_child(void) {
   JL_GC_POP();
 }
 
-void rooted_svec_clear_releases_child(void) {
+void rooted_svec_clear_releases_child(void) JL_CANSAFEPOINT {
   jl_value_t *child = (jl_value_t*)new_expr_for_analyzer(); // expected-note{{Started tracking value here}}
   jl_value_t *alias = child;
   jl_svec_t *parent = NULL;
@@ -452,7 +452,7 @@ void rooted_svec_clear_releases_child(void) {
   JL_GC_POP();
 }
 
-void rooted_svecref_alias_clear_releases_child(void) {
+void rooted_svecref_alias_clear_releases_child(void) JL_CANSAFEPOINT {
   jl_value_t *child = (jl_value_t*)new_expr_for_analyzer();
   jl_value_t *alias = NULL;
   jl_svec_t *parent = NULL;
@@ -467,7 +467,7 @@ void rooted_svecref_alias_clear_releases_child(void) {
   JL_GC_POP();
 }
 
-void rooted_svec_replace_releases_old_child(void) {
+void rooted_svec_replace_releases_old_child(void) JL_CANSAFEPOINT {
   jl_value_t *old_child = (jl_value_t*)new_expr_for_analyzer(); // expected-note{{Started tracking value here}}
   jl_value_t *old_alias = old_child;
   jl_value_t *new_child = NULL;
@@ -488,7 +488,7 @@ void rooted_svec_replace_releases_old_child(void) {
   JL_GC_POP();
 }
 
-void symbolic_svec_replace_keeps_old_child_conservatively(size_t i) {
+void symbolic_svec_replace_keeps_old_child_conservatively(size_t i) JL_CANSAFEPOINT {
   jl_value_t *old_child = (jl_value_t*)new_expr_for_analyzer();
   jl_value_t *old_alias = old_child;
   jl_value_t *new_child = NULL;
@@ -507,7 +507,7 @@ void symbolic_svec_replace_keeps_old_child_conservatively(size_t i) {
 
 // A root slot assigned to a child object keeps that child live even if another
 // incoming edge from an unrooted container is later invalidated.
-void rooted_loaded_child_independent_of_container(void) {
+void rooted_loaded_child_independent_of_container(void) JL_CANSAFEPOINT {
   jl_svec_t *child = jl_svec1(NULL);
   jl_value_t *container = NULL;
   jl_value_t *root = NULL;
@@ -522,7 +522,7 @@ void rooted_loaded_child_independent_of_container(void) {
 }
 
 // New value creation via []
-void arg_array(jl_value_t **args) {
+void arg_array(jl_value_t **args) JL_CANSAFEPOINT {
   jl_gc_safepoint();
   jl_value_t *val = args[1];
   look_at_value(val);
@@ -547,7 +547,7 @@ void member_expr2(jl_typemap_entry_t *tm) {
   JL_GC_POP();
 }
 
-static inline void look_at_args(jl_value_t **args) {
+static inline void look_at_args(jl_value_t **args) JL_CANSAFEPOINT {
   look_at_value(args[1]);
   jl_value_t *val = NULL;
   JL_GC_PUSH1(&val);
@@ -555,7 +555,7 @@ static inline void look_at_args(jl_value_t **args) {
   JL_GC_POP();
 }
 
-void pushargs_as_args()
+void pushargs_as_args() JL_CANSAFEPOINT
 {
   jl_value_t **args;
   JL_GC_PUSHARGS(args, 5);
@@ -571,7 +571,7 @@ void global_array2() {
   JL_GC_POP();
 }
 
-void global_array3() {
+void global_array3() JL_CANSAFEPOINT {
   jl_value_t *val = NULL;
   jl_typemap_entry_t *tm = NULL;
   tm = this_call_cache[1];
@@ -579,7 +579,7 @@ void global_array3() {
   look_at_value(val);
 }
 
-void nonconst_loads(jl_svec_t *v)
+void nonconst_loads(jl_svec_t *v) JL_CANSAFEPOINT
 {
     size_t i = jl_svec_len(v);
     jl_method_instance_t **data = (jl_method_instance_t**)jl_svec_data(v);
@@ -587,7 +587,7 @@ void nonconst_loads(jl_svec_t *v)
     look_at_value(mi->specTypes);
 }
 
-void nonconst_loads2()
+void nonconst_loads2() JL_CANSAFEPOINT
 {
     jl_svec_t *v = jl_svec1(NULL); // expected-note{{Started tracking value here}}
     size_t i = jl_svec_len(v);
@@ -598,21 +598,21 @@ void nonconst_loads2()
                                   //expected-note@-2{{No Root to propagate. Tracking}}
 }
 
-static inline void look_at_value2(jl_value_t *v) {
+static inline void look_at_value2(jl_value_t *v) JL_CANSAFEPOINT {
   look_at_value(v);
 }
 
-void tparam0(jl_value_t *atype) {
+void tparam0(jl_value_t *atype) JL_CANSAFEPOINT {
    look_at_value(jl_tparam0(atype));
 }
 
 extern jl_value_t *global_atype JL_GLOBALLY_ROOTED;
-void tparam0_global() {
+void tparam0_global() JL_CANSAFEPOINT {
    look_at_value(jl_tparam0(global_atype));
 }
 
 static jl_value_t *some_global JL_GLOBALLY_ROOTED;
-void global_copy() {
+void global_copy() JL_CANSAFEPOINT {
     jl_value_t *local = NULL;
     jl_gc_safepoint();
     JL_GC_PUSH1(&local);
@@ -624,7 +624,7 @@ void global_copy() {
 }
 
 // Check that rooting the same value twice uses the oldest scope
-void scopes() {
+void scopes() JL_CANSAFEPOINT {
     jl_value_t *val = (jl_value_t*)jl_svec1(NULL);
     JL_GC_PUSH1(&val);
     jl_value_t *val2 = val;
@@ -636,7 +636,7 @@ void scopes() {
 }
 
 jl_module_t *propagation(jl_module_t *m JL_PROPAGATES_ROOT);
-void module_member(jl_module_t *m)
+void module_member(jl_module_t *m) JL_CANSAFEPOINT
 {
     for(int i=(int)m->usings.len-1; i >= 0; i -= 3) {
       jl_module_t *imp = propagation(m);
@@ -663,9 +663,9 @@ void assoc_exact_broken(jl_value_t **args, size_t n, int8_t offs, size_t world) 
 */
 
 // declare
-jl_typemap_level_t *jl_new_typemap_level(void);
+jl_typemap_level_t *jl_new_typemap_level(void) JL_CANSAFEPOINT;
 
-void assoc_exact_ok(jl_value_t *args1, jl_value_t **args, size_t n, int8_t offs, size_t world) {
+void assoc_exact_ok(jl_value_t *args1, jl_value_t **args, size_t n, int8_t offs, size_t world) JL_CANSAFEPOINT {
     jl_typemap_level_t *cache = jl_new_typemap_level();
     JL_GC_PUSH1(&cache);
     jl_typemap_assoc_exact(cache->any, args1, args, n, offs, world);
@@ -673,24 +673,24 @@ void assoc_exact_ok(jl_value_t *args1, jl_value_t **args, size_t n, int8_t offs,
 }
 
 // jl_box_* special cases
-void box_special_cases1(int i) {
+void box_special_cases1(int i) JL_CANSAFEPOINT {
     look_at_value(jl_box_long(i)); // expected-warning{{Passing non-rooted value as argument to function}}
                                    // expected-note@-1{{Passing non-rooted value as argument to function}}
                                    // expected-note@-2{{Started tracking value here}}
 }
 
-void box_special_cases2() {
+void box_special_cases2() JL_CANSAFEPOINT {
     look_at_value(jl_box_long(0));
 }
 
-jl_value_t *alloc_something();
-jl_value_t *boxed_something() {
+jl_value_t *alloc_something() JL_CANSAFEPOINT;
+jl_value_t *boxed_something() JL_CANSAFEPOINT {
   jl_value_t *val = alloc_something();
   return jl_box_long(jl_datatype_size(val));
 }
 
-jl_value_t *alloc_something();
-void out_arg(jl_value_t **out JL_REQUIRE_ROOTED_SLOT)
+jl_value_t *alloc_something() JL_CANSAFEPOINT;
+void out_arg(jl_value_t **out JL_REQUIRE_ROOTED_SLOT) JL_CANSAFEPOINT
 {
     jl_value_t *val = alloc_something();
     JL_GC_PUSH1(&val);
@@ -698,7 +698,7 @@ void out_arg(jl_value_t **out JL_REQUIRE_ROOTED_SLOT)
     JL_GC_POP();
 }
 
-void foo_out_arg()
+void foo_out_arg() JL_CANSAFEPOINT
 {
     jl_value_t *val_slot = NULL;
     JL_GC_PUSH1(&val_slot);
@@ -709,19 +709,19 @@ void foo_out_arg()
 
 // Rooted-by annotations create graph edges from the configured rooting argument.
 extern void test_rooted_by_arg_store(jl_svec_t *holder JL_PROPAGATES_ROOT,
-                                     size_t i, jl_value_t *value JL_ROOTED_BY_ARG_INDEXED(0, 1)) JL_NOTSAFEPOINT;
+                                     size_t i, jl_value_t *value JL_ROOTED_BY_ARG_INDEXED(0, 1));
 extern void test_rooted_by_arg_store_pair(jl_svec_t *holder JL_PROPAGATES_ROOT,
                                           size_t i, jl_value_t *first JL_ROOTED_BY_ARG_INDEXED(0, 1),
-                                          jl_value_t *second JL_ROOTED_BY_ARG_INDEXED(0, 1)) JL_NOTSAFEPOINT;
+                                          jl_value_t *second JL_ROOTED_BY_ARG_INDEXED(0, 1));
 extern void test_rooted_by_arg_store_with_flag(jl_svec_t *holder JL_PROPAGATES_ROOT,
                                                int flag,
                                                jl_value_t *value JL_ROOTED_BY_ARG(0),
-                                               jl_sym_t *key) JL_NOTSAFEPOINT;
+                                               jl_sym_t *key);
 extern void test_out_rooted_by_arg(jl_method_instance_t *mi JL_PROPAGATES_ROOT,
-                                   jl_code_instance_t **out JL_OUT_ROOTED_BY_ARG(0)) JL_NOTSAFEPOINT;
-extern jl_genericmemoryref_t test_memoryref_from_memory(jl_genericmemory_t *mem JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT;
+                                   jl_code_instance_t **out JL_OUT_ROOTED_BY_ARG(0));
+extern jl_genericmemoryref_t test_memoryref_from_memory(jl_genericmemory_t *mem JL_PROPAGATES_ROOT);
 
-void rooted_by_arg_annotation_keeps_value_live(void)
+void rooted_by_arg_annotation_keeps_value_live(void) JL_CANSAFEPOINT
 {
     jl_svec_t *holder = NULL;
     JL_GC_PUSH1(&holder);
@@ -733,7 +733,7 @@ void rooted_by_arg_annotation_keeps_value_live(void)
     JL_GC_POP();
 }
 
-void rooted_by_arg_indexed_pair_keeps_both_values_live(void)
+void rooted_by_arg_indexed_pair_keeps_both_values_live(void) JL_CANSAFEPOINT
 {
     jl_svec_t *holder = NULL;
     jl_value_t *first = NULL;
@@ -753,7 +753,7 @@ void rooted_by_arg_indexed_pair_keeps_both_values_live(void)
     JL_GC_POP();
 }
 
-void rooted_by_arg_unrelated_integer_does_not_replace_field(void)
+void rooted_by_arg_unrelated_integer_does_not_replace_field(void) JL_CANSAFEPOINT
 {
     jl_svec_t *holder = NULL;
     jl_value_t *old_child = NULL;
@@ -770,7 +770,7 @@ void rooted_by_arg_unrelated_integer_does_not_replace_field(void)
     JL_GC_POP();
 }
 
-void out_rooted_by_arg_annotation_keeps_value_live(jl_method_instance_t *mi)
+void out_rooted_by_arg_annotation_keeps_value_live(jl_method_instance_t *mi) JL_CANSAFEPOINT
 {
     jl_code_instance_t *ci = NULL;
     test_out_rooted_by_arg(mi, &ci);
@@ -778,7 +778,7 @@ void out_rooted_by_arg_annotation_keeps_value_live(jl_method_instance_t *mi)
     look_at_value((jl_value_t*)ci);
 }
 
-void memoryrefset_roots_value_through_memoryref_field(void)
+void memoryrefset_roots_value_through_memoryref_field(void) JL_CANSAFEPOINT
 {
     jl_genericmemory_t *mem = NULL;
     jl_value_t *value = NULL;
@@ -794,7 +794,7 @@ void memoryrefset_roots_value_through_memoryref_field(void)
     JL_GC_POP();
 }
 
-void memoryrefset_roots_value_through_nested_memoryref(void)
+void memoryrefset_roots_value_through_nested_memoryref(void) JL_CANSAFEPOINT
 {
     jl_genericmemory_t *mem = NULL;
     jl_value_t *value = NULL;
@@ -816,7 +816,7 @@ typedef struct _varbinding {
 } jl_varbinding_t;
 
 extern void escape_vb(jl_varbinding_t **vb);
-void stack_rooted(jl_value_t *lb JL_MAYBE_UNROOTED, jl_value_t *ub JL_MAYBE_UNROOTED) {
+void stack_rooted(jl_value_t *lb JL_MAYBE_UNROOTED, jl_value_t *ub JL_MAYBE_UNROOTED) JL_CANSAFEPOINT {
     jl_varbinding_t vb = { NULL, lb, ub };
     JL_GC_PUSH2(&vb.lb, &vb.ub);
     escape_vb(&vb);
@@ -825,7 +825,7 @@ void stack_rooted(jl_value_t *lb JL_MAYBE_UNROOTED, jl_value_t *ub JL_MAYBE_UNRO
 }
 
 // These cover graph-root edges that are easy to lose during GCChecker refactors.
-void argument_root_slot_store_keeps_value_live(jl_value_t **slot JL_REQUIRE_ROOTED_SLOT)
+void argument_root_slot_store_keeps_value_live(jl_value_t **slot JL_REQUIRE_ROOTED_SLOT) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL);
     *slot = v;
@@ -833,7 +833,7 @@ void argument_root_slot_store_keeps_value_live(jl_value_t **slot JL_REQUIRE_ROOT
     look_at_value(v);
 }
 
-void unannotated_argument_buffer_store_does_not_root(jl_value_t **slot)
+void unannotated_argument_buffer_store_does_not_root(jl_value_t **slot) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL); // expected-note{{Started tracking value here}}
     *slot = v;
@@ -842,13 +842,13 @@ void unannotated_argument_buffer_store_does_not_root(jl_value_t **slot)
                       // expected-note@-1{{Argument value may have been GCed}}
 }
 
-void annotated_argument_root_slot_accepts_null(jl_value_t **slot JL_REQUIRE_ROOTED_SLOT)
+void annotated_argument_root_slot_accepts_null(jl_value_t **slot JL_REQUIRE_ROOTED_SLOT) JL_CANSAFEPOINT
 {
     *slot = NULL;
     jl_gc_safepoint();
 }
 
-void dynamic_root_array_element_keeps_value_live(size_t n)
+void dynamic_root_array_element_keeps_value_live(size_t n) JL_CANSAFEPOINT
 {
     jl_value_t **margs;
     if (n == 0)
@@ -860,7 +860,7 @@ void dynamic_root_array_element_keeps_value_live(size_t n)
     JL_GC_POP();
 }
 
-void dynamic_root_array_symbolic_element_keeps_value_live(size_t n)
+void dynamic_root_array_symbolic_element_keeps_value_live(size_t n) JL_CANSAFEPOINT
 {
     jl_value_t **margs;
     JL_GC_PUSHARGS(margs, n + 1);
@@ -870,7 +870,7 @@ void dynamic_root_array_symbolic_element_keeps_value_live(size_t n)
     JL_GC_POP();
 }
 
-void dynamic_root_array_copy_keeps_value_live(size_t n)
+void dynamic_root_array_copy_keeps_value_live(size_t n) JL_CANSAFEPOINT
 {
     jl_value_t **margs;
     JL_GC_PUSHARGS(margs, n + 1);
@@ -885,7 +885,7 @@ extern jl_value_t *test_return_roots_argument(jl_value_t *v JL_ROOTED_BY_RETURN)
 extern jl_value_t *test_return_does_not_root_argument(jl_value_t *v);
 extern jl_value_t *test_return_roots_varargs(jl_datatype_t *type, ...) JL_ROOTED_VARARGS;
 extern jl_value_t *test_return_does_not_root_varargs(jl_datatype_t *type, ...);
-void rooted_by_return_keeps_argument_live(void)
+void rooted_by_return_keeps_argument_live(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL);
     jl_value_t *holder = v;
@@ -896,7 +896,7 @@ void rooted_by_return_keeps_argument_live(void)
     JL_GC_POP();
 }
 
-void unannotated_return_does_not_root_fixed_argument(void)
+void unannotated_return_does_not_root_fixed_argument(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL); // expected-note{{Started tracking value here}}
     jl_value_t *holder = v;
@@ -909,7 +909,7 @@ void unannotated_return_does_not_root_fixed_argument(void)
     JL_GC_POP();
 }
 
-void rooted_by_return_keeps_varargs_live(void)
+void rooted_by_return_keeps_varargs_live(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL);
     jl_value_t *holder = v;
@@ -920,7 +920,7 @@ void rooted_by_return_keeps_varargs_live(void)
     JL_GC_POP();
 }
 
-void jl_svec_varargs_keep_fields_live(void)
+void jl_svec_varargs_keep_fields_live(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL);
     jl_value_t *holder = v;
@@ -931,7 +931,7 @@ void jl_svec_varargs_keep_fields_live(void)
     JL_GC_POP();
 }
 
-void rooted_by_return_does_not_implicitly_root_varargs(void)
+void rooted_by_return_does_not_implicitly_root_varargs(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL); // expected-note{{Started tracking value here}}
     jl_value_t *holder = v;
@@ -944,7 +944,7 @@ void rooted_by_return_does_not_implicitly_root_varargs(void)
     JL_GC_POP();
 }
 
-void jl_new_struct_return_keeps_fields_live(void)
+void jl_new_struct_return_keeps_fields_live(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)jl_svec1(NULL);
     jl_value_t *holder = v;
@@ -955,7 +955,7 @@ void jl_new_struct_return_keeps_fields_live(void)
     JL_GC_POP();
 }
 
-void promise_rooted_derived_load_keeps_value_live(jl_value_t **slot JL_MAYBE_UNROOTED)
+void promise_rooted_derived_load_keeps_value_live(jl_value_t **slot JL_MAYBE_UNROOTED) JL_CANSAFEPOINT
 {
     jl_value_t *v = *slot;
     JL_GC_PROMISE_ROOTED(v);
@@ -971,7 +971,7 @@ void promise_rooted_accepts_null(void)
 }
 
 extern jl_datatype_t *test_global_datatype JL_GLOBALLY_ROOTED;
-void globally_rooted_field_derivative_keeps_value_live(void)
+void globally_rooted_field_derivative_keeps_value_live(void) JL_CANSAFEPOINT
 {
     jl_value_t *v = (jl_value_t*)test_global_datatype->super;
     jl_gc_safepoint();
@@ -979,15 +979,15 @@ void globally_rooted_field_derivative_keeps_value_live(void)
 }
 
 extern _Atomic(jl_typemap_entry_t*) test_atomic_call_cache[10] JL_GLOBALLY_ROOTED;
-extern int test_maybe_safepoint_match(jl_typemap_entry_t *entry JL_MAYBE_UNROOTED);
-void globally_rooted_atomic_array_entry_keeps_value_live(size_t i)
+extern int test_maybe_safepoint_match(jl_typemap_entry_t *entry JL_MAYBE_UNROOTED) JL_CANSAFEPOINT;
+void globally_rooted_atomic_array_entry_keeps_value_live(size_t i) JL_CANSAFEPOINT
 {
     jl_typemap_entry_t *entry = jl_atomic_load_relaxed(&test_atomic_call_cache[i & 7]);
     if (entry && test_maybe_safepoint_match((jl_typemap_entry_t*)jl_svec_data(entry->sig->parameters)))
         (void)jl_atomic_load_relaxed(&entry->min_world);
 }
 
-void module_arraylist_carrier_reports_freed_parent(jl_module_t *m JL_MAYBE_UNROOTED) // expected-note{{Argument was annotated as MAYBE_UNROOTED}}
+void module_arraylist_carrier_reports_freed_parent(jl_module_t *m JL_MAYBE_UNROOTED) JL_CANSAFEPOINT // expected-note{{Argument was annotated as MAYBE_UNROOTED}}
 {
     arraylist_t *usings = &m->usings;
     jl_gc_safepoint(); // expected-note{{Value may have been GCed here}}
@@ -998,7 +998,7 @@ void module_arraylist_carrier_reports_freed_parent(jl_module_t *m JL_MAYBE_UNROO
 typedef struct {
     jl_value_t **data;
 } test_unknown_carrier_t;
-void unknown_carrier_field_load_stays_untracked(void *opaque)
+void unknown_carrier_field_load_stays_untracked(void *opaque) JL_CANSAFEPOINT
 {
     test_unknown_carrier_t *env = (test_unknown_carrier_t*)opaque;
     jl_svec_t *v = (jl_svec_t*)env->data[0];
@@ -1010,8 +1010,8 @@ typedef struct test_alloca_carrier_t {
     jl_value_t *val;
     struct test_alloca_carrier_t *prev;
 } test_alloca_carrier_t;
-extern int test_alloca_carrier_may_safepoint(test_alloca_carrier_t *env JL_MAYBE_UNROOTED);
-void alloca_carrier_pointer_is_not_gc_object(void)
+extern int test_alloca_carrier_may_safepoint(test_alloca_carrier_t *env JL_MAYBE_UNROOTED) JL_CANSAFEPOINT;
+void alloca_carrier_pointer_is_not_gc_object(void) JL_CANSAFEPOINT
 {
     test_alloca_carrier_t *env = (test_alloca_carrier_t*)alloca(sizeof(test_alloca_carrier_t));
     env->val = NULL;
@@ -1020,7 +1020,7 @@ void alloca_carrier_pointer_is_not_gc_object(void)
         (void)env->val;
 }
 
-JL_DLLEXPORT jl_value_t *jl_totally_used_function(int i)
+JL_DLLEXPORT jl_value_t *jl_totally_used_function(int i) JL_CANSAFEPOINT
 {
     jl_value_t *v = jl_box_int32(i); // expected-note{{Started tracking value here}}
     jl_gc_safepoint(); // expected-note{{Value may have been GCed here}}
@@ -1033,7 +1033,7 @@ JL_DLLEXPORT jl_value_t *jl_totally_used_function(int i)
 // its body reaches no recognized safepoint.
 void inlinable_cansafepoint(void) JL_CANSAFEPOINT {
 }
-jl_value_t *inlined_cansafepoint_is_safepoint() {
+jl_value_t *inlined_cansafepoint_is_safepoint() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL); // expected-note{{Started tracking value here}}
     inlinable_cansafepoint(); // expected-note{{Value may have been GCed here}}
     return jl_svecref(val, 0); // expected-warning{{Argument value may have been GCed}}
@@ -1042,48 +1042,10 @@ jl_value_t *inlined_cansafepoint_is_safepoint() {
 
 // Contrast: a locally-defined function with no safepoint in its body and no
 // JL_CANSAFEPOINT annotation is not a safepoint, so val survives the call.
-void inlinable_no_safepoint(void) JL_NOTSAFEPOINT {
+void inlinable_no_safepoint(void) {
 }
-jl_value_t *inlined_no_safepoint_is_not_safepoint() {
+jl_value_t *inlined_no_safepoint_is_not_safepoint() JL_CANSAFEPOINT {
     jl_svec_t *val = jl_svec1(NULL);
     inlinable_no_safepoint();
     return jl_svecref(val, 0);
-}
-
-// A conditional enter (e.g. a no-gc trylock) only disables safepoints on the
-// branch where it succeeds; the failure branch leaves them enabled.
-extern void ce_safepoint(void); // expected-note 2 {{Tried to call method defined here}}
-extern int ce_trylock(void) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(1);
-extern void ce_unlock(void) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
-void conditional_enter_disables_on_success(void) {
-    if (ce_trylock()) { // expected-note{{Safepoints re-enabled here}}
-                        // expected-note@-1{{Tracking JL_NOTSAFEPOINT annotation here}}
-                        // expected-note@-2{{Taking true branch}}
-        ce_safepoint(); // expected-warning{{Calling potential safepoint as SimpleFunctionCall from function annotated JL_NOTSAFEPOINT}}
-                        // expected-note@-1{{Calling potential safepoint as SimpleFunctionCall from function annotated JL_NOTSAFEPOINT}}
-        ce_unlock();
-    }
-}
-void conditional_enter_ok_when_not_taken(void) {
-    if (ce_trylock())
-        ce_unlock();
-    else
-        ce_safepoint();
-}
-
-// The success value is read from the annotation: a conditional enter that
-// signals success with a zero return (JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0), e.g.
-// a pthread-style trylock) disables safepoints on the zero-return branch, so a
-// safepoint is flagged there and allowed on the nonzero (failure) branch.
-extern int ce_trylock0(void) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
-void conditional_enter_zero_success(void) {
-    if (ce_trylock0()) { // expected-note{{Safepoints re-enabled here}}
-                         // expected-note@-1{{Tracking JL_NOTSAFEPOINT annotation here}}
-                         // expected-note@-2{{Taking false branch}}
-        ce_safepoint();
-    } else {
-        ce_safepoint(); // expected-warning{{Calling potential safepoint as SimpleFunctionCall from function annotated JL_NOTSAFEPOINT}}
-                        // expected-note@-1{{Calling potential safepoint as SimpleFunctionCall from function annotated JL_NOTSAFEPOINT}}
-        ce_unlock();
-    }
 }

@@ -301,8 +301,10 @@ private:
                                                           StringRef Prefix);
   static std::optional<std::pair<unsigned, unsigned>>
   declHasIndexedPairAnnotation(const clang::Decl *D, StringRef Prefix);
-  static bool isFDAnnotatedNotSafepoint(const clang::FunctionDecl *FD,
-                                        const SourceManager &SM);
+  // Opt-in safepoint model: true if `D` (a function or function-pointer
+  // typedef) is annotated as able to reach a safepoint -- JL_CANSAFEPOINT.
+  // Anything without such an annotation is assumed not to reach a safepoint.
+  static bool declCanSafepoint(const clang::Decl *D);
   static const SourceManager &getSM(CheckerContext &C) { return C.getSourceManager(); }
   bool isSafepoint(const CallEvent &Call, CheckerContext &C) const;
   bool processPotentialSafepoint(const CallEvent &Call, CheckerContext &C,
@@ -318,8 +320,6 @@ private:
                           CheckerContext &C) const;
   bool gcEnabledHere(CheckerContext &C) const;
   bool gcEnabledHere(ProgramStateRef State) const;
-  bool safepointEnabledHere(CheckerContext &C) const;
-  bool safepointEnabledHere(ProgramStateRef State) const;
   bool propagateArgumentRootedness(CheckerContext &C,
                                    ProgramStateRef &State) const;
   SymbolRef getSymbolForResult(const Expr *Result, bool ShouldConjure,
@@ -344,19 +344,6 @@ public:
   class GCBugVisitor : public BugReporterVisitor {
   public:
     GCBugVisitor() {}
-
-    void Profile(llvm::FoldingSetNodeID &ID) const override {
-      static int X = 0;
-      ID.AddPointer(&X);
-    }
-
-    PDP VisitNode(const ExplodedNode *N, BugReporterContext &BRC,
-                  PathSensitiveBugReport &BR) override;
-  };
-
-  class SafepointBugVisitor : public BugReporterVisitor {
-  public:
-    SafepointBugVisitor() {}
 
     void Profile(llvm::FoldingSetNodeID &ID) const override {
       static int X = 0;
@@ -404,12 +391,6 @@ using GCDepthTy = unsigned;
 // Stack-frame height where GC was disabled, or -1 when GC is enabled.
 class GCDisabledAt {};
 using GCDisabledAtTy = unsigned;
-// Stack-frame height where safepoints were disabled, or -1 when enabled.
-class SafepointDisabledAt {};
-using SafepointDisabledAtTy = unsigned;
-// Tracks whether the current call path may execute a safepoint.
-class MayCallSafepoint {};
-using MayCallSafepointTy = bool;
 // Explicit stack root slots and the GCDepth at which each slot was pushed.
 class GCRootMap {};
 using GCRootMapTy = llvm::ImmutableMap<const MemRegion *, int>;
@@ -461,8 +442,6 @@ namespace ento {
 
 JL_GC_DECLARE_PROGRAMSTATE_TRAIT(GCDepth)
 JL_GC_DECLARE_PROGRAMSTATE_TRAIT(GCDisabledAt)
-JL_GC_DECLARE_PROGRAMSTATE_TRAIT(SafepointDisabledAt)
-JL_GC_DECLARE_PROGRAMSTATE_TRAIT(MayCallSafepoint)
 JL_GC_DECLARE_PROGRAMSTATE_TRAIT(GCRootMap)
 JL_GC_DECLARE_PROGRAMSTATE_TRAIT(GCObjectStateMap)
 JL_GC_DECLARE_PROGRAMSTATE_TRAIT(GCRegionObjectMap)

@@ -15,15 +15,6 @@ bool GCChecker::gcEnabledHere(ProgramStateRef State) const {
   return disabledAt == (unsigned)-1;
 }
 
-bool GCChecker::safepointEnabledHere(CheckerContext &C) const {
-  return safepointEnabledHere(C.getState());
-}
-
-bool GCChecker::safepointEnabledHere(ProgramStateRef State) const {
-  unsigned disabledAt = State->get<SafepointDisabledAt>();
-  return disabledAt == (unsigned)-1;
-}
-
 bool GCChecker::propagateArgumentRootedness(CheckerContext &C,
                                             ProgramStateRef &State) const {
   const auto *LCtx = C.getLocationContext();
@@ -144,19 +135,13 @@ void GCChecker::checkBeginFunction(CheckerContext &C) const {
   bool Change = false;
   if (C.inTopFrame()) {
     State = State->set<GCDisabledAt>((unsigned)-1);
-    State = State->set<SafepointDisabledAt>((unsigned)-1);
     Change = true;
   }
   if (gcEnabledHere(State) && declHasAnnotation(FD, "julia_gc_disabled")) {
     State = State->set<GCDisabledAt>(CurrentHeight);
     Change = true;
   }
-  bool isFunctionSafepoint = !isFDAnnotatedNotSafepoint(FD, getSM(C));
-  if (safepointEnabledHere(State) &&
-      (!isFunctionSafepoint || declHasAnnotation(FD, "julia_notsafepoint_leave"))) {
-    State = State->set<SafepointDisabledAt>(CurrentHeight);
-    Change = true;
-  }
+  bool isFunctionSafepoint = declCanSafepoint(FD);
   if (!C.inTopFrame()) {
     if (propagateArgumentRootedness(C, State) || Change)
       C.addTransition(State);
@@ -215,8 +200,6 @@ void GCChecker::checkBeginFunction(CheckerContext &C) const {
 void GCChecker::checkEndFunction(const clang::ReturnStmt *RS,
                                  CheckerContext &C) const {
   ProgramStateRef State = C.getState();
-  const auto *LCtx = C.getLocationContext();
-  const auto *FD = dyn_cast<FunctionDecl>(LCtx->getDecl());
 
   if (RS && gcEnabledHere(State) && RS->getRetValue() && isGCTracked(RS->getRetValue())) {
     auto ResultVal = C.getSVal(RS->getRetValue());
@@ -234,15 +217,6 @@ void GCChecker::checkEndFunction(const clang::ReturnStmt *RS,
   bool Changed = false;
   if (State->get<GCDisabledAt>() == CurrentHeight) {
     State = State->set<GCDisabledAt>((unsigned)-1);
-    Changed = true;
-  }
-  if (State->get<SafepointDisabledAt>() == CurrentHeight) {
-    if (!isFDAnnotatedNotSafepoint(FD, getSM(C)) &&
-        !(FD && (declHasAnnotation(FD, "julia_notsafepoint_enter") ||
-                 declHasIndexedAnnotation(FD, "julia_notsafepoint_enter_conditional:")))) {
-      report_error(C, "Safepoints disabled at end of function");
-    }
-    State = State->set<SafepointDisabledAt>((unsigned)-1);
     Changed = true;
   }
   if (Changed)
@@ -299,43 +273,13 @@ GCChecker::declHasIndexedPairAnnotation(const clang::Decl *D,
   return std::nullopt;
 }
 
-bool GCChecker::isFDAnnotatedNotSafepoint(const clang::FunctionDecl *FD, const SourceManager &SM) {
-  if (!FD)
+bool GCChecker::declCanSafepoint(const clang::Decl *D) {
+  if (!D)
       return false;
-  if (declHasAnnotation(FD, "julia_not_safepoint"))
-      return true;
-  return jl_clangsa::isInLLVMHeaderFile(FD->getLocation(), SM);
+  // A function opts in to being a potential safepoint with JL_CANSAFEPOINT.
+  // Anything without this annotation is assumed not to reach a safepoint.
+  return declHasAnnotation(D, "julia_can_safepoint");
 }
-
-static bool isMutexLock(StringRef name) {
-    return name == "uv_mutex_lock" ||
-           name == "uv_mutex_trylock" ||
-           name == "pthread_mutex_lock" ||
-           name == "pthread_mutex_trylock" ||
-           name == "__gthread_mutex_lock" ||
-           name == "__gthread_mutex_trylock" ||
-           name == "__gthread_recursive_mutex_lock" ||
-           name == "__gthread_recursive_mutex_trylock" ||
-           name == "pthread_spin_lock" ||
-           name == "pthread_spin_trylock" ||
-           name == "uv_rwlock_rdlock" ||
-           name == "uv_rwlock_tryrdlock" ||
-           name == "uv_rwlock_wrlock" ||
-           name == "uv_rwlock_trywrlock" ||
-           false;
-}
-
-static bool isMutexUnlock(StringRef name) {
-    return name == "uv_mutex_unlock" ||
-           name == "pthread_mutex_unlock" ||
-           name == "__gthread_mutex_unlock" ||
-           name == "__gthread_recursive_mutex_unlock" ||
-           name == "pthread_spin_unlock" ||
-           name == "uv_rwlock_rdunlock" ||
-           name == "uv_rwlock_wrunlock" ||
-           false;
-}
-
 
 bool GCChecker::isGCTrackedType(QualType QT) {
   return isJuliaType(
@@ -507,64 +451,27 @@ bool GCChecker::isGloballyRootedType(QualType QT) const {
 }
 
 bool GCChecker::isSafepoint(const CallEvent &Call, CheckerContext &C) const {
-  bool isCalleeSafepoint = true;
-  if (Call.isInSystemHeader()) {
-    // defined by -isystem per
-    // https://clang.llvm.org/docs/UsersManual.html#controlling-diagnostics-in-system-headers
-    isCalleeSafepoint = false;
-  } else {
-    const clang::Decl *Decl = Call.getDecl(); // we might not have a simple call, or we might have an SVal
-    const clang::Expr *Callee = nullptr;
-    if (auto CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr())) {
-      Callee = CE->getCallee();
-      if (Decl == nullptr)
-          Decl = CE->getCalleeDecl(); // ignores dyn_cast<FunctionDecl>, so it could also be a MemberDecl, etc.
-    }
-    // Anything in llvm, std, or tp is not a safepoint
-    if (Decl && jl_clangsa::isInNonSafepointNamespace(Decl->getDeclContext()))
-      return false;
-    const FunctionDecl *FD = Decl ? Decl->getAsFunction() : nullptr;
-    if (!Decl || !FD) {
-      // Indirect call through a function pointer. A safepoint annotation on the
-      // callee can live either on the function-pointer typedef (e.g.
-      // intrinsic_2_t) or, for a raw (non-typedef'd) function pointer, on the
-      // callee value declaration itself -- a parameter, variable, or struct
-      // field (as jl_iintrinsic_2's `lambda2` parameter carries it). Consult
-      // whichever carries it so an annotated function pointer is recognized
-      // without requiring a typedef; treat the callee as a non-safepoint if
-      // either source says so.
-      bool notSafepoint = false;
-      if (Decl && declHasAnnotation(Decl, "julia_not_safepoint"))
-        notSafepoint = true;
-      if (Callee) {
-        if (const ElaboratedType *ET =
-                dyn_cast<ElaboratedType>(Callee->getType())) {
-          if (const TypedefType *TDT =
-                  dyn_cast<TypedefType>(ET->getNamedType())) {
-            if (declHasAnnotation(TDT->getDecl(), "julia_not_safepoint"))
-              notSafepoint = true;
-          }
-        } else if (isa<CXXPseudoDestructorExpr>(Callee)) {
-          // A pseudo-destructor is an expression that looks like a member
-          // access to a destructor of a scalar type. It has no run-time
-          // semantics beyond evaluating the base expression (which would have
-          // its own CallEvent, if applicable).
-          notSafepoint = true;
-        }
-      }
-      isCalleeSafepoint = !notSafepoint;
-    } else if (FD) {
-      StringRef FDName =
-          FD->getDeclName().isIdentifier() ? FD->getName() : "";
-      if (FD->getBuiltinID() != 0 || FD->isTrivial())
-        isCalleeSafepoint = false;
-      else if (jl_clangsa::nameIsNonSafepointRuntimeHelper(FDName))
-        isCalleeSafepoint = false;
-      else
-        isCalleeSafepoint = !isFDAnnotatedNotSafepoint(FD, getSM(C));
+  // Opt-in model: a call is treated as a potential safepoint only when the
+  // callee is explicitly annotated as able to safepoint (see declCanSafepoint).
+  const clang::Decl *Decl = Call.getDecl(); // we might not have a simple call, or we might have an SVal
+  const clang::Expr *Callee = nullptr;
+  if (auto CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr())) {
+    Callee = CE->getCallee();
+    if (Decl == nullptr)
+        Decl = CE->getCalleeDecl(); // ignores dyn_cast<FunctionDecl>, so it could also be a MemberDecl, etc.
+  }
+  const FunctionDecl *FD = Decl ? Decl->getAsFunction() : nullptr;
+  if (FD && declCanSafepoint(FD))
+    return true;
+  // Indirect call: consult an annotation carried by the function-pointer
+  // typedef, if any. Without one, assume the callee does not safepoint.
+  if (Callee) {
+    if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(Callee->getType())) {
+      if (const TypedefType *TDT = dyn_cast<TypedefType>(ET->getNamedType()))
+        return declCanSafepoint(TDT->getDecl());
     }
   }
-  return isCalleeSafepoint;
+  return false;
 }
 
 bool GCChecker::processPotentialSafepoint(const CallEvent &Call,
@@ -1105,18 +1012,11 @@ void GCChecker::checkPostCall(const CallEvent &Call, CheckerContext &C) const {
   // annotated as able to safepoint promises that it may reach one, so honor
   // that promise even when its body was inlined and happened to not reach a
   // recognized safepoint (e.g. the safepoint is behind a branch the analyzer
-  // pruned, or behind an opaque call it could not see into). Only
-  // JL_NOTSAFEPOINT marks a function as unable to safepoint; the
-  // JL_NOTSAFEPOINT_ENTER/LEAVE transitions (and the conditional enter) run code
-  // that may safepoint, so they count here too. isSafepoint() below still
-  // excludes anything additionally annotated JL_NOTSAFEPOINT.
+  // pruned, or behind an opaque call it could not see into). declCanSafepoint
+  // recognizes the JL_CANSAFEPOINT annotation.
   const Decl *D = Call.getDecl();
   const FunctionDecl *FD = D ? D->getAsFunction() : nullptr;
-  bool annotatedCanSafepoint =
-      FD && (declHasAnnotation(FD, "julia_can_safepoint") ||
-             declHasAnnotation(FD, "julia_notsafepoint_enter") ||
-             declHasIndexedAnnotation(FD, "julia_notsafepoint_enter_conditional:") ||
-             declHasAnnotation(FD, "julia_notsafepoint_leave"));
+  bool annotatedCanSafepoint = declCanSafepoint(FD);
   if (!C.wasInlined || annotatedCanSafepoint)
     didChange |= processPotentialSafepoint(Call, C, State);
   didChange |= processRootPropagatingRegionResult(Call, C, State);
@@ -1307,7 +1207,7 @@ void GCChecker::checkDerivingExpr(const Expr *Result, const Expr *Parent,
           dyn_cast<FunctionDecl>(C.getLocationContext()->getDecl());
       if (FD) {
         inheritedState = true;
-        bool isFunctionSafepoint = !isFDAnnotatedNotSafepoint(FD, getSM(C));
+        bool isFunctionSafepoint = declCanSafepoint(FD);
         const ParmVarDecl *PVD = cast<ParmVarDecl>(VR->getDecl());
         Updated = LivenessState::getForArgument(FD, PVD, isFunctionSafepoint);
         inheritedRoot =
@@ -1414,33 +1314,6 @@ void GCChecker::checkPreCall(const CallEvent &Call, CheckerContext &C) const {
   const FunctionDecl *FD = Decl ? Decl->getAsFunction() : nullptr;
   StringRef FDName =
       FD && FD->getDeclName().isIdentifier() ? FD->getName() : "";
-  if (isMutexUnlock(FDName) || (FD && declHasAnnotation(FD, "julia_notsafepoint_leave"))) {
-    const auto *LCtx = C.getLocationContext();
-    const auto *FD = dyn_cast<FunctionDecl>(LCtx->getDecl());
-    if (State->get<SafepointDisabledAt>() == getStackFrameHeight(C.getStackFrame()) &&
-        !isFDAnnotatedNotSafepoint(FD, getSM(C))) {
-      State = State->set<SafepointDisabledAt>((unsigned)-1);
-      C.addTransition(State);
-    }
-  }
-  if (!safepointEnabledHere(State) && isCalleeSafepoint) {
-    // Suppress this warning if the function is noreturn.
-    // We could separate out "not safepoint, except for noreturn functions",
-    // but that seems like a lot of effort with little benefit.
-    if (!FD || !FD->isNoReturn()) {
-      report_error(
-          [&](PathSensitiveBugReport *Report) {
-            if (FD)
-              Report->addNote(
-                  "Tried to call method defined here",
-                  PathDiagnosticLocation::create(FD, C.getSourceManager()));
-            Report->addVisitor(make_unique<SafepointBugVisitor>());
-          },
-          C, ("Calling potential safepoint as " +
-              Call.getKindAsString() + " from function annotated JL_NOTSAFEPOINT").str());
-      return;
-    }
-  }
   if (FD && FD->getDeclName().isIdentifier() &&
       FD->getName() == "JL_GC_PROMISE_ROOTED")
     return;
@@ -1730,63 +1603,6 @@ bool GCChecker::evalCall(const CallEvent &Call, CheckerContext &C) const {
     SVal Result = C.getSValBuilder().makeTruthVal(EnabledNow, CE->getType());
     C.addTransition(State->BindExpr(CE, C.getLocationContext(), Result));
     return true;
-  }
-  {
-    auto *Decl = Call.getDecl();
-    const FunctionDecl *FD = Decl ? Decl->getAsFunction() : nullptr;
-
-    if (FD && FD->isNoReturn() && CurrentDepth != 0) {
-      // Model noreturn calls as terminating the current symbolic GC frame stack
-      // so the synthetic end-of-function callback only diagnoses true fallthrough
-      // exits.
-      ProgramStateRef State = PopGCFramesToDepth(C.getState(), CurrentDepth, 0);
-      C.addTransition(State);
-      return true;
-    }
-    // A conditional enter (e.g. a no-gc trylock) only disables safepoints when
-    // it succeeds, which it reports through its return value. The annotation
-    // records which return value means success -- JL_NOTSAFEPOINT_ENTER_CONDITIONAL(success)
-    // encodes it as julia_notsafepoint_enter_conditional:<success>. Split the
-    // state on the return value: the branch matching `success` takes the no-gc
-    // lock and disables safepoints, while the other branch leaves them enabled.
-    std::optional<unsigned> CondSuccess =
-        FD ? declHasIndexedAnnotation(FD, "julia_notsafepoint_enter_conditional:")
-           : std::nullopt;
-    if (CondSuccess) {
-      ProgramStateRef State = C.getState();
-      SValBuilder &SVB = C.getSValBuilder();
-      DefinedOrUnknownSVal RetVal =
-          SVB.conjureSymbolVal(nullptr, C.getCFGElementRef(),
-                               C.getLocationContext(), CE->getType(),
-                               C.blockCount())
-              .castAs<DefinedOrUnknownSVal>();
-      State = State->BindExpr(CE, C.getLocationContext(), RetVal);
-      if (State->get<SafepointDisabledAt>() == (unsigned)-1) {
-        ProgramStateRef StateNonzero, StateZero;
-        std::tie(StateNonzero, StateZero) = State->assume(RetVal);
-        // A nonzero success value means a nonzero (true) return acquired the
-        // no-gc lock; a zero success value means a zero (false) return did.
-        ProgramStateRef Acquired = *CondSuccess ? StateNonzero : StateZero;
-        ProgramStateRef NotAcquired = *CondSuccess ? StateZero : StateNonzero;
-        unsigned Height = getStackFrameHeight(C.getStackFrame());
-        if (Acquired)
-          C.addTransition(Acquired->set<SafepointDisabledAt>(Height));
-        if (NotAcquired)
-          C.addTransition(NotAcquired);
-      } else {
-        C.addTransition(State);
-      }
-      return true;
-    }
-    if (isMutexLock(name) ||
-        (FD && declHasAnnotation(FD, "julia_notsafepoint_enter"))) {
-      ProgramStateRef State = C.getState();
-      if (State->get<SafepointDisabledAt>() == (unsigned)-1) {
-        C.addTransition(State->set<SafepointDisabledAt>(
-            getStackFrameHeight(C.getStackFrame())));
-        return true;
-      }
-    }
   }
   return false;
 }

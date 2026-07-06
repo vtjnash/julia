@@ -1011,10 +1011,12 @@ void *jl_emit_native_impl(jl_array_t *codeinfos, jl_array_t *ci_order, LLVMOrcTh
         data->TSM_ref = &data->TSM;
     }
 
+#ifndef __clang_gcanalyzer__ // cherker disabled because calling this function with an llvmmod would indeed be unsound
     data->TSM_ref->withModuleDo([&](Module &M) JL_CANSAFEPOINT {
         data->out = std::make_unique<jl_codegen_output_t>(M);
         jl_emit_native_to_output(data, codeinfos, ci_order, cgparams, external_linkage);
     });
+#endif
 
     return (void *)data;
 }

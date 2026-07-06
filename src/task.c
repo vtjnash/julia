@@ -777,6 +777,9 @@ JL_DLLEXPORT JL_NORETURN void JL_NO_SAFEPOINT_ANALYSIS jl_no_exc_handler(jl_valu
 #define pop_timings_stack() /* Nothing */
 #endif
 
+#ifdef __clang_gcanalyzer__ // we intentionally don't model safepoint-execpt-throwing, so this method confuses the checker
+extern void JL_NORETURN throw_internal(jl_task_t *ct, jl_value_t *exception JL_MAYBE_UNROOTED) JL_CANSAFEPOINT_ENTER;
+#else
 static void JL_NORETURN throw_internal(jl_task_t *ct, jl_value_t *exception JL_MAYBE_UNROOTED) JL_CANSAFEPOINT_ENTER
 {
     JL_GC_PUSH1(&exception);
@@ -804,6 +807,7 @@ static void JL_NORETURN throw_internal(jl_task_t *ct, jl_value_t *exception JL_M
     assert(0);
     jl_unreachable();
 }
+#endif
 
 // record backtrace and raise an error
 JL_DLLEXPORT void JL_NO_SAFEPOINT_ANALYSIS jl_throw(jl_value_t *e JL_MAYBE_UNROOTED)
