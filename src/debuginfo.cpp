@@ -46,7 +46,7 @@ using namespace llvm;
 
 static JITDebugInfoRegistry *DebugRegistry = new JITDebugInfoRegistry;
 
-static JITDebugInfoRegistry &getJITDebugRegistry() JL_NOTSAFEPOINT {
+static JITDebugInfoRegistry &getJITDebugRegistry() {
     return *DebugRegistry;
 }
 
@@ -59,12 +59,12 @@ struct debug_link_info {
 
 #if (defined(_OS_LINUX_) || defined(_OS_FREEBSD_) || (defined(_OS_DARWIN_) && defined(LLVM_SHLIB)))
 extern "C" {
-    JL_DLLIMPORT extern void __register_frame(void*) JL_NOTSAFEPOINT;
-    JL_DLLIMPORT extern void __deregister_frame(void*) JL_NOTSAFEPOINT;
+    JL_DLLIMPORT extern void __register_frame(void*);
+    JL_DLLIMPORT extern void __deregister_frame(void*);
 }
 
 template <typename callback>
-static void processFDEs(const char *EHFrameAddr, size_t EHFrameSize, callback f) JL_NOTSAFEPOINT
+static void processFDEs(const char *EHFrameAddr, size_t EHFrameSize, callback f)
 {
     const char *P = EHFrameAddr;
     const char *End = P + EHFrameSize;
@@ -157,7 +157,7 @@ struct unw_table_entry
 // some actions aren't signal (especially profiler) safe so we acquire a lock
 // around them to establish a mutual exclusion with unwinding from a signal
 template <typename T>
-static void jl_profile_atomic(T f) JL_NOTSAFEPOINT
+static void jl_profile_atomic(T f)
 {
     int havelock = jl_lock_profile_wr();
     assert(havelock);
@@ -218,7 +218,7 @@ static void create_PRUNTIME_FUNCTION(uint8_t *Code, size_t Size, StringRef fnnam
         uv_mutex_unlock(&jl_in_stackwalk);
     }
 #if defined(_CPU_X86_64_)
-    jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+    jl_profile_atomic([&]() {
         if (!RtlAddFunctionTable(tbl, 1, (DWORD64)Section)) {
             static int warned = 0;
             if (!warned) {
@@ -305,7 +305,7 @@ void JITDebugInfoRegistry::registerJITObject(
         di->u.rti.name_ptr = 0;
         di->u.rti.table_data = arm_exidx_addr;
         di->u.rti.table_len = arm_exidx_len;
-        jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+        jl_profile_atomic([&]() {
             _U_dyn_register(di);
         });
         break;
@@ -395,10 +395,10 @@ void JITDebugInfoRegistry::registerJITObject(
             codeinst = it->second;
         }
         // opaque-closure code instances are pre-promoted to global roots
-        // by jl_register_jit_object before this JL_NOTSAFEPOINT region runs.
+        // by jl_register_jit_object before this region runs.
         // All other codeinstances are rooted by the cache.
         JL_GC_PROMISE_ROOTED(codeinst);
-        jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+        jl_profile_atomic([&]() {
             if (codeinst)
                 cimap[Addr] = std::make_pair(Size, codeinst);
             hassection = true;
@@ -420,7 +420,7 @@ void jl_register_jit_object(const object::ObjectFile &Object,
 {
     // Opaque-closure code instances are not otherwise reachable through their
     // method, so promote them to global roots here, before entering the
-    // JL_NOTSAFEPOINT registerJITObject body. Scanning the list is safe in the
+    // registerJITObject body. Scanning the list is safe in the
     // GC-safe materialization state (registerJITObject reads the same fields),
     // so only switch to GC-unsafe around the rare allocating promotion.
     jl_task_t *ct = jl_current_task;
@@ -440,7 +440,7 @@ void jl_register_jit_object(const object::ObjectFile &Object,
 }
 
 // TODO: convert the safe names from aotcomile.cpp:makeSafeName back into symbols
-static std::pair<char *, bool> jl_demangle(const char *name) JL_NOTSAFEPOINT
+static std::pair<char *, bool> jl_demangle(const char *name)
 {
     // This function is not allowed to reference any TLS variables since
     // it can be called from an unmanaged thread on OSX.
@@ -478,7 +478,7 @@ done:
 static int lookup_pointer(
         object::SectionRef Section, DIContext *context,
         jl_frame_t **frames, size_t pointer, uint64_t slide,
-        bool demangle, bool noInline) JL_NOTSAFEPOINT
+        bool demangle, bool noInline)
 {
     // This function is not allowed to reference any TLS variables
     // since it can be called from an unmanaged thread on OSX.
@@ -610,7 +610,7 @@ void JITDebugInfoRegistry::libc_frames_t::libc_register_frame(const char *Entry)
         jl_atomic_store_release(&this->libc_register_frame_, libc_register_frame_);
     }
     assert(libc_register_frame_);
-    jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+    jl_profile_atomic([&]() {
         libc_register_frame_(const_cast<char *>(Entry));
         __register_frame(const_cast<char *>(Entry));
     });
@@ -623,14 +623,14 @@ void JITDebugInfoRegistry::libc_frames_t::libc_deregister_frame(const char *Entr
         jl_atomic_store_release(&this->libc_deregister_frame_, libc_deregister_frame_);
     }
     assert(libc_deregister_frame_);
-    jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+    jl_profile_atomic([&]() {
         libc_deregister_frame_(const_cast<char *>(Entry));
         __deregister_frame(const_cast<char *>(Entry));
     });
 }
 #endif
 
-static bool getObjUUID(const object::MachOObjectFile *obj, uint8_t uuid[16]) JL_NOTSAFEPOINT
+static bool getObjUUID(const object::MachOObjectFile *obj, uint8_t uuid[16])
 {
     for (auto Load : obj->load_commands())
     {
@@ -641,7 +641,7 @@ static bool getObjUUID(const object::MachOObjectFile *obj, uint8_t uuid[16]) JL_
     }
     return false;
 }
-static debug_link_info getDebuglink(const object::ObjectFile &Obj) JL_NOTSAFEPOINT
+static debug_link_info getDebuglink(const object::ObjectFile &Obj)
 {
     debug_link_info info = {};
     for (const object::SectionRef &Section: Obj.sections()) {
@@ -667,7 +667,7 @@ static debug_link_info getDebuglink(const object::ObjectFile &Obj) JL_NOTSAFEPOI
  *   code or tables extracted from it, as desired without restriction.
  */
 static uint32_t
-calc_gnu_debuglink_crc32(const void *buf, size_t size) JL_NOTSAFEPOINT
+calc_gnu_debuglink_crc32(const void *buf, size_t size)
 {
     static const uint32_t g_crc32_tab[] =
     {
@@ -725,7 +725,7 @@ calc_gnu_debuglink_crc32(const void *buf, size_t size) JL_NOTSAFEPOINT
 }
 
 static Expected<object::OwningBinary<object::ObjectFile>>
-openDebugInfo(StringRef debuginfopath, const debug_link_info &info) JL_NOTSAFEPOINT
+openDebugInfo(StringRef debuginfopath, const debug_link_info &info)
 {
     auto SplitFile = MemoryBuffer::getFile(debuginfopath);
     if (std::error_code EC = SplitFile.getError()) {
@@ -759,7 +759,7 @@ void jl_register_fptrs_impl(uint64_t image_base, const jl_image_fptrs_t *fptrs,
 }
 
 template<typename T>
-static inline void ignoreError(T &err) JL_NOTSAFEPOINT
+static inline void ignoreError(T &err)
 {
 #if !defined(NDEBUG) // Needed only with LLVM assertion build
     consumeError(err.takeError());
@@ -768,7 +768,7 @@ static inline void ignoreError(T &err) JL_NOTSAFEPOINT
 
 static void get_function_name_and_base(llvm::object::SectionRef Section, std::map<uintptr_t, StringRef, std::greater<size_t>> *symbolmap,
                                        size_t pointer, uint64_t slide, bool inimage,
-                                       void **saddr, char **name, bool untrusted_dladdr) JL_NOTSAFEPOINT
+                                       void **saddr, char **name, bool untrusted_dladdr)
 {
     bool needs_saddr = saddr && (!*saddr || untrusted_dladdr);
     bool needs_name = name && (!*name || untrusted_dladdr);
@@ -883,7 +883,7 @@ static void get_function_name_and_base(llvm::object::SectionRef Section, std::ma
 #endif
 }
 
-static jl_object_file_entry_t find_object_file(uint64_t fbase, StringRef fname) JL_NOTSAFEPOINT
+static jl_object_file_entry_t find_object_file(uint64_t fbase, StringRef fname)
 {
     int isdarwin = 0, islinux = 0, iswindows = 0;
 #if defined(_OS_DARWIN_)
@@ -936,7 +936,7 @@ static jl_object_file_entry_t find_object_file(uint64_t fbase, StringRef fname) 
         // the DebugSymbols framework is moved or removed, an alternative would
         // be to directly query Spotlight for the dSYM bundle.
 
-        typedef CFURLRef (*DBGCopyFullDSYMURLForUUIDfn)(CFUUIDRef, CFURLRef) JL_NOTSAFEPOINT;
+        typedef CFURLRef (*DBGCopyFullDSYMURLForUUIDfn)(CFUUIDRef, CFURLRef);
         DBGCopyFullDSYMURLForUUIDfn DBGCopyFullDSYMURLForUUID = NULL;
 
         // First, try to load the private DebugSymbols framework.
@@ -1087,7 +1087,7 @@ static jl_object_file_entry_t find_object_file(uint64_t fbase, StringRef fname) 
 }
 
 // from llvm::SymbolizableObjectFile
-static object::SectionRef getModuleSectionForAddress(const object::ObjectFile *obj, uint64_t Address) JL_NOTSAFEPOINT
+static object::SectionRef getModuleSectionForAddress(const object::ObjectFile *obj, uint64_t Address)
 {
   for (object::SectionRef Sec : obj->sections()) {
       if (!Sec.isText() || Sec.isVirtual())
@@ -1100,7 +1100,7 @@ static object::SectionRef getModuleSectionForAddress(const object::ObjectFile *o
 
 
 bool jl_dylib_DI_for_fptr(size_t pointer, object::SectionRef *Section, uint64_t *slide, llvm::DIContext **context,
-    bool onlyImage, bool *isImage, uint64_t *_fbase, void **saddr, char **name, char **filename) JL_NOTSAFEPOINT
+    bool onlyImage, bool *isImage, uint64_t *_fbase, void **saddr, char **name, char **filename)
 {
     *Section = object::SectionRef();
     *context = NULL;
@@ -1219,7 +1219,7 @@ bool jl_dylib_DI_for_fptr(size_t pointer, object::SectionRef *Section, uint64_t 
 }
 
 // *name and *filename should be either NULL or malloc'd pointer
-static int jl_getDylibFunctionInfo(jl_frame_t **frames, size_t pointer, int skipC, int noInline) JL_NOTSAFEPOINT
+static int jl_getDylibFunctionInfo(jl_frame_t **frames, size_t pointer, int skipC, int noInline)
 {
     // This function is not allowed to reference any TLS variables if noInline
     // since it can be called from an unmanaged thread (the segfault handler)
@@ -1277,7 +1277,7 @@ static int jl_getDylibFunctionInfo(jl_frame_t **frames, size_t pointer, int skip
 }
 
 int jl_DI_for_fptr(uint64_t fptr, uint64_t *symsize, uint64_t *slide,
-        object::SectionRef *Section, llvm::DIContext **context) JL_NOTSAFEPOINT
+        object::SectionRef *Section, llvm::DIContext **context)
 {
     int found = 0;
     if (!jl_lock_profile_wr())
@@ -1326,7 +1326,7 @@ int jl_DI_for_fptr(uint64_t fptr, uint64_t *symsize, uint64_t *slide,
 }
 
 // Set *name and *filename to either NULL or malloc'd string
-extern "C" JL_DLLEXPORT_CODEGEN int jl_getFunctionInfo_impl(jl_frame_t **frames_out, size_t pointer, int skipC, int noInline) JL_NOTSAFEPOINT
+extern "C" JL_DLLEXPORT_CODEGEN int jl_getFunctionInfo_impl(jl_frame_t **frames_out, size_t pointer, int skipC, int noInline)
 {
     // This function is not allowed to reference any TLS variables if noInline
     // since it can be called from an unmanaged thread on OSX.
@@ -1347,7 +1347,7 @@ extern "C" JL_DLLEXPORT_CODEGEN int jl_getFunctionInfo_impl(jl_frame_t **frames_
     return jl_getDylibFunctionInfo(frames_out, pointer, skipC, noInline);
 }
 
-extern "C" JL_DLLEXPORT_CODEGEN jl_code_instance_t *jl_gdblookupci(void *p) JL_NOTSAFEPOINT
+extern "C" JL_DLLEXPORT_CODEGEN jl_code_instance_t *jl_gdblookupci(void *p)
 {
     return getJITDebugRegistry().lookupCodeInstance((size_t)p);
 }
@@ -1367,14 +1367,14 @@ void register_eh_frames(uint8_t *Addr, size_t Size)
 {
   // On OS X __register_frame takes a single FDE as an argument.
   // See http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-April/061768.html
-  processFDEs((char*)Addr, Size, [](const char *Entry) JL_NOTSAFEPOINT {
+  processFDEs((char*)Addr, Size, [](const char *Entry) {
       getJITDebugRegistry().libc_frames.libc_register_frame(Entry);
     });
 }
 
 void deregister_eh_frames(uint8_t *Addr, size_t Size)
 {
-   processFDEs((char*)Addr, Size, [](const char *Entry) JL_NOTSAFEPOINT {
+   processFDEs((char*)Addr, Size, [](const char *Entry) {
       getJITDebugRegistry().libc_frames.libc_deregister_frame(Entry);
     });
 }
@@ -1386,7 +1386,7 @@ void deregister_eh_frames(uint8_t *Addr, size_t Size)
 
 // Skip over an arbitrary long LEB128 encoding.
 // Return the pointer to the first unprocessed byte.
-static const uint8_t *consume_leb128(const uint8_t *Addr, const uint8_t *End) JL_NOTSAFEPOINT
+static const uint8_t *consume_leb128(const uint8_t *Addr, const uint8_t *End)
 {
     const uint8_t *P = Addr;
     while ((*P >> 7) != 0 && P < End)
@@ -1398,7 +1398,7 @@ static const uint8_t *consume_leb128(const uint8_t *Addr, const uint8_t *End) JL
 // bytes than what the type can store.
 // Adjust the pointer to the first unprocessed byte.
 template<typename T> static T parse_leb128(const uint8_t *&Addr,
-                                           const uint8_t *End) JL_NOTSAFEPOINT
+                                           const uint8_t *End)
 {
     typedef typename std::make_unsigned<T>::type uT;
     uT v = 0;
@@ -1421,7 +1421,7 @@ template<typename T> static T parse_leb128(const uint8_t *&Addr,
 }
 
 template <typename U, typename T>
-static U safe_trunc(T t) JL_NOTSAFEPOINT
+static U safe_trunc(T t)
 {
     assert((t >= static_cast<T>(std::numeric_limits<U>::min()))
            && (t <= static_cast<T>(std::numeric_limits<U>::max())));
@@ -1461,7 +1461,7 @@ enum DW_EH_PE : uint8_t {
 };
 
 // Parse the CIE and return the type of encoding used by FDE
-static DW_EH_PE parseCIE(const uint8_t *Addr, const uint8_t *End) JL_NOTSAFEPOINT
+static DW_EH_PE parseCIE(const uint8_t *Addr, const uint8_t *End)
 {
     // https://www.airs.com/blog/archives/460
     // Length (4 bytes)
@@ -1561,13 +1561,13 @@ static DW_EH_PE parseCIE(const uint8_t *Addr, const uint8_t *End) JL_NOTSAFEPOIN
 void register_eh_frames(uint8_t *Addr, size_t Size)
 {
     // System unwinder
-    jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+    jl_profile_atomic([&]() {
         __register_frame(Addr);
     });
 
     // Now first count the number of FDEs
     size_t nentries = 0;
-    processFDEs((char*)Addr, Size, [&](const char*) JL_NOTSAFEPOINT { nentries++; });
+    processFDEs((char*)Addr, Size, [&](const char*) { nentries++; });
     if (nentries == 0)
         return;
 
@@ -1596,7 +1596,7 @@ void register_eh_frames(uint8_t *Addr, size_t Size)
     // CIE's (may not happen) without parsing it every time.
     const uint8_t *cur_cie = nullptr;
     DW_EH_PE encoding = DW_EH_PE_omit;
-    processFDEs((char*)Addr, Size, [&](const char *Entry) JL_NOTSAFEPOINT {
+    processFDEs((char*)Addr, Size, [&](const char *Entry) {
             // Skip Length (4bytes) and CIE offset (4bytes)
             uint32_t fde_size = *(const uint32_t*)Entry;
             uint32_t cie_id = ((const uint32_t*)Entry)[1];
@@ -1689,14 +1689,14 @@ void register_eh_frames(uint8_t *Addr, size_t Size)
     di->start_ip = start_ip;
     di->end_ip = end_ip;
 
-    jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+    jl_profile_atomic([&]() {
         _U_dyn_register(di);
     });
 }
 
 void deregister_eh_frames(uint8_t *Addr, size_t Size)
 {
-    jl_profile_atomic([&]() JL_NOTSAFEPOINT {
+    jl_profile_atomic([&]() {
         __deregister_frame(Addr);
     });
     // Deregistering with our unwinder (_U_dyn_cancel) requires a lookup table
@@ -1717,7 +1717,7 @@ void deregister_eh_frames(uint8_t *Addr, size_t Size)
 #endif
 
 extern "C" JL_DLLEXPORT_CODEGEN
-uint64_t jl_getUnwindInfo_impl(uint64_t dwAddr) JL_NOTSAFEPOINT
+uint64_t jl_getUnwindInfo_impl(uint64_t dwAddr)
 {
     // Might be called from unmanaged thread
     uint64_t ipstart = 0;

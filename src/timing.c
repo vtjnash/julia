@@ -322,7 +322,7 @@ static jl_timing_counts_event_t *_jl_timing_counts_event_create(const char *even
     return new_event;
 }
 
-STATIC_INLINE void _jl_timing_counts_pause(jl_timing_counts_t *block, uint64_t t) JL_NOTSAFEPOINT {
+STATIC_INLINE void _jl_timing_counts_pause(jl_timing_counts_t *block, uint64_t t) {
 #ifdef JL_DEBUG_BUILD
     assert(block->running);
     block->running = 0;
@@ -330,7 +330,7 @@ STATIC_INLINE void _jl_timing_counts_pause(jl_timing_counts_t *block, uint64_t t
     block->total += t - block->start;
 }
 
-STATIC_INLINE void _jl_timing_counts_resume(jl_timing_counts_t *block, uint64_t t) JL_NOTSAFEPOINT {
+STATIC_INLINE void _jl_timing_counts_resume(jl_timing_counts_t *block, uint64_t t) {
 #ifdef JL_DEBUG_BUILD
     assert(!block->running);
     block->running = 1;
@@ -338,7 +338,7 @@ STATIC_INLINE void _jl_timing_counts_resume(jl_timing_counts_t *block, uint64_t 
     block->start = t;
 }
 
-STATIC_INLINE void _jl_timing_counts_start(jl_timing_counts_t *block, uint64_t t) JL_NOTSAFEPOINT {
+STATIC_INLINE void _jl_timing_counts_start(jl_timing_counts_t *block, uint64_t t) {
     block->total = 0;
     block->start = t;
     block->t0 = t;
@@ -347,7 +347,7 @@ STATIC_INLINE void _jl_timing_counts_start(jl_timing_counts_t *block, uint64_t t
 #endif
 }
 
-STATIC_INLINE void _jl_timing_counts_stop(jl_timing_block_t *block, uint64_t t) JL_NOTSAFEPOINT {
+STATIC_INLINE void _jl_timing_counts_stop(jl_timing_block_t *block, uint64_t t) {
 #ifdef JL_DEBUG_BUILD
     assert(block->counts_ctx.running);
     block->counts_ctx.running = 0;

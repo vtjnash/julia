@@ -16,7 +16,7 @@ using namespace llvm;
 
 namespace {
 
-static bool removeNI(Module &M) JL_NOTSAFEPOINT
+static bool removeNI(Module &M)
 {
     auto dlstr = M.getDataLayoutStr();
     auto nistart = dlstr.find("-ni:");

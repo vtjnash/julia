@@ -40,7 +40,7 @@ typedef struct {
 
 #ifdef __clang_gcanalyzer__
 
-extern void JL_GC_ENABLEFRAME(interpreter_state*) JL_NOTSAFEPOINT;
+extern void JL_GC_ENABLEFRAME(interpreter_state*);
 
 // This is necessary, because otherwise the analyzer considers this undefined
 // behavior and terminates the exploration
@@ -179,12 +179,12 @@ jl_value_t *jl_eval_globalref(jl_globalref_t *g, size_t world)
     return v;
 }
 
-static int jl_source_nslots(jl_code_info_t *src) JL_NOTSAFEPOINT
+static int jl_source_nslots(jl_code_info_t *src)
 {
     return jl_array_nrows(src->slotflags);
 }
 
-static int jl_source_nssavalues(jl_code_info_t *src) JL_NOTSAFEPOINT
+static int jl_source_nssavalues(jl_code_info_t *src)
 {
     return jl_is_long(src->ssavaluetypes) ? jl_unbox_long(src->ssavaluetypes) : jl_array_nrows(src->ssavaluetypes);
 }

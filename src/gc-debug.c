@@ -465,7 +465,7 @@ int jl_gc_debug_check_other(void)
     return gc_debug_alloc_check(&jl_gc_debug_env.other);
 }
 
-void jl_gc_debug_fprint_status(ios_t *s) JL_NOTSAFEPOINT
+void jl_gc_debug_fprint_status(ios_t *s)
 {
     uint64_t pool_count = jl_gc_debug_env.pool.num;
     uint64_t other_count = jl_gc_debug_env.other.num;
@@ -474,7 +474,7 @@ void jl_gc_debug_fprint_status(ios_t *s) JL_NOTSAFEPOINT
                     pool_count + other_count, pool_count, other_count, gc_num.pause);
 }
 
-void jl_gc_debug_fprint_critical_error(ios_t *s) JL_NOTSAFEPOINT
+void jl_gc_debug_fprint_critical_error(ios_t *s)
 {
     jl_gc_debug_fprint_status(s);
     if (!jl_gc_debug_env.wait_for_debugger)
@@ -1047,7 +1047,7 @@ void gc_stats_big_obj(void)
 static int64_t poolobj_sizes[4];
 static int64_t empty_pages;
 
-static void gc_count_pool_page(jl_gc_pagemeta_t *pg) JL_NOTSAFEPOINT
+static void gc_count_pool_page(jl_gc_pagemeta_t *pg)
 {
     int osize = pg->osize;
     char *data = pg->data;

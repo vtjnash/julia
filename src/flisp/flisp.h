@@ -131,8 +131,8 @@ typedef struct {
 #define isclosure(x) isfunction(x)
 #define iscbuiltin(ctx, x) (iscvalue(x) && (cv_class((cvalue_t*)ptr(x))==ctx->builtintype))
 
-void fl_gc_handle(fl_context_t *fl_ctx, value_t *pv) JL_NOTSAFEPOINT;
-void fl_free_gc_handles(fl_context_t *fl_ctx, uint32_t n) JL_NOTSAFEPOINT;
+void fl_gc_handle(fl_context_t *fl_ctx, value_t *pv);
+void fl_free_gc_handles(fl_context_t *fl_ctx, uint32_t n);
 
 #include "opcodes.h"
 
@@ -150,15 +150,15 @@ void fl_free_gc_handles(fl_context_t *fl_ctx, uint32_t n) JL_NOTSAFEPOINT;
 value_t fl_read_sexpr(fl_context_t *fl_ctx, value_t f);
 void fl_print(fl_context_t *fl_ctx, ios_t *f, value_t v);
 value_t fl_toplevel_eval(fl_context_t *fl_ctx, value_t expr);
-value_t fl_apply(fl_context_t *fl_ctx, value_t f, value_t l) JL_NOTSAFEPOINT;
-value_t fl_applyn(fl_context_t *fl_ctx, uint32_t n, value_t f, ...) JL_NOTSAFEPOINT;
+value_t fl_apply(fl_context_t *fl_ctx, value_t f, value_t l);
+value_t fl_applyn(fl_context_t *fl_ctx, uint32_t n, value_t f, ...);
 
 /* object model manipulation */
-value_t fl_cons(fl_context_t *fl_ctx, value_t a, value_t b) JL_NOTSAFEPOINT;
-value_t fl_list2(fl_context_t *fl_ctx, value_t a, value_t b) JL_NOTSAFEPOINT;
-value_t fl_listn(fl_context_t *fl_ctx, size_t n, ...) JL_NOTSAFEPOINT;
-value_t symbol(fl_context_t *fl_ctx, const char *str) JL_NOTSAFEPOINT;
-char *symbol_name(fl_context_t *fl_ctx, value_t v) JL_NOTSAFEPOINT;
+value_t fl_cons(fl_context_t *fl_ctx, value_t a, value_t b);
+value_t fl_list2(fl_context_t *fl_ctx, value_t a, value_t b);
+value_t fl_listn(fl_context_t *fl_ctx, size_t n, ...);
+value_t symbol(fl_context_t *fl_ctx, const char *str);
+char *symbol_name(fl_context_t *fl_ctx, value_t v);
 int fl_is_keyword_name(const char *str, size_t len);
 value_t alloc_vector(fl_context_t *fl_ctx, size_t n, int init);
 size_t llength(value_t v);
@@ -212,14 +212,14 @@ typedef struct _ectx_t {
         for(l__ca=1; l__ca; l__ca=0, fl_restorestate(fl_ctx, &_ctx))
 
 #if defined(_OS_WINDOWS_)
-__declspec(noreturn) void lerrorf(fl_context_t *fl_ctx, value_t e, const char *format, ...) JL_NOTSAFEPOINT;
-__declspec(noreturn) void lerror(fl_context_t *fl_ctx, value_t e, const char *msg) JL_NOTSAFEPOINT;
+__declspec(noreturn) void lerrorf(fl_context_t *fl_ctx, value_t e, const char *format, ...);
+__declspec(noreturn) void lerror(fl_context_t *fl_ctx, value_t e, const char *msg);
 __declspec(noreturn) void fl_raise(fl_context_t *fl_ctx, value_t e);
 __declspec(noreturn) void type_error(fl_context_t *fl_ctx, const char *fname, const char *expected, value_t got);
 __declspec(noreturn) void bounds_error(fl_context_t *fl_ctx, const char *fname, value_t arr, value_t ind);
 #else
-void lerrorf(fl_context_t *fl_ctx, value_t e, const char *format, ...) __attribute__ ((__noreturn__)) JL_NOTSAFEPOINT;
-void lerror(fl_context_t *fl_ctx, value_t e, const char *msg) __attribute__((__noreturn__)) JL_NOTSAFEPOINT;
+void lerrorf(fl_context_t *fl_ctx, value_t e, const char *format, ...) __attribute__ ((__noreturn__));
+void lerror(fl_context_t *fl_ctx, value_t e, const char *msg) __attribute__((__noreturn__));
 void fl_raise(fl_context_t *fl_ctx, value_t e) __attribute__ ((__noreturn__));
 void type_error(fl_context_t *fl_ctx, const char *fname, const char *expected, value_t got) __attribute__ ((__noreturn__));
 void bounds_error(fl_context_t *fl_ctx, const char *fname, value_t arr, value_t ind) __attribute__ ((__noreturn__));
@@ -327,9 +327,9 @@ typedef float    fl_float_t;
 
 typedef value_t (*builtin_t)(fl_context_t*, value_t*, uint32_t);
 
-value_t cvalue(fl_context_t *fl_ctx, fltype_t *type, size_t sz) JL_NOTSAFEPOINT;
-value_t cprim(fl_context_t *fl_ctx, fltype_t *type, size_t sz) JL_NOTSAFEPOINT;
-value_t cvalue_no_finalizer(fl_context_t *fl_ctx, fltype_t *type, size_t sz) JL_NOTSAFEPOINT;
+value_t cvalue(fl_context_t *fl_ctx, fltype_t *type, size_t sz);
+value_t cprim(fl_context_t *fl_ctx, fltype_t *type, size_t sz);
+value_t cvalue_no_finalizer(fl_context_t *fl_ctx, fltype_t *type, size_t sz);
 void add_finalizer(fl_context_t *fl_ctx, cvalue_t *cv);
 void cv_autorelease(fl_context_t *fl_ctx, cvalue_t *cv);
 void cv_pin(fl_context_t *fl_ctx, cvalue_t *cv);
@@ -346,10 +346,10 @@ value_t cvalue_static_cstrn(fl_context_t *fl_ctx, const char *str, size_t n);
 value_t cvalue_static_cstring(fl_context_t *fl_ctx, const char *str);
 value_t string_from_cstr(fl_context_t *fl_ctx, char *str);
 value_t string_from_cstrn(fl_context_t *fl_ctx, char *str, size_t n);
-int fl_isstring(fl_context_t *fl_ctx, value_t v) JL_NOTSAFEPOINT;
-int fl_isnumber(fl_context_t *fl_ctx, value_t v) JL_NOTSAFEPOINT;
-int fl_isgensym(fl_context_t *fl_ctx, value_t v) JL_NOTSAFEPOINT;
-int fl_isiostream(fl_context_t *fl_ctx, value_t v) JL_NOTSAFEPOINT;
+int fl_isstring(fl_context_t *fl_ctx, value_t v);
+int fl_isnumber(fl_context_t *fl_ctx, value_t v);
+int fl_isgensym(fl_context_t *fl_ctx, value_t v);
+int fl_isiostream(fl_context_t *fl_ctx, value_t v);
 ios_t *fl_toiostream(fl_context_t *fl_ctx, value_t v, const char *fname);
 value_t cvalue_compare(value_t a, value_t b);
 int numeric_compare(fl_context_t *fl_ctx, value_t a, value_t b, int eq, int eqnans, char *fname);
@@ -359,7 +359,7 @@ void to_sized_ptr(fl_context_t *fl_ctx, value_t v, const char *fname, char **pda
 fltype_t *get_type(fl_context_t *fl_ctx, value_t t);
 fltype_t *get_array_type(fl_context_t *fl_ctx, value_t eltype);
 fltype_t *define_opaque_type(value_t sym, size_t sz, const cvtable_t *vtab,
-                             cvinitfunc_t init) JL_NOTSAFEPOINT;
+                             cvinitfunc_t init);
 
 value_t mk_double(fl_context_t *fl_ctx, fl_double_t n);
 value_t mk_float(fl_context_t *fl_ctx, fl_float_t n);
@@ -374,16 +374,16 @@ typedef struct {
     builtin_t fptr;
 } builtinspec_t;
 
-void assign_global_builtins(fl_context_t *fl_ctx, const builtinspec_t *b) JL_NOTSAFEPOINT;
+void assign_global_builtins(fl_context_t *fl_ctx, const builtinspec_t *b);
 
 /* builtins */
 value_t fl_hash(fl_context_t *fl_ctx, value_t *args, uint32_t nargs);
 value_t cvalue_byte(fl_context_t *fl_ctx, value_t *args, uint32_t nargs);
 value_t cvalue_wchar(fl_context_t *fl_ctx, value_t *args, uint32_t nargs);
 
-void fl_init(fl_context_t *fl_ctx, size_t initial_heapsize) JL_NOTSAFEPOINT;
+void fl_init(fl_context_t *fl_ctx, size_t initial_heapsize);
 int fl_load_system_image(fl_context_t *fl_ctx, value_t ios);
-int fl_load_system_image_str(fl_context_t *fl_ctx, char* str, size_t len) JL_NOTSAFEPOINT;
+int fl_load_system_image_str(fl_context_t *fl_ctx, char* str, size_t len);
 
 /* julia extensions */
 JL_DLLEXPORT int jl_id_char(uint32_t wc);
@@ -511,7 +511,7 @@ struct _fl_context_t {
     void *jlbuf;
 };
 
-static inline void argcount(fl_context_t *fl_ctx, const char *fname, uint32_t nargs, uint32_t c) JL_NOTSAFEPOINT
+static inline void argcount(fl_context_t *fl_ctx, const char *fname, uint32_t nargs, uint32_t c)
 {
     if (__unlikely(nargs != c))
         lerrorf(fl_ctx, fl_ctx->ArgError,"%s: too %s arguments", fname, nargs<c ? "few":"many");

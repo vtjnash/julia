@@ -45,14 +45,14 @@
 
 namespace {
 
-static size_t get_block_size(size_t size) JL_NOTSAFEPOINT
+static size_t get_block_size(size_t size)
 {
     return (size > jl_page_size * 256 ? LLT_ALIGN(size, jl_page_size) :
             jl_page_size * 256);
 }
 
 // Wrapper function to mmap/munmap/mprotect pages...
-static void *map_anon_page(size_t size) JL_NOTSAFEPOINT
+static void *map_anon_page(size_t size)
 {
 #ifdef _OS_WINDOWS_
     char *mem = (char*)VirtualAlloc(NULL, size + jl_page_size,
@@ -67,7 +67,7 @@ static void *map_anon_page(size_t size) JL_NOTSAFEPOINT
     return mem;
 }
 
-static void unmap_page(void *ptr, size_t size) JL_NOTSAFEPOINT
+static void unmap_page(void *ptr, size_t size)
 {
 #ifdef _OS_WINDOWS_
     VirtualFree(ptr, size, MEM_DECOMMIT);
@@ -84,7 +84,7 @@ enum class Prot : int {
     NO = PAGE_NOACCESS
 };
 
-static void protect_page(void *ptr, size_t size, Prot flags) JL_NOTSAFEPOINT
+static void protect_page(void *ptr, size_t size, Prot flags)
 {
     DWORD old_prot;
     if (!VirtualProtect(ptr, size, (DWORD)flags, &old_prot)) {
@@ -102,7 +102,7 @@ enum class Prot : int {
     NO = PROT_NONE
 };
 
-static void protect_page(void *ptr, size_t size, Prot flags) JL_NOTSAFEPOINT
+static void protect_page(void *ptr, size_t size, Prot flags)
 {
     int ret = mprotect(ptr, size, (int)flags);
     if (ret != 0) {
@@ -111,7 +111,7 @@ static void protect_page(void *ptr, size_t size, Prot flags) JL_NOTSAFEPOINT
     }
 }
 
-static bool check_fd_or_close(int fd) JL_NOTSAFEPOINT
+static bool check_fd_or_close(int fd)
 {
     if (fd == -1)
         return false;
@@ -142,7 +142,7 @@ static intptr_t anon_hdl = -1;
 // Also, creating big file mapping and then map pieces of it seems to
 // consume too much global resources. Therefore, we use each file mapping
 // as a block on windows
-static void *create_shared_map(size_t size, size_t id) JL_NOTSAFEPOINT
+static void *create_shared_map(size_t size, size_t id)
 {
     void *addr = MapViewOfFile((HANDLE)id, FILE_MAP_ALL_ACCESS,
                                0, 0, size);
@@ -150,13 +150,13 @@ static void *create_shared_map(size_t size, size_t id) JL_NOTSAFEPOINT
     return addr;
 }
 
-static intptr_t init_shared_map() JL_NOTSAFEPOINT
+static intptr_t init_shared_map()
 {
     anon_hdl = 0;
     return 0;
 }
 
-static void *alloc_shared_page(size_t size, size_t *id, bool exec) JL_NOTSAFEPOINT
+static void *alloc_shared_page(size_t size, size_t *id, bool exec)
 {
     assert(size % jl_page_size == 0);
     DWORD file_mode = exec ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
@@ -175,7 +175,7 @@ static void *alloc_shared_page(size_t size, size_t *id, bool exec) JL_NOTSAFEPOI
 }
 #else // _OS_WINDOWS_
 // For shared mapped region
-static intptr_t get_anon_hdl(void) JL_NOTSAFEPOINT
+static intptr_t get_anon_hdl(void)
 {
     int fd = -1;
 
@@ -243,7 +243,7 @@ static struct _make_shared_map_lock {
     };
 } shared_map_lock;
 
-static size_t get_map_size_inc() JL_NOTSAFEPOINT
+static size_t get_map_size_inc()
 {
     rlimit rl;
     if (getrlimit(RLIMIT_FSIZE, &rl) != -1) {
@@ -257,7 +257,7 @@ static size_t get_map_size_inc() JL_NOTSAFEPOINT
     return map_size_inc_default;
 }
 
-static void *create_shared_map(size_t size, size_t id) JL_NOTSAFEPOINT
+static void *create_shared_map(size_t size, size_t id)
 {
     void *addr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED,
                       anon_hdl, id);
@@ -265,7 +265,7 @@ static void *create_shared_map(size_t size, size_t id) JL_NOTSAFEPOINT
     return addr;
 }
 
-[[maybe_unused]] static intptr_t init_shared_map() JL_NOTSAFEPOINT
+[[maybe_unused]] static intptr_t init_shared_map()
 {
     anon_hdl = get_anon_hdl();
     if (anon_hdl == -1)
@@ -280,7 +280,7 @@ static void *create_shared_map(size_t size, size_t id) JL_NOTSAFEPOINT
     return anon_hdl;
 }
 
-static void *alloc_shared_page(size_t size, size_t *id, bool exec) JL_NOTSAFEPOINT
+static void *alloc_shared_page(size_t size, size_t *id, bool exec)
 {
     assert(size % jl_page_size == 0);
     size_t off = jl_atomic_fetch_add(&map_offset, size);
@@ -307,7 +307,7 @@ static void *alloc_shared_page(size_t size, size_t *id, bool exec) JL_NOTSAFEPOI
 #ifdef _OS_LINUX_
 // Using `/proc/self/mem`, A.K.A. Keno's remote memory manager.
 
-ssize_t pwrite_addr(int fd, const void *buf, size_t nbyte, uintptr_t addr) JL_NOTSAFEPOINT
+ssize_t pwrite_addr(int fd, const void *buf, size_t nbyte, uintptr_t addr)
 {
     static_assert(sizeof(off_t) >= 8, "off_t is smaller than 64bits");
 #ifdef _P64
@@ -334,7 +334,7 @@ ssize_t pwrite_addr(int fd, const void *buf, size_t nbyte, uintptr_t addr) JL_NO
 
 // Do not call this directly.
 // Use `get_self_mem_fd` which has a guard to call this only once.
-static int _init_self_mem() JL_NOTSAFEPOINT
+static int _init_self_mem()
 {
     struct utsname kernel;
     uname(&kernel);
@@ -374,13 +374,13 @@ static int _init_self_mem() JL_NOTSAFEPOINT
     return fd;
 }
 
-static int get_self_mem_fd() JL_NOTSAFEPOINT
+static int get_self_mem_fd()
 {
     static int fd = _init_self_mem();
     return fd;
 }
 
-static void write_self_mem(void *dest, void *ptr, size_t size) JL_NOTSAFEPOINT
+static void write_self_mem(void *dest, void *ptr, size_t size)
 {
     while (size > 0) {
         ssize_t ret = pwrite_addr(get_self_mem_fd(), ptr, size, (uintptr_t)dest);
@@ -439,7 +439,7 @@ struct Block {
 
     Block(const Block&) = delete;
     Block &operator=(const Block&) = delete;
-    Block(Block &&other) JL_NOTSAFEPOINT
+    Block(Block &&other)
         : ptr(other.ptr),
           total(other.total),
           avail(other.avail)
@@ -448,9 +448,9 @@ struct Block {
         other.total = other.avail = 0;
     }
 
-    Block() JL_NOTSAFEPOINT = default;
+    Block() = default;
 
-    void *alloc(size_t size, size_t align) JL_NOTSAFEPOINT
+    void *alloc(size_t size, size_t align)
     {
         size_t aligned_avail = avail & (-align);
         if (aligned_avail < size)
@@ -459,7 +459,7 @@ struct Block {
         avail = aligned_avail - size;
         return p;
     }
-    void reset(void *addr, size_t size) JL_NOTSAFEPOINT
+    void reset(void *addr, size_t size)
     {
         if (avail >= jl_page_size) {
             uintptr_t end = uintptr_t(ptr) + total;
@@ -486,8 +486,8 @@ class RWAllocator {
     static constexpr int nblocks = 8;
     Block blocks[nblocks]{};
 public:
-    RWAllocator() JL_NOTSAFEPOINT = default;
-    Allocation alloc(size_t size, size_t align) JL_NOTSAFEPOINT
+    RWAllocator() = default;
+    Allocation alloc(size_t size, size_t align)
     {
         size_t min_size = (size_t)-1;
         int min_id = 0;
@@ -524,9 +524,9 @@ struct SplitPtrBlock : public Block {
 
     uintptr_t wr_ptr{0};
     uint32_t state{0};
-    SplitPtrBlock() JL_NOTSAFEPOINT = default;
+    SplitPtrBlock() = default;
 
-    void swap(SplitPtrBlock &other) JL_NOTSAFEPOINT
+    void swap(SplitPtrBlock &other)
     {
         std::swap(ptr, other.ptr);
         std::swap(total, other.total);
@@ -535,7 +535,7 @@ struct SplitPtrBlock : public Block {
         std::swap(state, other.state);
     }
 
-    SplitPtrBlock(SplitPtrBlock &&other) JL_NOTSAFEPOINT
+    SplitPtrBlock(SplitPtrBlock &&other)
         : SplitPtrBlock()
     {
         swap(other);
@@ -550,12 +550,12 @@ protected:
     // but might not have all the permissions set or data copied yet.
     SmallVector<SplitPtrBlock, 16> completed;
     virtual void *get_wr_ptr(SplitPtrBlock &block, void *rt_ptr,
-                             size_t size, size_t align) JL_NOTSAFEPOINT = 0;
-    virtual SplitPtrBlock alloc_block(size_t size) JL_NOTSAFEPOINT = 0;
+                             size_t size, size_t align) = 0;
+    virtual SplitPtrBlock alloc_block(size_t size) = 0;
 public:
-    ROAllocator() JL_NOTSAFEPOINT = default;
-    virtual ~ROAllocator() JL_NOTSAFEPOINT {}
-    virtual void finalize() JL_NOTSAFEPOINT
+    ROAllocator() = default;
+    virtual ~ROAllocator() {}
+    virtual void finalize()
     {
         // Note: on some aarch64 platforms, like Apple CPUs, we need read
         // permission in order to invalidate instruction cache lines.  We are
@@ -568,7 +568,7 @@ public:
     }
     // Allocations that have not been finalized yet.
     SmallVector<Allocation, 16> allocations;
-    Allocation alloc(size_t size, size_t align) JL_NOTSAFEPOINT
+    Allocation alloc(size_t size, size_t align)
     {
         size_t min_size = (size_t)-1;
         int min_id = 0;
@@ -623,7 +623,7 @@ class DualMapAllocator : public ROAllocator {
     bool exec;
 
 protected:
-    void *get_wr_ptr(SplitPtrBlock &block, void *rt_ptr, size_t, size_t) override JL_NOTSAFEPOINT
+    void *get_wr_ptr(SplitPtrBlock &block, void *rt_ptr, size_t, size_t) override
     {
         assert((char*)rt_ptr >= block.ptr &&
                (char*)rt_ptr < (block.ptr + block.total));
@@ -638,7 +638,7 @@ protected:
         }
         return (char*)rt_ptr + (block.wr_ptr - uintptr_t(block.ptr));
     }
-    SplitPtrBlock alloc_block(size_t size) override JL_NOTSAFEPOINT
+    SplitPtrBlock alloc_block(size_t size) override
     {
         SplitPtrBlock new_block;
         // use `wr_ptr` to record the id initially
@@ -646,7 +646,7 @@ protected:
         new_block.reset(ptr, size);
         return new_block;
     }
-    void finalize_block(SplitPtrBlock &block, bool reset) JL_NOTSAFEPOINT
+    void finalize_block(SplitPtrBlock &block, bool reset)
     {
         // This function handles setting the block to the right mode
         // and free'ing maps that are not needed anymore.
@@ -682,12 +682,12 @@ protected:
         }
     }
 public:
-    DualMapAllocator(bool exec) JL_NOTSAFEPOINT : exec(exec)
+    DualMapAllocator(bool exec) : exec(exec)
     {
         assert(anon_hdl != -1);
     }
-    virtual ~DualMapAllocator() JL_NOTSAFEPOINT override = default;
-    void finalize() override JL_NOTSAFEPOINT
+    virtual ~DualMapAllocator() override = default;
+    void finalize() override
     {
         for (auto &block : this->blocks) {
             finalize_block(block, false);
@@ -706,7 +706,7 @@ class SelfMemAllocator : public ROAllocator {
     SmallVector<Block, 16> temp_buff;
 protected:
     void *get_wr_ptr(SplitPtrBlock &block, void *rt_ptr,
-                     size_t size, size_t align) override JL_NOTSAFEPOINT
+                     size_t size, size_t align) override
     {
         assert(!(block.state & SplitPtrBlock::InitAlloc));
         for (auto &wr_block: temp_buff) {
@@ -720,13 +720,13 @@ protected:
         new_block.reset(map_anon_page(block_size), block_size);
         return new_block.alloc(size, align);
     }
-    SplitPtrBlock alloc_block(size_t size) override JL_NOTSAFEPOINT
+    SplitPtrBlock alloc_block(size_t size) override
     {
         SplitPtrBlock new_block;
         new_block.reset(map_anon_page(size), size);
         return new_block;
     }
-    void finalize_block(SplitPtrBlock &block, bool reset) JL_NOTSAFEPOINT
+    void finalize_block(SplitPtrBlock &block, bool reset)
     {
         if (!(block.state & SplitPtrBlock::Alloc))
             return;
@@ -739,12 +739,12 @@ protected:
         }
     }
 public:
-    SelfMemAllocator(bool exec) JL_NOTSAFEPOINT : exec(exec), temp_buff()
+    SelfMemAllocator(bool exec) : exec(exec), temp_buff()
     {
         assert(get_self_mem_fd() != -1);
     }
-    virtual ~SelfMemAllocator() JL_NOTSAFEPOINT override = default;
-    void finalize() override JL_NOTSAFEPOINT
+    virtual ~SelfMemAllocator() override = default;
+    void finalize() override
     {
         for (auto &block : this->blocks) {
             finalize_block(block, false);
@@ -780,7 +780,7 @@ public:
 #endif // _OS_LINUX_
 
 std::pair<std::unique_ptr<ROAllocator>, std::unique_ptr<ROAllocator>>
-get_preferred_allocators() JL_NOTSAFEPOINT
+get_preferred_allocators()
 {
 #if !(defined(_CPU_AARCH64_) || defined(_CPU_RISCV64_))
 #ifdef _OS_LINUX_
@@ -809,7 +809,7 @@ class JLJITLinkMemoryManager : public jitlink::JITLinkMemoryManager {
 public:
     class InFlightAlloc;
 
-    static std::unique_ptr<JITLinkMemoryManager> Create() JL_NOTSAFEPOINT
+    static std::unique_ptr<JITLinkMemoryManager> Create()
     {
         auto [ROAlloc, ExeAlloc] = get_preferred_allocators();
         if (ROAlloc && ExeAlloc)
@@ -833,7 +833,7 @@ public:
 
 protected:
     JLJITLinkMemoryManager(std::unique_ptr<ROAllocator> ROAlloc,
-                           std::unique_ptr<ROAllocator> ExeAlloc) JL_NOTSAFEPOINT
+                           std::unique_ptr<ROAllocator> ExeAlloc)
       : ROAlloc(std::move(ROAlloc)), ExeAlloc(std::move(ExeAlloc))
     {
     }
@@ -865,7 +865,7 @@ class JLJITLinkMemoryManager::InFlightAlloc
     jitlink::LinkGraph &G;
 
 public:
-    InFlightAlloc(JLJITLinkMemoryManager &MM, jitlink::LinkGraph &G) JL_NOTSAFEPOINT
+    InFlightAlloc(JLJITLinkMemoryManager &MM, jitlink::LinkGraph &G)
         : MM(MM), G(G) {}
 
     void abandon(OnAbandonedFunction OnAbandoned) override
@@ -940,7 +940,7 @@ void JLJITLinkMemoryManager::allocate(const jitlink::JITLinkDylib *JD,
 }
 }
 
-std::unique_ptr<jitlink::JITLinkMemoryManager> createJITLinkMemoryManager() JL_NOTSAFEPOINT
+std::unique_ptr<jitlink::JITLinkMemoryManager> createJITLinkMemoryManager()
 {
     return JLJITLinkMemoryManager::Create();
 }

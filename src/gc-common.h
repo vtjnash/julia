@@ -97,7 +97,7 @@ STATIC_INLINE void *jl_realloc_aligned(void *p, size_t sz, size_t oldsz,
     (void)oldsz;
     return _aligned_realloc(p, sz ? sz : 1, align);
 }
-STATIC_INLINE void jl_free_aligned(void *p) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_free_aligned(void *p)
 {
     _aligned_free(p);
 }
@@ -127,7 +127,7 @@ STATIC_INLINE void *jl_realloc_aligned(void *d, size_t sz, size_t oldsz,
     }
     return b;
 }
-STATIC_INLINE void jl_free_aligned(void *p) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_free_aligned(void *p)
 {
     free(p);
 }
@@ -140,27 +140,27 @@ STATIC_INLINE void jl_free_aligned(void *p) JL_NOTSAFEPOINT
 // Pointer tagging
 // =========================================================================== //
 
-STATIC_INLINE int gc_marked(uintptr_t bits) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_marked(uintptr_t bits)
 {
     return (bits & GC_MARKED) != 0;
 }
 
-STATIC_INLINE int gc_old(uintptr_t bits) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_old(uintptr_t bits)
 {
     return (bits & GC_OLD) != 0;
 }
 
-STATIC_INLINE uintptr_t gc_set_bits(uintptr_t tag, int bits) JL_NOTSAFEPOINT
+STATIC_INLINE uintptr_t gc_set_bits(uintptr_t tag, int bits)
 {
     return (tag & ~(uintptr_t)3) | bits;
 }
 
-STATIC_INLINE uintptr_t gc_ptr_tag(void *v, uintptr_t mask) JL_NOTSAFEPOINT
+STATIC_INLINE uintptr_t gc_ptr_tag(void *v, uintptr_t mask)
 {
     return ((uintptr_t)v) & mask;
 }
 
-STATIC_INLINE void *gc_ptr_clear_tag(void *v, uintptr_t mask) JL_NOTSAFEPOINT
+STATIC_INLINE void *gc_ptr_clear_tag(void *v, uintptr_t mask)
 {
     return (void*)(((uintptr_t)v) & ~mask);
 }
@@ -193,10 +193,10 @@ extern jl_mutex_t finalizers_lock;
 extern arraylist_t finalizer_list_marked;
 extern arraylist_t to_finalize;
 
-void schedule_finalization(void *o, void *f) JL_NOTSAFEPOINT;
+void schedule_finalization(void *o, void *f);
 void run_finalizer(jl_task_t *ct, void *o, void *ff) JL_CANSAFEPOINT;
 void run_finalizers(jl_task_t *ct, int finalizers_thread) JL_CANSAFEPOINT;
-JL_DLLEXPORT void jl_gc_add_finalizer_th(jl_ptls_t ptls, jl_value_t *v, jl_value_t *f) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_add_finalizer_th(jl_ptls_t ptls, jl_value_t *v, jl_value_t *f);
 JL_DLLEXPORT void jl_finalize_th(jl_task_t *ct, jl_value_t *o) JL_CANSAFEPOINT;
 
 
@@ -220,11 +220,11 @@ extern int gc_logging_enabled;
 // number of stacks to always keep available per pool
 #define MIN_STACK_MAPPINGS_PER_POOL 5
 
-void _jl_free_stack(jl_ptls_t ptls, void *stkbuf, size_t bufsz) JL_NOTSAFEPOINT;
-void sweep_mtarraylist_buffers(void) JL_NOTSAFEPOINT;
+void _jl_free_stack(jl_ptls_t ptls, void *stkbuf, size_t bufsz);
+void sweep_mtarraylist_buffers(void);
 
-int gc_slot_to_fieldidx(void *_obj, void *slot, jl_datatype_t *vt) JL_NOTSAFEPOINT;
-int gc_slot_to_arrayidx(void *_obj, void *begin) JL_NOTSAFEPOINT;
+int gc_slot_to_fieldidx(void *_obj, void *slot, jl_datatype_t *vt);
+int gc_slot_to_arrayidx(void *_obj, void *begin);
 
 #ifdef __cplusplus
 }

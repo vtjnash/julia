@@ -112,7 +112,7 @@ JL_DLLEXPORT jl_svec_t *jl_svec_fill(size_t n, jl_value_t *x)
     return v;
 }
 
-JL_DLLEXPORT size_t (jl_svec_len)(jl_svec_t *t) JL_NOTSAFEPOINT
+JL_DLLEXPORT size_t (jl_svec_len)(jl_svec_t *t)
 {
     return jl_svec_len(t);
 }

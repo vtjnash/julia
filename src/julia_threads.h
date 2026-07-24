@@ -27,9 +27,9 @@ extern "C" {
 
 
 JL_DLLEXPORT int16_t jl_threadid(void);
-JL_DLLEXPORT int8_t jl_threadpoolid(int16_t tid) JL_NOTSAFEPOINT;
-JL_DLLEXPORT uint64_t jl_get_ptls_rng(void) JL_NOTSAFEPOINT;
-JL_DLLEXPORT void jl_set_ptls_rng(uint64_t new_seed) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int8_t jl_threadpoolid(int16_t tid);
+JL_DLLEXPORT uint64_t jl_get_ptls_rng(void);
+JL_DLLEXPORT void jl_set_ptls_rng(uint64_t new_seed);
 
 // JULIA_ENABLE_THREADING may be controlled by altering JULIA_THREADS in Make.user
 
@@ -373,14 +373,14 @@ void jl_gc_safe_leave(jl_ptls_t ptls, int8_t state) JL_CANSAFEPOINT_ENTER;
 #endif
 
 JL_DLLEXPORT void jl_gc_enable_finalizers(struct _jl_task_t *ct, int on) JL_CANSAFEPOINT;
-JL_DLLEXPORT void jl_gc_disable_finalizers_internal(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_disable_finalizers_internal(void);
 JL_DLLEXPORT void jl_gc_enable_finalizers_internal(void) JL_CANSAFEPOINT;
 JL_DLLEXPORT void jl_gc_run_pending_finalizers(struct _jl_task_t *ct) JL_CANSAFEPOINT;
 extern JL_DLLEXPORT _Atomic(int) jl_gc_have_pending_finalizers;
-JL_DLLEXPORT int8_t jl_gc_is_in_finalizer(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int8_t jl_gc_is_in_finalizer(void);
 
-JL_DLLEXPORT int jl_wakeup_thread(int16_t tid) JL_NOTSAFEPOINT;
-JL_DLLEXPORT void jl_wakeup_threadpool(int8_t tpid) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int jl_wakeup_thread(int16_t tid);
+JL_DLLEXPORT void jl_wakeup_threadpool(int8_t tpid);
 
 JL_DLLEXPORT int jl_getaffinity(int16_t tid, char *mask, int cpumasksize);
 JL_DLLEXPORT int jl_setaffinity(int16_t tid, char *mask, int cpumasksize);

@@ -646,7 +646,7 @@ JL_DLLEXPORT int jl_fs_access(char *path, int mode)
 }
 
 JL_DLLEXPORT int jl_fs_write(uv_os_fd_t handle, const char *data, size_t len,
-                             int64_t offset) JL_NOTSAFEPOINT
+                             int64_t offset)
 {
     jl_task_t *ct = jl_get_current_task();
     // TODO: fix this cheating
@@ -700,7 +700,7 @@ JL_DLLEXPORT int jl_uv_write(uv_stream_t *stream, const char *data, size_t n,
     return err;
 }
 
-static void jl_uv_writecb(uv_write_t *req, int status) JL_NOTSAFEPOINT
+static void jl_uv_writecb(uv_write_t *req, int status)
 {
     free(req);
     if (status < 0) {
@@ -827,7 +827,7 @@ JL_DLLEXPORT int jl_printf(uv_stream_t *s, const char *format, ...)
     return c;
 }
 
-static void jl_safe_vfprintf(ios_t *s, const char *fmt, va_list args) JL_NOTSAFEPOINT
+static void jl_safe_vfprintf(ios_t *s, const char *fmt, va_list args)
 {
     char buf[1000];
     buf[0] = '\0';

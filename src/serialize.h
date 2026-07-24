@@ -14,48 +14,48 @@ extern "C" {
 
 /* read and write in host byte order */
 
-static inline void write_int32(ios_t *s, int32_t i) JL_NOTSAFEPOINT
+static inline void write_int32(ios_t *s, int32_t i)
 {
     ios_write(s, (char*)&i, 4);
 }
 
-static inline int32_t read_int32(ios_t *s) JL_NOTSAFEPOINT
+static inline int32_t read_int32(ios_t *s)
 {
     int32_t x = 0;
     ios_read(s, (char*)&x, 4);
     return x;
 }
 
-static inline uint64_t read_uint64(ios_t *s) JL_NOTSAFEPOINT
+static inline uint64_t read_uint64(ios_t *s)
 {
     uint64_t x = 0;
     ios_read(s, (char*)&x, 8);
     return x;
 }
 
-static inline void write_uint64(ios_t *s, uint64_t i) JL_NOTSAFEPOINT
+static inline void write_uint64(ios_t *s, uint64_t i)
 {
     ios_write(s, (char*)&i, 8);
 }
 
-static inline void write_uint16(ios_t *s, uint16_t i) JL_NOTSAFEPOINT
+static inline void write_uint16(ios_t *s, uint16_t i)
 {
     ios_write(s, (char*)&i, 2);
 }
 
-static inline uint16_t read_uint16(ios_t *s) JL_NOTSAFEPOINT
+static inline uint16_t read_uint16(ios_t *s)
 {
     int16_t x = 0;
     ios_read(s, (char*)&x, 2);
     return x;
 }
 
-static inline void write_uint32(ios_t *s, uint32_t i) JL_NOTSAFEPOINT
+static inline void write_uint32(ios_t *s, uint32_t i)
 {
     ios_write(s, (char*)&i, 4);
 }
 
-static inline uint32_t read_uint32(ios_t *s) JL_NOTSAFEPOINT
+static inline uint32_t read_uint32(ios_t *s)
 {
     uint32_t x = 0;
     ios_read(s, (char*)&x, 4);

@@ -109,7 +109,7 @@ JL_DLLEXPORT char *jl_uv_fs_t_path(uv_fs_t *req) { return (char*)req->path; }
 // --- stat ---
 JL_DLLEXPORT int jl_sizeof_stat(void) { return sizeof(uv_stat_t); }
 
-JL_DLLEXPORT int32_t jl_stat(const char *path, char *statbuf) JL_NOTSAFEPOINT
+JL_DLLEXPORT int32_t jl_stat(const char *path, char *statbuf)
 {
     uv_fs_t req;
     int ret;
@@ -398,8 +398,8 @@ JL_DLLEXPORT uint64_t jl_ios_get_nbyte_int(ios_t *s, const size_t n)
 
 // -- syscall utilities --
 
-JL_DLLEXPORT int jl_errno(void) JL_NOTSAFEPOINT { return errno; }
-JL_DLLEXPORT void jl_set_errno(int e) JL_NOTSAFEPOINT { errno = e; }
+JL_DLLEXPORT int jl_errno(void) { return errno; }
+JL_DLLEXPORT void jl_set_errno(int e) { errno = e; }
 
 // -- get the number of CPU threads (logical cores) --
 
@@ -419,7 +419,7 @@ typedef DWORD (WINAPI *GAPC)(WORD);
 // until it's released, we will just recognize the M1 by its CPU family
 // identifier, then subtract how many efficiency cores we know it has.
 
-JL_DLLEXPORT int jl_cpu_threads(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_cpu_threads(void)
 {
 #if defined(HW_AVAILCPU) && defined(HW_NCPU)
     size_t len = 4;
@@ -476,7 +476,7 @@ JL_DLLEXPORT int jl_cpu_threads(void) JL_NOTSAFEPOINT
 #endif
 }
 
-JL_DLLEXPORT int jl_effective_threads(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_effective_threads(void)
 {
     // We want the more conservative estimate of the two.
     int cpu_threads = jl_cpu_threads();
@@ -510,7 +510,7 @@ static sem_t *jl_precompile_jobserver_sem = SEM_FAILED;
 #define JL_PRECOMPILE_JOBSERVER_ACTIVE() (jl_precompile_jobserver_sem != SEM_FAILED)
 #endif
 
-static void jl_precompile_jobserver_init_lock(void) JL_NOTSAFEPOINT
+static void jl_precompile_jobserver_init_lock(void)
 {
     uv_mutex_init(&jl_precompile_jobserver_lock);
 }
@@ -520,7 +520,7 @@ static void jl_precompile_jobserver_init_lock(void) JL_NOTSAFEPOINT
 // jobserver is already active in this process. The name carries a per-process
 // counter so workers left over from a previous session cannot open a newer
 // session's pool.
-JL_DLLEXPORT const char *jl_precompile_jobserver_create(int ntokens) JL_NOTSAFEPOINT
+JL_DLLEXPORT const char *jl_precompile_jobserver_create(int ntokens)
 {
     if (ntokens < 1)
         ntokens = 1;
@@ -550,7 +550,7 @@ JL_DLLEXPORT const char *jl_precompile_jobserver_create(int ntokens) JL_NOTSAFEP
 // Report whether this process owns an active precompile jobserver. Lets a
 // session whose own create failed tell "another session already owns the pool"
 // (join it) from "the OS refused the semaphore" (no pool to join).
-JL_DLLEXPORT int jl_precompile_jobserver_active(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_precompile_jobserver_active(void)
 {
     uv_once(&jl_precompile_jobserver_once, jl_precompile_jobserver_init_lock);
     uv_mutex_lock(&jl_precompile_jobserver_lock);
@@ -560,7 +560,7 @@ JL_DLLEXPORT int jl_precompile_jobserver_active(void) JL_NOTSAFEPOINT
 }
 
 // Tear down the jobserver created by jl_precompile_jobserver_create.
-JL_DLLEXPORT void jl_precompile_jobserver_destroy(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_precompile_jobserver_destroy(void)
 {
     uv_once(&jl_precompile_jobserver_once, jl_precompile_jobserver_init_lock);
     uv_mutex_lock(&jl_precompile_jobserver_lock);
@@ -583,7 +583,7 @@ JL_DLLEXPORT void jl_precompile_jobserver_destroy(void) JL_NOTSAFEPOINT
 // against the shared pool. Non-blocking: returns 1 on success, 0 when no token
 // is available, and -1 when no jobserver is active (e.g. torn down) so pollers
 // stop waiting. The yielding poll loop lives on the Julia side.
-JL_DLLEXPORT int jl_precompile_jobserver_acquire(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_precompile_jobserver_acquire(void)
 {
     uv_once(&jl_precompile_jobserver_once, jl_precompile_jobserver_init_lock);
     uv_mutex_lock(&jl_precompile_jobserver_lock);
@@ -602,7 +602,7 @@ JL_DLLEXPORT int jl_precompile_jobserver_acquire(void) JL_NOTSAFEPOINT
 }
 
 // Return one token previously taken with jl_precompile_jobserver_acquire.
-JL_DLLEXPORT void jl_precompile_jobserver_release(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_precompile_jobserver_release(void)
 {
     uv_once(&jl_precompile_jobserver_once, jl_precompile_jobserver_init_lock);
     uv_mutex_lock(&jl_precompile_jobserver_lock);
@@ -619,7 +619,7 @@ JL_DLLEXPORT void jl_precompile_jobserver_release(void) JL_NOTSAFEPOINT
 
 // -- high resolution timers --
 // Returns time in nanosec
-JL_DLLEXPORT uint64_t jl_hrtime(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint64_t jl_hrtime(void)
 {
     return uv_hrtime();
 }
@@ -684,7 +684,7 @@ JL_DLLEXPORT long jl_getpagesize(void)
 
 #ifdef _OS_WINDOWS_
 static long cachedAllocationGranularity = 0;
-JL_DLLEXPORT long jl_getallocationgranularity(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT long jl_getallocationgranularity(void)
 {
     if (!cachedAllocationGranularity) {
         SYSTEM_INFO systemInfo;
@@ -694,13 +694,13 @@ JL_DLLEXPORT long jl_getallocationgranularity(void) JL_NOTSAFEPOINT
     return cachedAllocationGranularity;
 }
 #else
-JL_DLLEXPORT long jl_getallocationgranularity(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT long jl_getallocationgranularity(void)
 {
     return jl_getpagesize();
 }
 #endif
 
-JL_DLLEXPORT long jl_gethugepagesize(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT long jl_gethugepagesize(void)
 {
 #if defined(_OS_LINUX_)
     long detected = 0;
@@ -777,7 +777,7 @@ static int dlinfo_helper(struct dl_phdr_info *info, size_t size, void *vdata)
 #endif
 
 // Takes a handle (as returned from dlopen()) and returns the absolute path to the image loaded
-JL_DLLEXPORT const char *jl_pathname_for_handle(void *handle) JL_NOTSAFEPOINT
+JL_DLLEXPORT const char *jl_pathname_for_handle(void *handle)
 {
     if (!handle)
         return NULL;
@@ -849,7 +849,7 @@ struct sym_phdr_query {
     int         index;       // running object index; 0 == main program
 };
 
-static int sym_phdr_helper(struct dl_phdr_info *info, size_t size, void *vdata) JL_NOTSAFEPOINT
+static int sym_phdr_helper(struct dl_phdr_info *info, size_t size, void *vdata)
 {
     (void)size;
     struct sym_phdr_query *q = (struct sym_phdr_query *)vdata;
@@ -880,7 +880,7 @@ static int sym_phdr_helper(struct dl_phdr_info *info, size_t size, void *vdata) 
 
 // Takes the address of a symbol and returns the path to the image that contains
 // it, or NULL. On ELF, the main executable is reported as the empty string "".
-JL_DLLEXPORT const char *jl_pathname_for_symbol(void *symbol) JL_NOTSAFEPOINT
+JL_DLLEXPORT const char *jl_pathname_for_symbol(void *symbol)
 {
     if (!symbol)
         return NULL;
@@ -953,7 +953,7 @@ struct dllist_data {
 // This runs under the dynamic linker lock (held by `dl_iterate_phdr` across the
 // callback), so it must not allocate Julia objects or otherwise hit a GC safepoint.
 // A stop-the-world here while another thread is blocked in the linker would deadlock
-static int dllist_helper(struct dl_phdr_info *info, size_t size, void *vdata) JL_NOTSAFEPOINT
+static int dllist_helper(struct dl_phdr_info *info, size_t size, void *vdata)
 {
     (void)size;
     struct dllist_data *data = (struct dllist_data *)vdata;
@@ -999,12 +999,12 @@ JL_DLLEXPORT void jl_raise_debugger(void)
 #endif // _OS_WINDOWS_
 }
 
-JL_DLLEXPORT jl_sym_t *jl_get_UNAME(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_sym_t *jl_get_UNAME(void)
 {
     return jl_symbol(JL_BUILD_UNAME);
 }
 
-JL_DLLEXPORT jl_sym_t *jl_get_ARCH(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_sym_t *jl_get_ARCH(void)
 {
     return jl_symbol(JL_BUILD_ARCH);
 }
@@ -1021,7 +1021,7 @@ JL_DLLEXPORT size_t jl_maxrss(void)
 // Simple `rand()` like function, with global seed and added thread-safety
 // (but slow and insecure)
 static _Atomic(uint64_t) g_rngseed;
-JL_DLLEXPORT uint64_t jl_rand(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint64_t jl_rand(void)
 {
     uint64_t max = UINT64_MAX;
     uint64_t rngseed0 = jl_atomic_load_relaxed(&g_rngseed);
@@ -1034,7 +1034,7 @@ JL_DLLEXPORT uint64_t jl_rand(void) JL_NOTSAFEPOINT
     return rnd;
 }
 
-JL_DLLEXPORT void jl_srand(uint64_t rngseed) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_srand(uint64_t rngseed)
 {
     jl_atomic_store_relaxed(&g_rngseed, rngseed);
 }

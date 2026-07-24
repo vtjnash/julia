@@ -9,7 +9,7 @@
 #include "julia_internal.h"
 #include "support/strhash.h"
 
-static int codegen_imaging_mode(void) JL_NOTSAFEPOINT
+static int codegen_imaging_mode(void)
 {
     return jl_options.image_codegen || (jl_generating_output() && jl_options.use_pkgimages);
 }
@@ -30,7 +30,7 @@ typedef struct {
 // We store the logdata_vec_t pointer as the htable value.
 typedef htable_t logdata_t;
 
-static void logdata_vec_resize(logdata_vec_t *v, size_t newlen) JL_NOTSAFEPOINT
+static void logdata_vec_resize(logdata_vec_t *v, size_t newlen)
 {
     if (newlen > v->cap) {
         size_t newcap = v->cap ? v->cap * 2 : 8;
@@ -42,7 +42,7 @@ static void logdata_vec_resize(logdata_vec_t *v, size_t newlen) JL_NOTSAFEPOINT
     v->len = newlen;
 }
 
-static logdata_vec_t *logdata_get_or_create(logdata_t *ld, const char *filename) JL_NOTSAFEPOINT
+static logdata_vec_t *logdata_get_or_create(logdata_t *ld, const char *filename)
 {
     void **bp = strhash_bp(ld, (void *)filename);
     if (*bp == HT_NOTFOUND) {
@@ -54,7 +54,7 @@ static logdata_vec_t *logdata_get_or_create(logdata_t *ld, const char *filename)
 
 static uv_mutex_t coverage_lock;
 
-static uint64_t *allocLine(logdata_vec_t *vec, int line) JL_NOTSAFEPOINT
+static uint64_t *allocLine(logdata_vec_t *vec, int line)
 {
     unsigned block = line / logdata_blocksize;
     line = line % logdata_blocksize;
@@ -74,7 +74,7 @@ static uint64_t *allocLine(logdata_vec_t *vec, int line) JL_NOTSAFEPOINT
 
 static logdata_t coverageData;
 
-static int is_skip_filename(const char *filename) JL_NOTSAFEPOINT
+static int is_skip_filename(const char *filename)
 {
     if (!filename || filename[0] == '\0') return 1;
     if (strcmp(filename, "none") == 0) return 1;
@@ -119,7 +119,7 @@ JL_DLLEXPORT void jl_coverage_visit_line(const char *filename, size_t len, int l
 
 static logdata_t mallocData;
 
-JL_DLLEXPORT uint64_t *jl_malloc_data_pointer(const char *filename, int line) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint64_t *jl_malloc_data_pointer(const char *filename, int line)
 {
     uv_mutex_lock(&coverage_lock);
     uint64_t *ret = allocLine(logdata_get_or_create(&mallocData, filename), line);
@@ -127,7 +127,7 @@ JL_DLLEXPORT uint64_t *jl_malloc_data_pointer(const char *filename, int line) JL
     return ret;
 }
 
-static void clear_log_data(logdata_t *logData) JL_NOTSAFEPOINT
+static void clear_log_data(logdata_t *logData)
 {
     size_t sz = logData->size;
     void **tab = logData->table;
@@ -149,7 +149,7 @@ static void clear_log_data(logdata_t *logData) JL_NOTSAFEPOINT
 }
 
 // Resets the malloc counts.
-JL_DLLEXPORT void jl_clear_malloc_data(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_clear_malloc_data(void)
 {
     uv_mutex_lock(&coverage_lock);
     clear_log_data(&mallocData);
@@ -157,14 +157,14 @@ JL_DLLEXPORT void jl_clear_malloc_data(void) JL_NOTSAFEPOINT
 }
 
 // Resets the code coverage
-JL_DLLEXPORT void jl_clear_coverage_data(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_clear_coverage_data(void)
 {
     uv_mutex_lock(&coverage_lock);
     clear_log_data(&coverageData);
     uv_mutex_unlock(&coverage_lock);
 }
 
-static void write_log_data(logdata_t *logData, const char *extension) JL_NOTSAFEPOINT
+static void write_log_data(logdata_t *logData, const char *extension)
 {
     char base[4096];
     snprintf(base, sizeof(base), "%s/../share/julia/base/", jl_options.julia_bindir);
@@ -221,7 +221,7 @@ static void write_log_data(logdata_t *logData, const char *extension) JL_NOTSAFE
     }
 }
 
-static void write_lcov_data(logdata_t *logData, const char *outfile) JL_NOTSAFEPOINT
+static void write_lcov_data(logdata_t *logData, const char *outfile)
 {
     FILE *outf = fopen(outfile, "ab");
     if (!outf) return;

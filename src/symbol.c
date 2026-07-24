@@ -20,19 +20,19 @@ static _Atomic(jl_sym_t*) symtab = NULL;
 
 #define MAX_SYM_LEN ((size_t)INTPTR_MAX - sizeof(jl_taggedvalue_t) - sizeof(jl_sym_t) - 1)
 
-static uintptr_t hash_symbol(const char *str, size_t len) JL_NOTSAFEPOINT
+static uintptr_t hash_symbol(const char *str, size_t len)
 {
     uintptr_t oid = memhash(str, len) ^ ~(uintptr_t)0/3*2;
     // compute the same hash value as v1.6 and earlier, which used `hash_uint(3h - objectid(sym))`
     return inthash(-oid);
 }
 
-static size_t symbol_nbytes(size_t len) JL_NOTSAFEPOINT
+static size_t symbol_nbytes(size_t len)
 {
     return ((sizeof(jl_sym_t) + len + 1 + 7) & -8);
 }
 
-static jl_sym_t *mk_symbol(const char *str, size_t len) JL_NOTSAFEPOINT
+static jl_sym_t *mk_symbol(const char *str, size_t len)
 {
     size_t nb = symbol_nbytes(len);
     jl_task_t *ct = jl_current_task;
@@ -49,7 +49,7 @@ static jl_sym_t *mk_symbol(const char *str, size_t len) JL_NOTSAFEPOINT
     return sym;
 }
 
-static jl_sym_t *symtab_lookup(_Atomic(jl_sym_t*) *ptree, const char *str, size_t len, _Atomic(jl_sym_t*) **slot) JL_NOTSAFEPOINT
+static jl_sym_t *symtab_lookup(_Atomic(jl_sym_t*) *ptree, const char *str, size_t len, _Atomic(jl_sym_t*) **slot)
 {
     jl_sym_t *node = jl_atomic_load_relaxed(ptree); // consume
     uintptr_t h = hash_symbol(str, len);
@@ -76,7 +76,7 @@ static jl_sym_t *symtab_lookup(_Atomic(jl_sym_t*) *ptree, const char *str, size_
     return node;
 }
 
-jl_sym_t *_jl_symbol(const char *str, size_t len) JL_NOTSAFEPOINT // (or throw)
+jl_sym_t *_jl_symbol(const char *str, size_t len) // (or throw)
 {
 #ifndef __clang_gcanalyzer__
     // Hide the error throwing from the analyser since there isn't a way to express
@@ -101,12 +101,12 @@ jl_sym_t *_jl_symbol(const char *str, size_t len) JL_NOTSAFEPOINT // (or throw)
     return node;
 }
 
-JL_DLLEXPORT jl_sym_t *jl_symbol(const char *str) JL_NOTSAFEPOINT // (or throw)
+JL_DLLEXPORT jl_sym_t *jl_symbol(const char *str) // (or throw)
 {
     return _jl_symbol(str, strlen(str));
 }
 
-JL_DLLEXPORT jl_sym_t *jl_symbol_lookup(const char *str) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_sym_t *jl_symbol_lookup(const char *str)
 {
     return symtab_lookup(&symtab, str, strlen(str), NULL);
 }

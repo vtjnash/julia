@@ -363,13 +363,13 @@ JL_DLLEXPORT void jl_pop_handler_noexcept(jl_task_t *ct, int n)
     jl_eh_restore_state_noexcept(ct, eh);
 }
 
-JL_DLLEXPORT size_t jl_excstack_state(jl_task_t *ct) JL_NOTSAFEPOINT
+JL_DLLEXPORT size_t jl_excstack_state(jl_task_t *ct)
 {
     jl_excstack_t *s = ct->excstack;
     return s ? s->top : 0;
 }
 
-JL_DLLEXPORT void jl_restore_excstack(jl_task_t *ct, size_t state) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_restore_excstack(jl_task_t *ct, size_t state)
 {
     jl_excstack_t *s = ct->excstack;
     if (s) {
@@ -378,7 +378,7 @@ JL_DLLEXPORT void jl_restore_excstack(jl_task_t *ct, size_t state) JL_NOTSAFEPOI
     }
 }
 
-static void jl_copy_excstack(jl_excstack_t *dest, jl_excstack_t *src) JL_NOTSAFEPOINT
+static void jl_copy_excstack(jl_excstack_t *dest, jl_excstack_t *src)
 {
     assert(dest->reserved_size >= src->top);
     memcpy(jl_excstack_raw(dest), jl_excstack_raw(src), sizeof(jl_bt_element_t)*src->top);
@@ -583,7 +583,7 @@ JL_DLLEXPORT int jl_substrtof(char *str, int offset, size_t len, float *out)
 
 // showing --------------------------------------------------------------------
 
-JL_DLLEXPORT void jl_flush_cstdio(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_flush_cstdio(void)
 {
     fflush(stdout);
     fflush(stderr);
@@ -610,18 +610,18 @@ struct recur_list {
 #undef jl_printf
 #undef jl_is_operator
 #define jl_printf jl_printf_nosafepoint
-JL_DLLEXPORT int jl_printf(struct uv_stream_s *s, const char *format, ...) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int jl_printf(struct uv_stream_s *s, const char *format, ...);
 #define jl_uv_puts jl_uv_puts_nosafepoint
-JL_DLLEXPORT void jl_uv_puts(struct uv_stream_s *stream, const char *str, size_t n) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_uv_puts(struct uv_stream_s *stream, const char *str, size_t n);
 #define jl_is_operator jl_is_operator_unsound
-JL_DLLEXPORT int jl_is_operator(const char *sym) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int jl_is_operator(const char *sym);
 #endif
 
-static size_t jl_static_show_x(JL_STREAM *out, jl_value_t *v, struct recur_list *depth, jl_static_show_config_t ctx) JL_NOTSAFEPOINT;
-static size_t jl_static_show_x_(JL_STREAM *out, jl_value_t *v, jl_datatype_t *vt, struct recur_list *depth, jl_static_show_config_t ctx) JL_NOTSAFEPOINT;
-static size_t jl_static_show_next_(JL_STREAM *out, jl_value_t *v, jl_value_t *prev, struct recur_list *depth, jl_static_show_config_t ctx) JL_NOTSAFEPOINT;
+static size_t jl_static_show_x(JL_STREAM *out, jl_value_t *v, struct recur_list *depth, jl_static_show_config_t ctx);
+static size_t jl_static_show_x_(JL_STREAM *out, jl_value_t *v, jl_datatype_t *vt, struct recur_list *depth, jl_static_show_config_t ctx);
+static size_t jl_static_show_next_(JL_STREAM *out, jl_value_t *v, jl_value_t *prev, struct recur_list *depth, jl_static_show_config_t ctx);
 
-static size_t jl_show_svec(JL_STREAM *out, jl_svec_t *t, const char *head, const char *opn, const char *cls, jl_static_show_config_t ctx) JL_NOTSAFEPOINT
+static size_t jl_show_svec(JL_STREAM *out, jl_svec_t *t, const char *head, const char *opn, const char *cls, jl_static_show_config_t ctx)
 {
     size_t i, n=0, len = jl_svec_len(t);
     n += jl_printf(out, "%s", head);
@@ -636,7 +636,7 @@ static size_t jl_show_svec(JL_STREAM *out, jl_svec_t *t, const char *head, const
     return n;
 }
 
-JL_DLLEXPORT int jl_is_identifier(const char *str) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_is_identifier(const char *str)
 {
     size_t i = 0;
     uint32_t wc = u8_nextchar(str, &i);
@@ -649,7 +649,7 @@ JL_DLLEXPORT int jl_is_identifier(const char *str) JL_NOTSAFEPOINT
     return 1;
 }
 
-static jl_datatype_t *nth_arg_datatype(jl_value_t *a JL_PROPAGATES_ROOT, int n) JL_NOTSAFEPOINT
+static jl_datatype_t *nth_arg_datatype(jl_value_t *a JL_PROPAGATES_ROOT, int n)
 {
     if (jl_is_datatype(a)) {
         if (n == 0)
@@ -693,7 +693,7 @@ static jl_datatype_t *nth_arg_datatype(jl_value_t *a JL_PROPAGATES_ROOT, int n) 
     return NULL;
 }
 
-static jl_datatype_t *arg_datatype(jl_value_t *a JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+static jl_datatype_t *arg_datatype(jl_value_t *a JL_PROPAGATES_ROOT)
 {
     if (jl_is_datatype(a))
         return (jl_datatype_t*)a;
@@ -719,13 +719,13 @@ static jl_datatype_t *arg_datatype(jl_value_t *a JL_PROPAGATES_ROOT) JL_NOTSAFEP
 }
 
 // get DataType of first tuple element (if present), or NULL if cannot be determined
-jl_datatype_t *jl_nth_argument_datatype(jl_value_t *argtypes JL_PROPAGATES_ROOT, int n) JL_NOTSAFEPOINT
+jl_datatype_t *jl_nth_argument_datatype(jl_value_t *argtypes JL_PROPAGATES_ROOT, int n)
 {
     return nth_arg_datatype(argtypes, n);
 }
 
 // get TypeName of first tuple element (if present), or NULL if cannot be determined
-jl_typename_t *jl_nth_argument_datatypename(jl_value_t *argtypes JL_PROPAGATES_ROOT, int n) JL_NOTSAFEPOINT
+jl_typename_t *jl_nth_argument_datatypename(jl_value_t *argtypes JL_PROPAGATES_ROOT, int n)
 {
     jl_datatype_t *dt = nth_arg_datatype(argtypes, n);
     if (dt == NULL)
@@ -734,7 +734,7 @@ jl_typename_t *jl_nth_argument_datatypename(jl_value_t *argtypes JL_PROPAGATES_R
 }
 
 // get DataType implied by a single given type, or `nothing`
-JL_DLLEXPORT jl_value_t *jl_argument_datatype(jl_value_t *argt JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *jl_argument_datatype(jl_value_t *argt JL_PROPAGATES_ROOT)
 {
     jl_datatype_t *dt = arg_datatype(argt);
     if (dt == NULL)
@@ -743,7 +743,7 @@ JL_DLLEXPORT jl_value_t *jl_argument_datatype(jl_value_t *argt JL_PROPAGATES_ROO
 }
 
 // get TypeName implied by a single given type, or `nothing`
-JL_DLLEXPORT jl_value_t *jl_argument_datatypename(jl_value_t *argt JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *jl_argument_datatypename(jl_value_t *argt JL_PROPAGATES_ROOT)
 {
     jl_datatype_t *dt = nth_arg_datatype(argt, 0);
     if (dt == NULL)
@@ -751,13 +751,13 @@ JL_DLLEXPORT jl_value_t *jl_argument_datatypename(jl_value_t *argt JL_PROPAGATES
     return (jl_value_t*)dt->name;
 }
 
-static int is_globname_binding(jl_value_t *v, jl_datatype_t *dv) JL_NOTSAFEPOINT
+static int is_globname_binding(jl_value_t *v, jl_datatype_t *dv)
 {
     jl_sym_t *globname = dv->name->singletonname;
     if (globname && dv->name->module) {
 #ifdef __clang_safetyanalysis__
 #define jl_get_module_binding jl_get_module_binding_nosafepoint
-JL_DLLEXPORT jl_binding_t *jl_get_module_binding(jl_module_t *m JL_PROPAGATES_ROOT, jl_sym_t *var, int alloc) JL_NOTSAFEPOINT;
+JL_DLLEXPORT jl_binding_t *jl_get_module_binding(jl_module_t *m JL_PROPAGATES_ROOT, jl_sym_t *var, int alloc);
 #endif
         jl_binding_t *b = jl_get_module_binding(dv->name->module, globname, 0);
 #ifdef __clang_safetyanalysis__
@@ -770,7 +770,7 @@ JL_DLLEXPORT jl_binding_t *jl_get_module_binding(jl_module_t *m JL_PROPAGATES_RO
     return 0;
 }
 
-static int is_globfunction(jl_value_t *v, jl_datatype_t *dv, jl_sym_t **globname_out) JL_NOTSAFEPOINT
+static int is_globfunction(jl_value_t *v, jl_datatype_t *dv, jl_sym_t **globname_out)
 {
     jl_sym_t *globname = dv->name->singletonname;
     *globname_out = globname;
@@ -780,7 +780,7 @@ static int is_globfunction(jl_value_t *v, jl_datatype_t *dv, jl_sym_t **globname
     return 0;
 }
 
-static size_t jl_static_show_string(JL_STREAM *out, const char *str, size_t len, int wrap, int raw) JL_NOTSAFEPOINT
+static size_t jl_static_show_string(JL_STREAM *out, const char *str, size_t len, int wrap, int raw)
 {
     size_t n = 0;
     if (wrap)
@@ -861,7 +861,7 @@ static int jl_is_quoted_sym(const char *sn)
 // TODO: in theory, we need a separate function for showing symbols in an
 // expression context (where `Symbol("foo\x01bar")` is ok) and a syntactic
 // context (where var"" must be used).
-static size_t jl_static_show_symbol(JL_STREAM *out, jl_sym_t *name) JL_NOTSAFEPOINT
+static size_t jl_static_show_symbol(JL_STREAM *out, jl_sym_t *name)
 {
     size_t n = 0;
     const char *sn = jl_symbol_name(name);
@@ -878,7 +878,7 @@ static size_t jl_static_show_symbol(JL_STREAM *out, jl_sym_t *name) JL_NOTSAFEPO
 // `jl_static_show()` cannot call `jl_subtype()`, for the GC reasons
 // explained in the comment on `jl_static_show_x_()`, below.
 // This function checks if `vt <: Function` without triggering GC.
-static int jl_static_is_function_(jl_datatype_t *vt) JL_NOTSAFEPOINT {
+static int jl_static_is_function_(jl_datatype_t *vt) {
     if (!jl_function_type) {  // Make sure there's a Function type defined.
         return 0;
     }
@@ -900,7 +900,7 @@ static int jl_static_is_function_(jl_datatype_t *vt) JL_NOTSAFEPOINT {
 }
 
 static size_t jl_static_show_float(JL_STREAM *out, double v,
-                                   jl_datatype_t *vt) JL_NOTSAFEPOINT
+                                   jl_datatype_t *vt)
 {
     size_t n = 0;
     // TODO: non-canonical NaNs do not round-trip
@@ -950,7 +950,7 @@ static size_t jl_static_show_float(JL_STREAM *out, double v,
 // This is necessary to make sure that this function doesn't allocate any
 // memory through the Julia GC
 static size_t jl_static_show_x_(JL_STREAM *out, jl_value_t *v, jl_datatype_t *vt,
-                                struct recur_list *depth, jl_static_show_config_t ctx) JL_NOTSAFEPOINT
+                                struct recur_list *depth, jl_static_show_config_t ctx)
 {
     size_t n = 0;
     if ((uintptr_t)vt < 4096U) {
@@ -1556,13 +1556,13 @@ static size_t jl_static_show_x_(JL_STREAM *out, jl_value_t *v, jl_datatype_t *vt
     return n;
 }
 
-static size_t jl_static_show_x(JL_STREAM *out, jl_value_t *v, struct recur_list *depth, jl_static_show_config_t ctx) JL_NOTSAFEPOINT
+static size_t jl_static_show_x(JL_STREAM *out, jl_value_t *v, struct recur_list *depth, jl_static_show_config_t ctx)
 {
     // show values without calling a julia method or allocating through the GC
     return jl_static_show_next_(out, v, NULL, depth, ctx);
 }
 
-static size_t jl_static_show_next_(JL_STREAM *out, jl_value_t *v, jl_value_t *prev, struct recur_list *depth, jl_static_show_config_t ctx) JL_NOTSAFEPOINT
+static size_t jl_static_show_next_(JL_STREAM *out, jl_value_t *v, jl_value_t *prev, struct recur_list *depth, jl_static_show_config_t ctx)
 {
     // helper for showing a typemap list by following the next pointers
     // while being careful about avoiding any recursion due to malformed (circular) references
@@ -1617,19 +1617,19 @@ static size_t jl_static_show_next_(JL_STREAM *out, jl_value_t *v, jl_value_t *pr
     return jl_static_show_x_(out, v, (jl_datatype_t*)jl_typeof(v), newdepth, ctx);
 }
 
-JL_DLLEXPORT size_t jl_static_show(JL_STREAM *out, jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT size_t jl_static_show(JL_STREAM *out, jl_value_t *v)
 {
     jl_static_show_config_t ctx = { /* verbosity */ JL_STATIC_SHOW_VERBOSITY_DEFAULT };
     return jl_static_show_x(out, v, 0, ctx);
 }
 
-JL_DLLEXPORT size_t jl_static_show_func_sig(JL_STREAM *s, jl_value_t *type) JL_NOTSAFEPOINT
+JL_DLLEXPORT size_t jl_static_show_func_sig(JL_STREAM *s, jl_value_t *type)
 {
     jl_static_show_config_t ctx = { /* verbosity */ JL_STATIC_SHOW_VERBOSITY_DEFAULT };
     return jl_static_show_func_sig_(s, type, ctx);
 }
 
-size_t jl_static_show_func_sig_(JL_STREAM *s, jl_value_t *type, jl_static_show_config_t ctx) JL_NOTSAFEPOINT
+size_t jl_static_show_func_sig_(JL_STREAM *s, jl_value_t *type, jl_static_show_config_t ctx)
 {
     size_t n = 0;
     size_t i;
@@ -1704,7 +1704,7 @@ size_t jl_static_show_func_sig_(JL_STREAM *s, jl_value_t *type, jl_static_show_c
 }
 
 JL_DLLEXPORT size_t jl_safe_static_show_(
-    JL_STREAM *s, jl_value_t *v, jl_static_show_config_t ctx) JL_NOTSAFEPOINT
+    JL_STREAM *s, jl_value_t *v, jl_static_show_config_t ctx)
 {
     jl_jmp_buf *old_buf = jl_get_safe_restore();
     jl_jmp_buf buf;
@@ -1721,20 +1721,20 @@ JL_DLLEXPORT size_t jl_safe_static_show_(
     return sz;
 }
 
-JL_DLLEXPORT size_t jl_safe_static_show(JL_STREAM *s, jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT size_t jl_safe_static_show(JL_STREAM *s, jl_value_t *v)
 {
     jl_static_show_config_t ctx = { /* verbosity */ JL_STATIC_SHOW_VERBOSITY_DEFAULT };
     return jl_safe_static_show_(s, v, ctx);
 }
 
-JL_DLLEXPORT void jl_(void *jl_value) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_(void *jl_value)
 {
     jl_static_show_config_t ctx = { /* verbosity */ JL_STATIC_SHOW_VERBOSITY_DEFAULT };
     jl_safe_static_show_((JL_STREAM*)STDERR_FILENO, (jl_value_t*)jl_value, ctx);
 }
 
 // high-verbosity alternative to `jl_`
-JL_DLLEXPORT void jl__(void *jl_value) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl__(void *jl_value)
 {
     jl_static_show_config_t ctx = { /* verbosity */ JL_STATIC_SHOW_VERBOSITY_FULL };
     jl_safe_static_show_((JL_STREAM*)STDERR_FILENO, (jl_value_t*)jl_value, ctx);

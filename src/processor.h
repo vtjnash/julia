@@ -177,7 +177,7 @@ jl_image_t jl_load_sysimg(jl_image_buf_t image, const char *cpu_target);
 jl_image_t jl_load_pkgimg(jl_image_buf_t image);
 
 // Internal function to set the sysimage CPU target during initialization
-void jl_set_sysimage_cpu_target(const char *cpu_target) JL_NOTSAFEPOINT;
+void jl_set_sysimage_cpu_target(const char *cpu_target);
 
 // Return the name of the host CPU as a julia string.
 JL_DLLEXPORT jl_value_t *jl_get_cpu_name(void) JL_CANSAFEPOINT;
@@ -192,10 +192,10 @@ JL_DLLEXPORT jl_value_t *jl_cpu_has_fma(int bits);
 JL_DLLEXPORT void jl_dump_host_cpu(void);
 JL_DLLEXPORT jl_value_t* jl_check_pkgimage_clones(char* data) JL_CANSAFEPOINT;
 
-JL_DLLEXPORT int32_t jl_set_zero_subnormals(int8_t isZero) JL_NOTSAFEPOINT;
-JL_DLLEXPORT int32_t jl_get_zero_subnormals(void) JL_NOTSAFEPOINT;
-JL_DLLEXPORT int32_t jl_set_default_nans(int8_t isDefault) JL_NOTSAFEPOINT;
-JL_DLLEXPORT int32_t jl_get_default_nans(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int32_t jl_set_zero_subnormals(int8_t isZero);
+JL_DLLEXPORT int32_t jl_get_zero_subnormals(void);
+JL_DLLEXPORT int32_t jl_set_default_nans(int8_t isDefault);
+JL_DLLEXPORT int32_t jl_get_default_nans(void);
 
 /**
  * System image contents.
@@ -204,7 +204,7 @@ JL_DLLEXPORT int32_t jl_get_default_nans(void) JL_NOTSAFEPOINT;
  * libjulia-* and the sysimage together (see null_sysimage.c), in which
  * case they allow accessing the local copy of the sysimage.
  **/
-typedef void (JL_NOTSAFEPOINT *jl_image_unpack_func_t)(void *handle, jl_image_buf_t *image);
+typedef void (*jl_image_unpack_func_t)(void *handle, jl_image_buf_t *image);
 extern jl_image_unpack_func_t jl_image_unpack;
 
 /**
@@ -242,8 +242,8 @@ typedef struct {
  *
  * The result owns malloc-allocated memory; release it with jl_free_clone_targets.
  */
-JL_DLLEXPORT jl_clone_targets_t jl_get_llvm_clone_targets(const char *cpu_target) JL_NOTSAFEPOINT;
-JL_DLLEXPORT void jl_free_clone_targets(jl_clone_targets_t *targets) JL_NOTSAFEPOINT;
+JL_DLLEXPORT jl_clone_targets_t jl_get_llvm_clone_targets(const char *cpu_target);
+JL_DLLEXPORT void jl_free_clone_targets(jl_clone_targets_t *targets);
 
 /**
  * If cpu_target starts with "sysimage", replace it with the target string stored
@@ -251,7 +251,7 @@ JL_DLLEXPORT void jl_free_clone_targets(jl_clone_targets_t *targets) JL_NOTSAFEP
  *
  * The returned string is malloc-allocated; the caller must free() it.
  */
-JL_DLLEXPORT char *jl_expand_sysimage_keyword(const char *cpu_target) JL_NOTSAFEPOINT;
+JL_DLLEXPORT char *jl_expand_sysimage_keyword(const char *cpu_target);
 
 #ifdef __cplusplus
 }
@@ -277,14 +277,14 @@ JL_DLLEXPORT char *jl_expand_sysimage_keyword(const char *cpu_target) JL_NOTSAFE
  * If the detected/specified CPU name is not available on the LLVM version specified,
  * a fallback CPU name will be used. Unsupported features will be ignored.
  */
-extern "C" JL_DLLEXPORT jl_llvm_target_t jl_get_llvm_target(const char *cpu_target, bool imaging) JL_NOTSAFEPOINT;
+extern "C" JL_DLLEXPORT jl_llvm_target_t jl_get_llvm_target(const char *cpu_target, bool imaging);
 
 /**
  * Returns the CPU name and feature string to be used by LLVM disassembler.
  *
  * This will return a generic CPU name and a full feature string.
  */
-extern "C" JL_DLLEXPORT jl_llvm_target_t jl_get_llvm_disasm_target(void) JL_NOTSAFEPOINT;
+extern "C" JL_DLLEXPORT jl_llvm_target_t jl_get_llvm_disasm_target(void);
 
 extern "C" JL_DLLEXPORT jl_value_t* jl_reflect_clone_targets() JL_CANSAFEPOINT;
 extern "C" JL_DLLEXPORT jl_value_t *jl_feature_bits_to_string(const uint8_t *bits, int32_t nwords) JL_CANSAFEPOINT;

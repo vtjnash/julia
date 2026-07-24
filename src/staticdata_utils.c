@@ -1,12 +1,12 @@
 
 // Forward declarations for private staticdata.c methods
-static size_t n_linkage_blobs(void) JL_NOTSAFEPOINT;
-static size_t external_blob_index(jl_value_t *v) JL_NOTSAFEPOINT;
+static size_t n_linkage_blobs(void);
+static size_t external_blob_index(jl_value_t *v);
 
 // inverse of backedges graph (caller=>callees hash)
 jl_array_t *internal_methods JL_GLOBALLY_ROOTED = NULL; // rooted for the duration of our uses of this
 
-static void write_float64(ios_t *s, double x) JL_NOTSAFEPOINT
+static void write_float64(ios_t *s, double x)
 {
     write_uint64(s, *((uint64_t*)&x));
 }
@@ -78,7 +78,7 @@ int must_be_new_dt(jl_value_t *t, htable_t *news, char *image_base, size_t sizeo
     return 0;
 }
 
-static uint64_t jl_worklist_key(jl_array_t *worklist) JL_NOTSAFEPOINT
+static uint64_t jl_worklist_key(jl_array_t *worklist)
 {
     assert(jl_is_array(worklist));
     size_t len = jl_array_nrows(worklist);
@@ -226,7 +226,7 @@ JL_DLLEXPORT void jl_push_inference_entrance_backtraces(jl_value_t* ci)
 // compute whether a type references something internal to worklist
 // and thus could not have existed before deserialize
 // and thus does not need delayed unique-ing
-static int type_in_worklist(jl_value_t *v, jl_query_cache *cache) JL_NOTSAFEPOINT
+static int type_in_worklist(jl_value_t *v, jl_query_cache *cache)
 {
     if (jl_object_in_image(v))
         return 0; // fast-path for rejection
@@ -736,7 +736,7 @@ static int64_t write_header(ios_t *s, uint8_t pkgimage) JL_CANSAFEPOINT
     return checksumpos;
 }
 
-static int is_serialization_root_module(jl_module_t *mod) JL_NOTSAFEPOINT
+static int is_serialization_root_module(jl_module_t *mod)
 {
     return mod->parent == jl_main_module || mod->parent == jl_base_module || mod->parent == mod;
 }
@@ -759,7 +759,7 @@ static void write_worklist_for_header(ios_t *s, jl_array_t *worklist)
     write_int32(s, 0);
 }
 
-static void write_module_path(ios_t *s, jl_module_t *depmod) JL_NOTSAFEPOINT
+static void write_module_path(ios_t *s, jl_module_t *depmod)
 {
     if (is_serialization_root_module(depmod))
         return;

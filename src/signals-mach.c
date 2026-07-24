@@ -566,7 +566,7 @@ static void attach_exception_port(thread_port_t thread, int segv_only)
     HANDLE_MACH_ERROR("thread_set_exception_ports", ret);
 }
 
-static int jl_thread_suspend_and_get_state2(int tid, host_thread_state_t *ctx) JL_NOTSAFEPOINT
+static int jl_thread_suspend_and_get_state2(int tid, host_thread_state_t *ctx)
 {
     if (tid < 0 || tid >= jl_atomic_load_acquire(&jl_n_threads))
         return 0;

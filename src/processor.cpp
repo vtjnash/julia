@@ -257,7 +257,7 @@ static_assert(TARGET_TABLES_LLVM_VERSION_MAJOR <= LLVM_VERSION_MAJOR,
 // Debug output
 // ============================================================================
 
-static bool cpufeatures_debug_enabled() JL_NOTSAFEPOINT {
+static bool cpufeatures_debug_enabled() {
     static int enabled = -1;
     if (enabled == -1) {
         const char *debug_env = getenv("JULIA_DEBUG");
@@ -303,7 +303,7 @@ static std::vector<tp::LLVMTargetSpec> jit_targets;
 
 // If cpu_target starts with "sysimage", replace it with the target string
 // stored in the loaded sysimage. Otherwise return as-is.
-static std::string expand_sysimage_keyword(const char *cpu_target) JL_NOTSAFEPOINT
+static std::string expand_sysimage_keyword(const char *cpu_target)
 {
     if (!cpu_target || !*cpu_target)
         return "";
@@ -327,7 +327,7 @@ extern "C" char *jl_expand_sysimage_keyword(const char *cpu_target)
     return strdup(expand_sysimage_keyword(cpu_target).c_str());
 }
 
-static void init_jit_targets(const char *cpu_target, bool imaging) JL_NOTSAFEPOINT
+static void init_jit_targets(const char *cpu_target, bool imaging)
 {
 
     if (!jit_targets.empty())
@@ -637,7 +637,7 @@ jl_llvm_target_t jl_get_llvm_disasm_target(void)
     // Use generic CPU with all features enabled so the disassembler
     // can decode any instruction (including sysimage clones compiled
     // for targets beyond the current JIT target).
-    static const std::string features = []() JL_NOTSAFEPOINT {
+    static const std::string features = []() {
         std::string features;
         for (uint32_t i = 0; i < tp::num_features; i++) {
             if (tp::feature_table[i].is_hw) {

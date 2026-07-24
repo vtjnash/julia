@@ -29,13 +29,13 @@ jl_genericmemory_t *jl_idset_rehash(jl_genericmemory_t *keys, jl_genericmemory_t
 // Return idx if key is in hash, otherwise -1
 // Note: lookup in the IdSet is permitted concurrently, if you avoid deletions,
 // and assuming you do use an external lock around all insertions
-ssize_t jl_idset_peek_bp(jl_genericmemory_t *keys, jl_genericmemory_t *idxs, jl_value_t *key) JL_NOTSAFEPOINT
+ssize_t jl_idset_peek_bp(jl_genericmemory_t *keys, jl_genericmemory_t *idxs, jl_value_t *key)
 {
     uintptr_t hv = jl_object_id(key);
     return jl_smallintset_lookup(idxs, idset_eq, key, (jl_value_t*)keys, hv, 0);
 }
 
-jl_value_t *jl_idset_get(jl_genericmemory_t *keys, jl_genericmemory_t *idxs, jl_value_t *key) JL_NOTSAFEPOINT
+jl_value_t *jl_idset_get(jl_genericmemory_t *keys, jl_genericmemory_t *idxs, jl_value_t *key)
 {
     ssize_t idx = jl_idset_peek_bp(keys, idxs, key);
     if (idx == -1)
@@ -108,7 +108,7 @@ jl_genericmemory_t *jl_idset_put_idx(jl_genericmemory_t *keys, jl_genericmemory_
 }
 
 /* returns idx if key is in hash, otherwise -1 */
-ssize_t jl_idset_pop(jl_genericmemory_t *keys, jl_genericmemory_t *idxs, jl_value_t *key) JL_NOTSAFEPOINT
+ssize_t jl_idset_pop(jl_genericmemory_t *keys, jl_genericmemory_t *idxs, jl_value_t *key)
 {
     uintptr_t hv = jl_object_id(key);
     ssize_t idx = jl_smallintset_lookup(idxs, idset_eq, key, (jl_value_t*)keys, hv, 1);

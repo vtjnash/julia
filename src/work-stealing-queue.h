@@ -27,7 +27,7 @@ typedef struct {
     int32_t mask;
 } ws_array_t;
 
-static inline ws_array_t *create_ws_array(size_t capacity, int32_t eltsz) JL_NOTSAFEPOINT
+static inline ws_array_t *create_ws_array(size_t capacity, int32_t eltsz)
 {
     ws_array_t *a = (ws_array_t *)malloc_s(sizeof(ws_array_t));
     a->buffer = (char *)malloc_s(capacity * eltsz);
@@ -49,7 +49,7 @@ typedef struct {
     alignas(JL_CACHE_BYTE_ALIGNMENT) _Atomic(ws_array_t *) array;
 } ws_queue_t;
 
-static inline ws_array_t *ws_queue_push(ws_queue_t *q, void *elt, int32_t eltsz) JL_NOTSAFEPOINT
+static inline ws_array_t *ws_queue_push(ws_queue_t *q, void *elt, int32_t eltsz)
 {
     int64_t b = jl_atomic_load_relaxed(&q->bottom);
     int64_t t = jl_atomic_load_acquire(&q->top);
@@ -70,7 +70,7 @@ static inline ws_array_t *ws_queue_push(ws_queue_t *q, void *elt, int32_t eltsz)
     return old_ary;
 }
 
-static inline void ws_queue_pop(ws_queue_t *q, void *dest, int32_t eltsz) JL_NOTSAFEPOINT
+static inline void ws_queue_pop(ws_queue_t *q, void *dest, int32_t eltsz)
 {
     int64_t b = jl_atomic_load_relaxed(&q->bottom) - 1;
     ws_array_t *ary = jl_atomic_load_relaxed(&q->array);
@@ -91,7 +91,7 @@ static inline void ws_queue_pop(ws_queue_t *q, void *dest, int32_t eltsz) JL_NOT
     }
 }
 
-static inline void ws_queue_steal_from(ws_queue_t *q, void *dest, int32_t eltsz) JL_NOTSAFEPOINT
+static inline void ws_queue_steal_from(ws_queue_t *q, void *dest, int32_t eltsz)
 {
     int64_t t = jl_atomic_load_acquire(&q->top);
     jl_fence();

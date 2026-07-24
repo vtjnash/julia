@@ -520,9 +520,9 @@ void ConstantUses<U>::forward()
 
 
 void multiversioning_preannotate(llvm::Module &M);
-std::optional<bool> always_have_fma(Function&, const Triple &TT) JL_NOTSAFEPOINT;
+std::optional<bool> always_have_fma(Function&, const Triple &TT);
 
 namespace llvm::jitlink {
     class JITLinkMemoryManager;
 }
-std::unique_ptr<jitlink::JITLinkMemoryManager> createJITLinkMemoryManager() JL_NOTSAFEPOINT;
+std::unique_ptr<jitlink::JITLinkMemoryManager> createJITLinkMemoryManager();

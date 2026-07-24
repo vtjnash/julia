@@ -82,7 +82,7 @@ static std::optional<std::string> getCachePath() JL_CANSAFEPOINT
 
 #define checkMDB(Err) (checkMDB_(Err, __LINE__))
 
-static int checkMDB_(int Err, int Line) JL_NOTSAFEPOINT
+static int checkMDB_(int Err, int Line)
 {
     if (Err == 0)
         return Err;
@@ -92,30 +92,30 @@ static int checkMDB_(int Err, int Line) JL_NOTSAFEPOINT
 
 class MDBTxn {
 public:
-    MDBTxn(MDB_env *Env, unsigned Flags = 0) JL_NOTSAFEPOINT
+    MDBTxn(MDB_env *Env, unsigned Flags = 0)
     {
         if (checkMDB(mdb_txn_begin(Env, nullptr, Flags, &Txn)))
             Txn = nullptr;
     }
-    ~MDBTxn() JL_NOTSAFEPOINT
+    ~MDBTxn()
     {
         if (Txn)
             mdb_txn_abort(Txn);
     }
     MDBTxn(const MDBTxn &) = delete;
     MDBTxn &operator=(const MDBTxn &) = delete;
-    MDBTxn(MDBTxn &&RHS) JL_NOTSAFEPOINT : Txn(std::exchange(RHS.Txn, nullptr)) {}
-    MDBTxn &operator=(MDBTxn &&RHS) JL_NOTSAFEPOINT
+    MDBTxn(MDBTxn &&RHS) : Txn(std::exchange(RHS.Txn, nullptr)) {}
+    MDBTxn &operator=(MDBTxn &&RHS)
     {
         std::swap(Txn, RHS.Txn);
         return *this;
     }
-    void abort() JL_NOTSAFEPOINT
+    void abort()
     {
         mdb_txn_abort(Txn);
         Txn = nullptr;
     }
-    int commit() JL_NOTSAFEPOINT
+    int commit()
     {
         int Ret = mdb_txn_commit(Txn);
         Txn = nullptr;
@@ -125,7 +125,7 @@ public:
 };
 
 template<typename T>
-MDB_val mdbVal(T &x) JL_NOTSAFEPOINT
+MDB_val mdbVal(T &x)
 {
     return {sizeof x, (void *)&x};
 }
@@ -133,7 +133,7 @@ MDB_val mdbVal(T &x) JL_NOTSAFEPOINT
 namespace {
 class MDBMemoryBuffer : public llvm::MemoryBuffer {
 public:
-    MDBMemoryBuffer(MDBTxn Txn, llvm::StringRef Data) JL_NOTSAFEPOINT : Txn(std::move(Txn))
+    MDBMemoryBuffer(MDBTxn Txn, llvm::StringRef Data) : Txn(std::move(Txn))
     {
         init(Data.begin(), Data.end(), false);
     }
@@ -242,7 +242,7 @@ ObjCache::~ObjCache()
 
 static std::atomic<size_t> NWrite = 0, NRead = 0, NMiss = 0, NHit = 0, NEvicted = 0;
 
-static ObjCache::Hash hashModule(const llvm::Module &M) JL_NOTSAFEPOINT
+static ObjCache::Hash hashModule(const llvm::Module &M)
 {
     llvm::raw_null_ostream OS;
     llvm::BitcodeWriter BW{OS};
@@ -289,7 +289,7 @@ constexpr size_t METAKEY_SIZE = 2 + sizeof(int64_t) + sizeof(ObjCache::Hash);
 constexpr char OBJKEY_TAG = 'O';
 constexpr char METAKEY_TAG = 'M';
 
-static std::array<uint8_t, OBJKEY_SIZE> toObjKey(const ObjCache::Hash &Hash) JL_NOTSAFEPOINT
+static std::array<uint8_t, OBJKEY_SIZE> toObjKey(const ObjCache::Hash &Hash)
 {
     std::array<uint8_t, OBJKEY_SIZE> Ret;
     Ret[0] = OBJKEY_TAG;
@@ -299,7 +299,7 @@ static std::array<uint8_t, OBJKEY_SIZE> toObjKey(const ObjCache::Hash &Hash) JL_
 }
 
 static std::array<uint8_t, METAKEY_SIZE> toMetaKey(int64_t Time,
-                                                   const ObjCache::Hash &Hash) JL_NOTSAFEPOINT
+                                                   const ObjCache::Hash &Hash)
 {
     std::array<uint8_t, METAKEY_SIZE> Ret;
     Ret[0] = METAKEY_TAG;
@@ -309,7 +309,7 @@ static std::array<uint8_t, METAKEY_SIZE> toMetaKey(int64_t Time,
     return Ret;
 }
 
-static std::pair<int64_t, ObjCache::Hash> fromMetaKey(const char *Key) JL_NOTSAFEPOINT
+static std::pair<int64_t, ObjCache::Hash> fromMetaKey(const char *Key)
 {
     assert(Key[0] == METAKEY_TAG && Key[1] == 0);
     ObjCache::Hash Hash;

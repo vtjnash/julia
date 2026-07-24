@@ -27,7 +27,7 @@ extern "C" {
 // 4), and its strictly-less-than predecessor is the range's start boundary iff
 // `start <= addr < end`.
 static inline size_t _eyt_obj_idx(uintptr_t q, uintptr_t *tree, size_t n,
-                                  uintptr_t min_addr, uintptr_t max_addr) JL_NOTSAFEPOINT
+                                  uintptr_t min_addr, uintptr_t max_addr)
 {
     if (n == 0)
         return n;
@@ -49,7 +49,7 @@ static inline size_t _eyt_obj_idx(uintptr_t q, uintptr_t *tree, size_t n,
 
 // Map a 4-byte-aligned address to the query value used to test containment in
 // the encoded tree. See _eyt_obj_idx and rebuild_tree for the encoding.
-static inline uintptr_t _eyt_addr_query(uintptr_t addr) JL_NOTSAFEPOINT
+static inline uintptr_t _eyt_addr_query(uintptr_t addr)
 {
     return addr + 3;
 }
@@ -76,15 +76,15 @@ typedef struct eyt_tree_t {
 // Sentinel value stored in `idxs` for end-boundaries and out-of-range positions.
 #define EYT_NOTFOUND ((void*)1)
 
-JL_DLLEXPORT void eyt_tree_init(eyt_tree_t *t) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void eyt_tree_init(eyt_tree_t *t);
 
 // Add a [start, end) range with caller-defined data and rebuild the tree.
 // Thread-safe for concurrent access.
-JL_DLLEXPORT void eyt_tree_add_range(eyt_tree_t *t, uintptr_t start, uintptr_t end, void *data) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void eyt_tree_add_range(eyt_tree_t *t, uintptr_t start, uintptr_t end, void *data);
 
 // Returns whether `addr` is inside any registered range.
 // Thread-safe for concurrent readers and writers.
-static inline int eyt_tree_is_in_range(eyt_tree_t *t, uintptr_t addr) JL_NOTSAFEPOINT
+static inline int eyt_tree_is_in_range(eyt_tree_t *t, uintptr_t addr)
 {
     uv_rwlock_rdlock(&t->rwlock);
     size_t idx = _eyt_obj_idx(_eyt_addr_query(addr), (uintptr_t*)t->tree.items, t->n, t->min_addr, t->max_addr);
@@ -95,7 +95,7 @@ static inline int eyt_tree_is_in_range(eyt_tree_t *t, uintptr_t addr) JL_NOTSAFE
 
 // Returns the caller-defined data for the range containing `addr`, or EYT_NOTFOUND.
 // Thread-safe for concurrent readers and writers.
-static inline void *eyt_tree_find_data(eyt_tree_t *t, uintptr_t addr) JL_NOTSAFEPOINT
+static inline void *eyt_tree_find_data(eyt_tree_t *t, uintptr_t addr)
 {
     uv_rwlock_rdlock(&t->rwlock);
     size_t idx = _eyt_obj_idx(_eyt_addr_query(addr), (uintptr_t*)t->tree.items, t->n, t->min_addr, t->max_addr);

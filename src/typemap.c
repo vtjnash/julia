@@ -23,7 +23,7 @@ static int jl_is_any(jl_value_t *t1)
     return t1 == (jl_value_t*)jl_any_type;
 }
 
-static jl_value_t *jl_type_extract_name(jl_value_t *t1 JL_PROPAGATES_ROOT, int invariant) JL_NOTSAFEPOINT
+static jl_value_t *jl_type_extract_name(jl_value_t *t1 JL_PROPAGATES_ROOT, int invariant)
 {
     if (jl_is_unionall(t1))
         t1 = jl_unwrap_unionall(t1);
@@ -132,7 +132,7 @@ static int sig_match_by_type_leaf(jl_value_t **types, jl_tupletype_t *sig, size_
 }
 
 // Returns true if every value of type `a` is itself a type (i.e., a <: AnyType)
-static int jl_subtype_anytype(jl_value_t *a) JL_NOTSAFEPOINT
+static int jl_subtype_anytype(jl_value_t *a)
 {
     while (1) {
         if (a == (jl_value_t*)jl_anytype_type || jl_is_kind(a) || jl_is_some_Type(a))
@@ -326,14 +326,14 @@ static int is_cache_leaf(jl_value_t *ty, int tparam)
 #define MTCACHE_KEY_SLOT(p) (1 + 2 * (p))
 #define MTCACHE_VAL_SLOT(p) (2 + 2 * (p))
 
-static uint_t mtcache_hash(size_t p, jl_value_t *data) JL_NOTSAFEPOINT
+static uint_t mtcache_hash(size_t p, jl_value_t *data)
 {
     jl_value_t *key = jl_genericmemory_ptr_ref(data, MTCACHE_KEY_SLOT(p));
     // key should not be NULL, unless there was concurrent corruption
     return key == NULL ? 0 : (uint_t)jl_object_id(key);
 }
 
-static int mtcache_eq(size_t p, const void *key, jl_value_t *data, uint_t hv) JL_NOTSAFEPOINT
+static int mtcache_eq(size_t p, const void *key, jl_value_t *data, uint_t hv)
 {
     size_t ki = MTCACHE_KEY_SLOT(p);
     if (ki >= ((jl_genericmemory_t*)data)->length)
@@ -342,18 +342,18 @@ static int mtcache_eq(size_t p, const void *key, jl_value_t *data, uint_t hv) JL
     return k != NULL && jl_egal(k, (jl_value_t*)key);
 }
 
-static ssize_t mtcache_hash_peek(jl_genericmemory_t *cache JL_PROPAGATES_ROOT, jl_value_t *ty) JL_NOTSAFEPOINT
+static ssize_t mtcache_hash_peek(jl_genericmemory_t *cache JL_PROPAGATES_ROOT, jl_value_t *ty)
 {
     if (cache == (jl_genericmemory_t*)jl_an_empty_memory_any)
         return -1;
     jl_genericmemory_t *idxs = (jl_genericmemory_t*)jl_genericmemory_ptr_ref(cache, 0); // acquire
     JL_GC_PROMISE_ROOTED(idxs);
-    // mtcache_eq does not safepoint, so this lookup is safe from JL_NOTSAFEPOINT callers
-    ssize_t jl_smallintset_lookup(jl_genericmemory_t *cache, smallintset_eq eq JL_NOTSAFEPOINT, const void *key, jl_value_t *data, uint_t hv, int pop) JL_NOTSAFEPOINT;
+    // mtcache_eq does not safepoint, so this lookup is safe from callers
+    ssize_t jl_smallintset_lookup(jl_genericmemory_t *cache, smallintset_eq eq, const void *key, jl_value_t *data, uint_t hv, int pop);
     return jl_smallintset_lookup(idxs, mtcache_eq, ty, (jl_value_t*)cache, (uint_t)jl_object_id(ty), 0);
 }
 
-static _Atomic(jl_value_t*) *mtcache_hash_lookup_bp(jl_genericmemory_t *cache JL_PROPAGATES_ROOT, jl_value_t *ty) JL_NOTSAFEPOINT
+static _Atomic(jl_value_t*) *mtcache_hash_lookup_bp(jl_genericmemory_t *cache JL_PROPAGATES_ROOT, jl_value_t *ty)
 {
     ssize_t p = mtcache_hash_peek(cache, ty);
     if (p == -1)
@@ -374,7 +374,7 @@ static void mtcache_hash_insert(_Atomic(jl_genericmemory_t*) *pcache, jl_value_t
     jl_smallintset_insert((_Atomic(jl_genericmemory_t*)*)a->ptr, (jl_value_t*)a, mtcache_hash, p, (jl_value_t*)a);
 }
 
-static jl_typemap_t *mtcache_hash_lookup(jl_genericmemory_t *cache JL_PROPAGATES_ROOT, jl_value_t *ty) JL_NOTSAFEPOINT
+static jl_typemap_t *mtcache_hash_lookup(jl_genericmemory_t *cache JL_PROPAGATES_ROOT, jl_value_t *ty)
 {
     ssize_t p = mtcache_hash_peek(cache, ty);
     if (p == -1)
@@ -455,7 +455,7 @@ exit:
     }
 }
 
-static unsigned jl_supertype_height(jl_datatype_t *dt) JL_NOTSAFEPOINT
+static unsigned jl_supertype_height(jl_datatype_t *dt)
 {
     unsigned height = 1;
     while (dt != jl_any_type) {
@@ -466,7 +466,7 @@ static unsigned jl_supertype_height(jl_datatype_t *dt) JL_NOTSAFEPOINT
 }
 
 // return true if a and b might intersect in the type domain (over just their type-names)
-static int tname_intersection_dt(jl_datatype_t *a, jl_typename_t *bname, unsigned ha) JL_NOTSAFEPOINT
+static int tname_intersection_dt(jl_datatype_t *a, jl_typename_t *bname, unsigned ha)
 {
     if (a == jl_any_type)
         return 1;
@@ -485,7 +485,7 @@ static int tname_intersection_dt(jl_datatype_t *a, jl_typename_t *bname, unsigne
     return a->name == bname;
 }
 
-static int tname_intersection(jl_value_t *a, jl_typename_t *bname, int8_t tparam) JL_NOTSAFEPOINT
+static int tname_intersection(jl_value_t *a, jl_typename_t *bname, int8_t tparam)
 {
     if (a == (jl_value_t*)jl_any_type)
         return 1;
@@ -1344,7 +1344,7 @@ jl_typemap_entry_t *jl_typemap_level_assoc_exact(jl_typemap_level_t *cache, jl_v
 
 // ----- Method List Insertion Management ----- //
 
-static unsigned jl_typemap_list_count_locked(jl_typemap_entry_t *ml) JL_NOTSAFEPOINT
+static unsigned jl_typemap_list_count_locked(jl_typemap_entry_t *ml)
 {
     unsigned count = 0;
     while (ml != (void*)jl_nothing) {

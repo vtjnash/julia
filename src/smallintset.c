@@ -24,11 +24,11 @@
 extern "C" {
 #endif
 
-static inline size_t ignore_tombstone(size_t val, size_t tombstone) JL_NOTSAFEPOINT
+static inline size_t ignore_tombstone(size_t val, size_t tombstone)
 {
     return val == tombstone ? 0 : val;
 }
-static inline size_t jl_intref(const jl_genericmemory_t *arr, size_t idx) JL_NOTSAFEPOINT
+static inline size_t jl_intref(const jl_genericmemory_t *arr, size_t idx)
 {
     jl_value_t *el = (jl_value_t*)jl_typetagof(arr);
     if (el == jl_memory_uint8_type)
@@ -41,11 +41,11 @@ static inline size_t jl_intref(const jl_genericmemory_t *arr, size_t idx) JL_NOT
         abort();
 }
 
-static inline size_t acquire_tombstone(size_t val, size_t tombstone) JL_NOTSAFEPOINT
+static inline size_t acquire_tombstone(size_t val, size_t tombstone)
 {
     return val == tombstone ? (size_t)-1 : val;
 }
-static inline size_t jl_intref_acquire(const jl_genericmemory_t *arr, size_t idx) JL_NOTSAFEPOINT
+static inline size_t jl_intref_acquire(const jl_genericmemory_t *arr, size_t idx)
 {
     jl_value_t *el = (jl_value_t*)jl_typetagof(arr);
     if (el == jl_memory_uint8_type)
@@ -58,7 +58,7 @@ static inline size_t jl_intref_acquire(const jl_genericmemory_t *arr, size_t idx
         abort();
 }
 
-static inline void jl_intset_release(const jl_genericmemory_t *arr, size_t idx, size_t val) JL_NOTSAFEPOINT
+static inline void jl_intset_release(const jl_genericmemory_t *arr, size_t idx, size_t val)
 {
     jl_value_t *el = (jl_value_t*)jl_typetagof(arr);
     if (el == jl_memory_uint8_type)
@@ -71,7 +71,7 @@ static inline void jl_intset_release(const jl_genericmemory_t *arr, size_t idx, 
         abort();
 }
 
-static inline size_t jl_max_int(const jl_genericmemory_t *arr) JL_NOTSAFEPOINT
+static inline size_t jl_max_int(const jl_genericmemory_t *arr)
 {
     jl_value_t *el = (jl_value_t*)jl_typetagof(arr);
     if (el == jl_memory_uint8_type)
@@ -86,7 +86,7 @@ static inline size_t jl_max_int(const jl_genericmemory_t *arr) JL_NOTSAFEPOINT
         abort();
 }
 
-void smallintset_empty(const jl_genericmemory_t *a) JL_NOTSAFEPOINT
+void smallintset_empty(const jl_genericmemory_t *a)
 {
     size_t elsize;
     jl_value_t *el = (jl_value_t*)jl_typetagof(a);
@@ -147,7 +147,7 @@ ssize_t jl_smallintset_lookup(jl_genericmemory_t *cache, smallintset_eq eq, cons
     return -1;
 }
 
-static int smallintset_insert_(jl_genericmemory_t *a, uint_t hv, size_t val1) JL_NOTSAFEPOINT
+static int smallintset_insert_(jl_genericmemory_t *a, uint_t hv, size_t val1)
 {
     size_t sz = a->length;
     if (sz <= 1)

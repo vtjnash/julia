@@ -26,7 +26,7 @@ typedef struct _jl_threadarg_t {
 jl_ptls_t jl_init_threadtls(int16_t tid) JL_CANSAFEPOINT_ENTER;
 
 // provided by a threading infrastructure
-void jl_init_threadinginfra(void) JL_NOTSAFEPOINT;
+void jl_init_threadinginfra(void);
 void jl_parallel_gc_threadfun(void *arg) JL_CANSAFEPOINT_ENTER_LEAVE;
 void jl_concurrent_gc_threadfun(void *arg) JL_CANSAFEPOINT_ENTER_LEAVE;
 void jl_threadfun(void *arg) JL_CANSAFEPOINT_ENTER_LEAVE;

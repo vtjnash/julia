@@ -63,7 +63,7 @@ namespace {
  * when `%v0` has no other use
  */
 
-static bool checkCombine(Value *maybeMul, Loop &L, OptimizationRemarkEmitter &ORE) JL_NOTSAFEPOINT
+static bool checkCombine(Value *maybeMul, Loop &L, OptimizationRemarkEmitter &ORE)
 {
     auto mulOp = dyn_cast<Instruction>(maybeMul);
     if (!mulOp || mulOp->getOpcode() != Instruction::FMul)
@@ -94,7 +94,7 @@ static bool checkCombine(Value *maybeMul, Loop &L, OptimizationRemarkEmitter &OR
     return false;
 }
 
-static unsigned getReduceOpcode(Instruction *J, Instruction *operand) JL_NOTSAFEPOINT
+static unsigned getReduceOpcode(Instruction *J, Instruction *operand)
 {
     switch (J->getOpcode()) {
     case Instruction::FSub:
@@ -117,7 +117,7 @@ static unsigned getReduceOpcode(Instruction *J, Instruction *operand) JL_NOTSAFE
 /// If Phi is part of a reduction cycle of FAdd, FSub, FMul or FDiv,
 /// mark the ops as permitting reassociation/commuting.
 /// As of LLVM 4.0, FDiv is not handled by the loop vectorizer
-static void enableUnsafeAlgebraIfReduction(PHINode *Phi, Loop &L, OptimizationRemarkEmitter &ORE, ScalarEvolution *SE) JL_NOTSAFEPOINT
+static void enableUnsafeAlgebraIfReduction(PHINode *Phi, Loop &L, OptimizationRemarkEmitter &ORE, ScalarEvolution *SE)
 {
     typedef SmallVector<Instruction*, 8> chainVector;
     chainVector chain;
@@ -225,7 +225,7 @@ static void enableUnsafeAlgebraIfReduction(PHINode *Phi, Loop &L, OptimizationRe
     MaxChainLength.updateMax(length);
 }
 
-static bool processLoop(Loop &L, OptimizationRemarkEmitter &ORE, ScalarEvolution *SE) JL_NOTSAFEPOINT
+static bool processLoop(Loop &L, OptimizationRemarkEmitter &ORE, ScalarEvolution *SE)
 {
     MDNode *LoopID = L.getLoopID();
     if (!LoopID)

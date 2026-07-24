@@ -31,14 +31,14 @@ JL_DLLEXPORT void jl_free_alloc_profile(void);
 // Functions to call from GC when alloc profiling is enabled
 // ---------------------------------------------------------------------
 
-void _maybe_record_alloc_to_profile(jl_value_t *val, size_t size, jl_datatype_t *typ) JL_NOTSAFEPOINT;
+void _maybe_record_alloc_to_profile(jl_value_t *val, size_t size, jl_datatype_t *typ);
 
 extern int g_alloc_profile_enabled;
 
 // This should only be used from _deprecated_ code paths. We shouldn't see UNKNOWN anymore.
 #define jl_gc_unknown_type_tag ((jl_datatype_t*)0xdeadaa03)
 
-static inline void maybe_record_alloc_to_profile(jl_value_t *val, size_t size, jl_datatype_t *typ) JL_NOTSAFEPOINT {
+static inline void maybe_record_alloc_to_profile(jl_value_t *val, size_t size, jl_datatype_t *typ) {
     if (__unlikely(g_alloc_profile_enabled)) {
         _maybe_record_alloc_to_profile(val, size, typ);
     }

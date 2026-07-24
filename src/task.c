@@ -63,9 +63,9 @@ static inline void sanitizer_finish_switch_fiber(jl_ucontext_t *last, jl_ucontex
         //&last->bufsz);
 }
 #else
-static inline void sanitizer_start_switch_fiber(jl_ptls_t ptls, jl_ucontext_t *from, jl_ucontext_t *to) JL_NOTSAFEPOINT {}
-static inline void sanitizer_start_switch_fiber_killed(jl_ptls_t ptls, jl_ucontext_t *to) JL_NOTSAFEPOINT {}
-static inline void sanitizer_finish_switch_fiber(jl_ucontext_t *last, jl_ucontext_t *current) JL_NOTSAFEPOINT {}
+static inline void sanitizer_start_switch_fiber(jl_ptls_t ptls, jl_ucontext_t *from, jl_ucontext_t *to) {}
+static inline void sanitizer_start_switch_fiber_killed(jl_ptls_t ptls, jl_ucontext_t *to) {}
+static inline void sanitizer_finish_switch_fiber(jl_ucontext_t *last, jl_ucontext_t *current) {}
 #endif
 
 #if defined(_COMPILER_TSAN_ENABLED_)
@@ -397,18 +397,18 @@ JL_DLLEXPORT void jl_active_task_stack(jl_task_t *task,
 
 // Marked noinline so we can consistently skip the associated frame.
 // `skip` is number of additional frames to skip.
-NOINLINE static void record_backtrace(jl_ptls_t ptls, int skip) JL_NOTSAFEPOINT
+NOINLINE static void record_backtrace(jl_ptls_t ptls, int skip)
 {
     // storing bt_size in ptls ensures roots in bt_data will be found
     ptls->bt_size = rec_backtrace(ptls->bt_data, JL_MAX_BT_SIZE, skip + 1);
 }
 
-JL_DLLEXPORT void jl_set_next_task(jl_task_t *task) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_set_next_task(jl_task_t *task)
 {
     jl_current_task->ptls->next_task = task;
 }
 
-JL_DLLEXPORT jl_task_t *jl_get_next_task(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_task_t *jl_get_next_task(void)
 {
     jl_task_t *ct = jl_current_task;
     if (ct->ptls->next_task)
@@ -1031,7 +1031,7 @@ main RNG state collision.
 [4]:
 https://discourse.julialang.org/t/linear-relationship-between-xoshiro-tasks/110454
 */
-void jl_rng_split(uint64_t dst[JL_RNG_SIZE], uint64_t src[JL_RNG_SIZE]) JL_NOTSAFEPOINT
+void jl_rng_split(uint64_t dst[JL_RNG_SIZE], uint64_t src[JL_RNG_SIZE])
 {
     // load and advance the internal LCG state
     uint64_t x = src[4];
@@ -1620,12 +1620,12 @@ jl_task_t *jl_init_root_task(jl_ptls_t ptls, void *stack_lo, void *stack_hi)
     return ct;
 }
 
-JL_DLLEXPORT int jl_is_task_started(jl_task_t *t) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_is_task_started(jl_task_t *t)
 {
     return t->ctx.started;
 }
 
-JL_DLLEXPORT int16_t jl_get_task_tid(jl_task_t *t) JL_NOTSAFEPOINT
+JL_DLLEXPORT int16_t jl_get_task_tid(jl_task_t *t)
 {
     return jl_atomic_load_relaxed(&t->tid);
 }

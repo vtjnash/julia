@@ -103,7 +103,7 @@ void jl_init_stack_limits(int ismaster, void **stack_lo, void **stack_hi)
 #endif
 }
 
-static void jl_prep_sanitizers(void) JL_NOTSAFEPOINT
+static void jl_prep_sanitizers(void)
 {
 #if !defined(_OS_WINDOWS_)
 #if defined(_COMPILER_ASAN_ENABLED_) || defined(_COMPILER_MSAN_ENABLED_)
@@ -435,7 +435,7 @@ static int uv_dup(uv_os_fd_t fd, uv_os_fd_t* dupfd) {
 }
 #endif
 
-static void *init_stdio_handle(const char *stdio, uv_os_fd_t fd, int readable) JL_NOTSAFEPOINT
+static void *init_stdio_handle(const char *stdio, uv_os_fd_t fd, int readable)
 {
     void *handle;
     int err;
@@ -510,7 +510,7 @@ static void *init_stdio_handle(const char *stdio, uv_os_fd_t fd, int readable) J
     return handle;
 }
 
-static void init_stdio(void) JL_NOTSAFEPOINT
+static void init_stdio(void)
 {
     JL_STDIN  = (uv_stream_t*)init_stdio_handle("stdin", UV_STDIN_FD, 1);
     JL_STDOUT = (uv_stream_t*)init_stdio_handle("stdout", UV_STDOUT_FD, 0);
@@ -518,7 +518,7 @@ static void init_stdio(void) JL_NOTSAFEPOINT
     jl_flush_cstdio();
 }
 
-int jl_isabspath(const char *in) JL_NOTSAFEPOINT
+int jl_isabspath(const char *in)
 {
 #ifdef _OS_WINDOWS_
     char c0 = in[0];
@@ -554,7 +554,7 @@ extern jl_mutex_t newly_inferred_mutex;
 extern jl_mutex_t global_roots_lock;
 extern jl_mutex_t profile_show_peek_cond_lock;
 
-static void restore_fp_env(void) JL_NOTSAFEPOINT
+static void restore_fp_env(void)
 {
     if (jl_set_zero_subnormals(0) || jl_set_default_nans(0)) {
         jl_error("Failed to configure floating point environment");
@@ -680,7 +680,7 @@ JL_DLLEXPORT jl_cgparams_t jl_default_cgparams = {
 #endif
 };
 
-static void init_global_mutexes(void) JL_NOTSAFEPOINT {
+static void init_global_mutexes(void) {
     JL_MUTEX_INIT(&jl_modules_mutex, "jl_modules_mutex");
     JL_MUTEX_INIT(&precomp_statement_out_lock, "precomp_statement_out_lock");
     JL_MUTEX_INIT(&newly_inferred_mutex, "newly_inferred_mutex");
@@ -748,7 +748,7 @@ JL_DLLEXPORT void jl_init_(jl_image_buf_t sysimage)
     jl_libjulia_handle = jl_find_dynamic_library_by_addr(&jl_options, /* throw_err */ 1, 0);
 #ifdef __clang_gcanalyzer__
     #define jl_dlopen jl_dlopen_noload
-    JL_DLLEXPORT jl_libhandle jl_dlopen(const char *filename, unsigned flags) JL_NOTSAFEPOINT;
+    JL_DLLEXPORT jl_libhandle jl_dlopen(const char *filename, unsigned flags);
 #endif
 #ifdef _OS_WINDOWS_
     /* If this parameter is NULL, GetModuleHandle returns a handle to the file

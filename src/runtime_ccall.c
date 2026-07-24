@@ -117,7 +117,7 @@ jl_value_t *jl_get_JIT(void) JL_CANSAFEPOINT
 //           %L    The local hostname.
 //           %l    The local hostname, including the domain name.
 //           %u    The local username.
-JL_DLLEXPORT char *jl_format_filename(const char *output_pattern) JL_NOTSAFEPOINT
+JL_DLLEXPORT char *jl_format_filename(const char *output_pattern)
 {
     ios_t buf;
     ios_mem(&buf, 128);
@@ -187,7 +187,7 @@ static uv_mutex_t trampoline_lock; // for accesses to the cache and freelist
 
 static void *trampoline_freelist;
 
-static void *trampoline_alloc(void) JL_NOTSAFEPOINT // lock taken by caller
+static void *trampoline_alloc(void) // lock taken by caller
 {
     const int sz = 64; // oversized for most platforms. todo: use precise value?
     if (!trampoline_freelist) {
@@ -221,13 +221,13 @@ static void *trampoline_alloc(void) JL_NOTSAFEPOINT // lock taken by caller
     return tramp;
 }
 
-static void trampoline_free(void *tramp) JL_NOTSAFEPOINT    // lock taken by caller
+static void trampoline_free(void *tramp)    // lock taken by caller
 {
     *(void**)tramp = trampoline_freelist;
     trampoline_freelist = tramp;
 }
 
-static void trampoline_deleter(void **f) JL_NOTSAFEPOINT
+static void trampoline_deleter(void **f)
 {
     void *tramp = f[0];
     void *fobj = f[1];
@@ -246,7 +246,7 @@ static void trampoline_deleter(void **f) JL_NOTSAFEPOINT
     uv_mutex_unlock(&trampoline_lock);
 }
 
-typedef void *(*init_trampoline_t)(void *tramp, void **nval) JL_NOTSAFEPOINT;
+typedef void *(*init_trampoline_t)(void *tramp, void **nval);
 
 // Use of `cache` is not clobbered in JL_TRY
 JL_GCC_IGNORE_START("-Wclobbered")
@@ -347,7 +347,7 @@ struct cfuncdata_t {
     size_t flags;
 };
 
-static inline const char *name_from_method_instance(jl_method_instance_t *mi) JL_NOTSAFEPOINT
+static inline const char *name_from_method_instance(jl_method_instance_t *mi)
 {
     assert(jl_is_method_instance(mi));
     return jl_is_method(mi->def.method) ? jl_symbol_name(mi->def.method->name) : "top-level scope";

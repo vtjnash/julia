@@ -16,10 +16,10 @@ extern "C" {
 HTPROT(strhash)
 
 // Allocate the table with the given initial size.
-htable_t *strhash_new(htable_t *h, size_t size) JL_NOTSAFEPOINT;
+htable_t *strhash_new(htable_t *h, size_t size);
 
 // Free the table and all internalized key strings.
-void strhash_free(htable_t *h) JL_NOTSAFEPOINT;
+void strhash_free(htable_t *h);
 
 #ifdef __cplusplus
 }

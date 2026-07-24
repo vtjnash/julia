@@ -19,20 +19,20 @@ extern "C" {
 // The JL_LOCK* and JL_UNLOCK* macros are no-op for non-threading build
 // while the jl_mutex_* functions are always locking and unlocking the locks.
 
-JL_DLLEXPORT void _jl_mutex_init(jl_mutex_t *lock, const char *name) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void _jl_mutex_init(jl_mutex_t *lock, const char *name);
 JL_DLLEXPORT void _jl_mutex_wait(jl_task_t *self, jl_mutex_t *lock, int safepoint) JL_CANSAFEPOINT;
 JL_DLLEXPORT void _jl_mutex_lock(jl_task_t *self, jl_mutex_t *lock) JL_CANSAFEPOINT;
-JL_DLLEXPORT int _jl_mutex_trylock_nogc(jl_task_t *self, jl_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(1);
-JL_DLLEXPORT int _jl_mutex_trylock(jl_task_t *self, jl_mutex_t *lock) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int _jl_mutex_trylock_nogc(jl_task_t *self, jl_mutex_t *lock) JL_NOTSAFEPOINT_ENTER_CONDITIONAL(1);
+JL_DLLEXPORT int _jl_mutex_trylock(jl_task_t *self, jl_mutex_t *lock);
 JL_DLLEXPORT void _jl_mutex_unlock(jl_task_t *self, jl_mutex_t *lock) JL_CANSAFEPOINT;
-JL_DLLEXPORT void _jl_mutex_unlock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
+JL_DLLEXPORT void _jl_mutex_unlock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT_LEAVE;
 
 static inline void jl_mutex_wait(jl_mutex_t *lock, int safepoint) JL_CANSAFEPOINT
 {
     _jl_mutex_wait(jl_current_task, lock, safepoint);
 }
 
-static inline void jl_mutex_lock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER JL_NO_SAFEPOINT_ANALYSIS
+static inline void jl_mutex_lock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT_ENTER JL_NO_SAFEPOINT_ANALYSIS
 {
 #ifndef __clang_gcanalyzer__
     // Hide this body from the analyzer, otherwise it complains that we're calling
@@ -75,12 +75,12 @@ static inline void jl_mutex_lock(jl_mutex_t *lock) JL_CANSAFEPOINT
     _jl_mutex_lock(jl_current_task, lock);
 }
 
-static inline int jl_mutex_trylock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(1)
+static inline int jl_mutex_trylock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT_ENTER_CONDITIONAL(1)
 {
     return _jl_mutex_trylock_nogc(jl_current_task, lock);
 }
 
-static inline int jl_mutex_trylock(jl_mutex_t *lock) JL_NOTSAFEPOINT
+static inline int jl_mutex_trylock(jl_mutex_t *lock)
 {
     return _jl_mutex_trylock(jl_current_task, lock);
 }
@@ -90,12 +90,12 @@ static inline void jl_mutex_unlock(jl_mutex_t *lock) JL_CANSAFEPOINT
     _jl_mutex_unlock(jl_current_task, lock);
 }
 
-static inline void jl_mutex_unlock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE
+static inline void jl_mutex_unlock_nogc(jl_mutex_t *lock) JL_NOTSAFEPOINT_LEAVE
 {
     _jl_mutex_unlock_nogc(lock);
 }
 
-static inline void jl_mutex_init(jl_mutex_t *lock, const char *name) JL_NOTSAFEPOINT
+static inline void jl_mutex_init(jl_mutex_t *lock, const char *name)
 {
     _jl_mutex_init(lock, name);
 }
@@ -106,25 +106,25 @@ static inline void jl_mutex_init(jl_mutex_t *lock, const char *name) JL_NOTSAFEP
 #define JL_LOCK_NOGC(m) jl_mutex_lock_nogc(m)
 #define JL_UNLOCK_NOGC(m) jl_mutex_unlock_nogc(m)
 
-JL_DLLEXPORT void jl_lock_value(jl_mutex_t *v) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
-JL_DLLEXPORT void jl_unlock_value(jl_mutex_t *v) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
-JL_DLLEXPORT void jl_lock_field(jl_mutex_t *v) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
-JL_DLLEXPORT void jl_unlock_field(jl_mutex_t *v) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
+JL_DLLEXPORT void jl_lock_value(jl_mutex_t *v) JL_NOTSAFEPOINT_ENTER;
+JL_DLLEXPORT void jl_unlock_value(jl_mutex_t *v) JL_NOTSAFEPOINT_LEAVE;
+JL_DLLEXPORT void jl_lock_field(jl_mutex_t *v) JL_NOTSAFEPOINT_ENTER;
+JL_DLLEXPORT void jl_unlock_field(jl_mutex_t *v) JL_NOTSAFEPOINT_LEAVE;
 
 // Redeclare platform locks with NOTSAFEPOINT enter/leave annotations
 // n.b. we should add mutex_lock_safe aliases, which assert !jl_gcunsaferegion instead of enter/leave
 #ifdef JL_LIBRARY_EXPORTS
-UV_EXTERN void uv_mutex_lock(uv_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
-UV_EXTERN void uv_mutex_unlock(uv_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
+UV_EXTERN void uv_mutex_lock(uv_mutex_t *lock) JL_NOTSAFEPOINT_ENTER;
+UV_EXTERN void uv_mutex_unlock(uv_mutex_t *lock) JL_NOTSAFEPOINT_LEAVE;
 #ifndef _OS_WINDOWS_
-int pthread_mutex_lock(pthread_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
-int pthread_mutex_trylock(pthread_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
-int pthread_mutex_unlock(pthread_mutex_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
-int pthread_rwlock_rdlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
-int pthread_rwlock_tryrdlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
-int pthread_rwlock_wrlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
-int pthread_rwlock_trywrlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
-int pthread_rwlock_unlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE;
+int pthread_mutex_lock(pthread_mutex_t *lock) JL_NOTSAFEPOINT_ENTER;
+int pthread_mutex_trylock(pthread_mutex_t *lock) JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
+int pthread_mutex_unlock(pthread_mutex_t *lock) JL_NOTSAFEPOINT_LEAVE;
+int pthread_rwlock_rdlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT_ENTER;
+int pthread_rwlock_tryrdlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
+int pthread_rwlock_wrlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT_ENTER;
+int pthread_rwlock_trywrlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT_ENTER_CONDITIONAL(0);
+int pthread_rwlock_unlock(pthread_rwlock_t *lock) JL_NOTSAFEPOINT_LEAVE;
 #endif
 #endif
 
@@ -182,7 +182,7 @@ public:
         jl_gc_safe_leave(ct->ptls, gc_state); // contains jl_gc_safepoint after leave
         ct->ptls->engine_nqueued--; // enable finalizers (but don't run them until the next gc)
     }
-    void wait(std::condition_variable& cond) JL_NOTSAFEPOINT {
+    void wait(std::condition_variable& cond) {
         cond.wait(native);
     }
 };

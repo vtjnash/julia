@@ -24,7 +24,7 @@ extern "C" {
 
 typedef struct _jl_gcframe_t jl_gcframe_t;
 
-typedef jl_gcframe_t **(*jl_get_pgcstack_func_t)(void) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT;
+typedef jl_gcframe_t **(*jl_get_pgcstack_func_t)(void) JL_GLOBALLY_ROOTED;
 
 #if !defined(_OS_WINDOWS_)
 #define JULIA_DEFINE_FAST_TLS                                                                   \

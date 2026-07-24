@@ -47,7 +47,7 @@ static const size_t sig_stack_size = 8 * 1024 * 1024;
 #include "julia_assert.h"
 
 // helper function for returning the unw_context_t inside a ucontext_t
-static bt_context_t *jl_to_bt_context(void *sigctx) JL_NOTSAFEPOINT
+static bt_context_t *jl_to_bt_context(void *sigctx)
 {
 #ifdef __APPLE__
     return (bt_context_t*)&((ucontext64_t*)sigctx)->uc_mcontext64->__ss;
@@ -188,7 +188,7 @@ static inline uintptr_t jl_get_rsp_from_ctx(const void *_ctx)
 #endif
 }
 
-static int is_addr_on_sigstack(jl_ptls_t ptls, void *ptr) JL_NOTSAFEPOINT
+static int is_addr_on_sigstack(jl_ptls_t ptls, void *ptr)
 {
     // One guard page for signal_stack.
     return ptls->signal_stack == NULL ||
@@ -339,7 +339,7 @@ static void jl_throw_in_ctx(jl_task_t *ct, jl_value_t *e, int sig, void *sigctx)
 
 static pthread_t signals_thread;
 
-static int is_addr_on_stack(jl_task_t *ct, void *addr) JL_NOTSAFEPOINT
+static int is_addr_on_stack(jl_task_t *ct, void *addr)
 {
     if (ct->ctx.copy_stack) {
         jl_ptls_t ptls = ct->ptls;
@@ -501,7 +501,7 @@ int is_write_fault(void *context) {
 }
 #endif
 
-static int jl_is_on_sigstack(jl_ptls_t ptls, void *ptr, void *context) JL_NOTSAFEPOINT
+static int jl_is_on_sigstack(jl_ptls_t ptls, void *ptr, void *context)
 {
     return (ptls->signal_stack != NULL &&
             is_addr_on_sigstack(ptls, ptr) &&
@@ -654,7 +654,7 @@ void jl_thread_resume(int tid)
 
 // Throw jl_interrupt_exception if the master thread is in a signal async region
 // or if SIGINT happens too often.
-static void jl_try_deliver_sigint(void) JL_NOTSAFEPOINT
+static void jl_try_deliver_sigint(void)
 {
     jl_ptls_t ptls2 = jl_atomic_load_relaxed(&jl_all_tls_states)[0];
     jl_safepoint_enable_sigint();
@@ -982,7 +982,7 @@ static void do_critical_profile(void)
     }
 }
 
-static void do_profile(void) JL_NOTSAFEPOINT
+static void do_profile(void)
 {
     bt_context_t signal_context;
     int nthreads = jl_atomic_load_acquire(&jl_n_threads);
@@ -1042,7 +1042,7 @@ static void do_profile(void) JL_NOTSAFEPOINT
 }
 #endif
 
-static void *signal_listener(void *arg) JL_NOTSAFEPOINT
+static void *signal_listener(void *arg)
 {
     sigset_t sset;
     int sig, critical, profile;

@@ -21,7 +21,7 @@ char *shlib_ext = ".so";
 
 /* This simple hand-crafted tolower exists to avoid locale-dependent effects in
  * behaviors (and utf8proc_tolower wasn't linking properly on all platforms) */
-static char ascii_tolower(char c) JL_NOTSAFEPOINT
+static char ascii_tolower(char c)
 {
     if ('A' <= c && c <= 'Z')
         return c - 'A' + 'a';

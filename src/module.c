@@ -31,7 +31,7 @@ static jl_binding_partition_t *new_binding_partition(jl_binding_t *b) JL_CANSAFE
 // `partitions` field), refers to an actual partition, as opposed to NULL (an
 // empty chain) or the owning-binding backreference stored in the last partition
 // of a chain.
-STATIC_INLINE int is_some_partition(jl_binding_partition_t *p) JL_NOTSAFEPOINT
+STATIC_INLINE int is_some_partition(jl_binding_partition_t *p)
 {
     return p != NULL && jl_is_binding_partition((jl_value_t*)p);
 }
@@ -969,7 +969,7 @@ JL_DLLEXPORT jl_module_t *jl_get_module_of_binding(jl_module_t *m, jl_sym_t *var
     return b ? b->globalref->mod : m;
 }
 
-static NOINLINE void print_backdate_admonition(jl_binding_t *b) JL_NOTSAFEPOINT
+static NOINLINE void print_backdate_admonition(jl_binding_t *b)
 {
     jl_safe_printf(
         "WARNING: Detected access to binding `%s.%s` in a world prior to its definition world.\n"
@@ -981,7 +981,7 @@ static NOINLINE void print_backdate_admonition(jl_binding_t *b) JL_NOTSAFEPOINT
         jl_symbol_name(b->globalref->mod->name), jl_symbol_name(b->globalref->name));
 }
 
-static inline void check_backdated_binding(jl_binding_t *b, enum jl_partition_kind kind) JL_NOTSAFEPOINT
+static inline void check_backdated_binding(jl_binding_t *b, enum jl_partition_kind kind)
 {
     if (__unlikely(kind == PARTITION_KIND_BACKDATED_CONST)) {
         // We don't want functions that inference executes speculatively to print this warning, so turn those into
@@ -1070,7 +1070,7 @@ JL_DLLEXPORT jl_value_t *jl_get_latest_binding_value_if_const(jl_binding_t *b)
 JL_DLLEXPORT jl_value_t *jl_get_latest_binding_value_if_resolved_and_const_debug_only(jl_binding_t *b)
 {
     // Unlike jl_get_latest_binding_value_if_const this doesn't try to allocate new binding partitions if they
-    // don't already exist, making this JL_NOTSAFEPOINT. However, as a result, this may fail to return
+    // don't already exist, making this. However, as a result, this may fail to return
     // a value - even if one does exist. It should only be used for reflection/debugging when the integrity
     // of the runtime is not guaranteed.
     if (!b)
@@ -2309,7 +2309,7 @@ JL_DLLEXPORT jl_uuid_t jl_module_uuid(jl_module_t* m) { return m->uuid; }
 JL_DLLEXPORT void jl_set_module_uuid(jl_module_t *m, jl_uuid_t uuid) { m->uuid = uuid; }
 JL_DLLEXPORT void jl_set_module_parent(jl_module_t *m, jl_module_t *parent) { jl_gc_write(m, m->parent, jl_module_t, parent); }
 
-int jl_is_submodule(jl_module_t *child, jl_module_t *parent) JL_NOTSAFEPOINT
+int jl_is_submodule(jl_module_t *child, jl_module_t *parent)
 {
     while (1) {
         if (parent == child)

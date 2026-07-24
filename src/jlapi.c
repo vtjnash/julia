@@ -40,7 +40,7 @@ extern "C" {
 #define FE_TOWARDZERO 0xc00
 #endif
 
-static void jl_resolve_sysimg_location(JL_IMAGE_SEARCH rel, const char* julia_bindir) JL_NOTSAFEPOINT;
+static void jl_resolve_sysimg_location(JL_IMAGE_SEARCH rel, const char* julia_bindir);
 
 /**
  * @brief Check if Julia is already initialized.
@@ -156,7 +156,7 @@ JL_DLLEXPORT void jl_init(void)
     jl_init_with_image_file(NULL, jl_get_default_sysimg_path());
 }
 
-static void _jl_exception_clear(jl_task_t *ct) JL_NOTSAFEPOINT
+static void _jl_exception_clear(jl_task_t *ct)
 {
     ct->ptls->previous_exception = NULL;
 }
@@ -194,7 +194,7 @@ JL_DLLEXPORT jl_value_t *jl_eval_string(const char *str)
  * @return A pointer to `jl_value_t` representing the current exception.
  *         Returns `NULL` if no exception is currently thrown.
  */
-JL_DLLEXPORT jl_value_t *jl_current_exception(jl_task_t *ct) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *jl_current_exception(jl_task_t *ct) JL_GLOBALLY_ROOTED
 {
     jl_excstack_t *s = ct->excstack;
     return s && s->top != 0 ? jl_excstack_exception(s, s->top) : jl_nothing;
@@ -555,7 +555,7 @@ JL_DLLEXPORT void jl_sigatomic_end(void)
  *
  * @return Returns 1 if Julia is in debug build mode, 0 otherwise.
  */
-JL_DLLEXPORT int jl_is_debugbuild(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_is_debugbuild(void)
 {
 #ifdef JL_DEBUG_BUILD
     return 1;
@@ -569,7 +569,7 @@ JL_DLLEXPORT int jl_is_debugbuild(void) JL_NOTSAFEPOINT
  *
  * @return Returns 1 if assertions are enabled, 0 otherwise.
  */
-JL_DLLEXPORT int8_t jl_is_assertsbuild(void) JL_NOTSAFEPOINT {
+JL_DLLEXPORT int8_t jl_is_assertsbuild(void) {
 #ifndef JL_NDEBUG
     return 1;
 #else
@@ -582,7 +582,7 @@ JL_DLLEXPORT int8_t jl_is_assertsbuild(void) JL_NOTSAFEPOINT {
  *
  * @return Returns 1 if memory debugging is enabled, 0 otherwise.
  */
-JL_DLLEXPORT int8_t jl_is_memdebug(void) JL_NOTSAFEPOINT {
+JL_DLLEXPORT int8_t jl_is_memdebug(void) {
 #ifdef MEMDEBUG
     return 1;
 #else
@@ -1046,7 +1046,7 @@ static NOINLINE int true_main(int argc, char *argv[]) JL_CANSAFEPOINT
     return 0;
 }
 
-static void lock_low32(void) JL_NOTSAFEPOINT
+static void lock_low32(void)
 {
 #if defined(_OS_WINDOWS_) && defined(_P64) && defined(JL_DEBUG_BUILD)
     // Prevent usage of the 32-bit address space on Win64, to catch pointer cast errors.
@@ -1085,7 +1085,7 @@ static void lock_low32(void) JL_NOTSAFEPOINT
 }
 
 #ifdef _OS_LINUX_
-static void rr_detach_teleport(void) JL_NOTSAFEPOINT {
+static void rr_detach_teleport(void) {
 #define RR_CALL_BASE 1000
 #define SYS_rrcall_detach_teleport (RR_CALL_BASE + 9)
     int err = syscall(SYS_rrcall_detach_teleport, 0, 0, 0, 0, 0, 0);
@@ -1162,7 +1162,7 @@ JL_DLLEXPORT int jl_repl_entrypoint(int argc, char *argv[]) JL_CANSAFEPOINT_ENTE
 // create an absolute-path copy of the input path format string
 // formed as `joinpath(replace(pwd(), "%" => "%%"), in)`
 // unless `in` starts with `%`
-static const char *absformat(const char *in) JL_NOTSAFEPOINT
+static const char *absformat(const char *in)
 {
     if (in[0] == '%' || jl_isabspath(in))
         return in;
@@ -1189,7 +1189,7 @@ static const char *absformat(const char *in) JL_NOTSAFEPOINT
     return out;
 }
 
-static char *absrealpath(const char *in, int nprefix) JL_NOTSAFEPOINT
+static char *absrealpath(const char *in, int nprefix)
 { // compute an absolute realpath location, so that chdir doesn't change the file reference
   // ignores (copies directly over) nprefix characters at the start of abspath
     char *out;

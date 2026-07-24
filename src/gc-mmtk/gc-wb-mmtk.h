@@ -25,7 +25,7 @@ extern void* MMTK_SIDE_LOG_BIT_BASE_ADDRESS;
 #endif
 
 // Directly call into MMTk for write barrier (debugging only)
-STATIC_INLINE void mmtk_gc_wb_full(const void *parent, const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE void mmtk_gc_wb_full(const void *parent, const void *ptr)
 {
     jl_task_t *ct = jl_current_task;
     jl_ptls_t ptls = ct->ptls;
@@ -33,7 +33,7 @@ STATIC_INLINE void mmtk_gc_wb_full(const void *parent, const void *ptr) JL_NOTSA
 }
 
 // Inlined fastpath
-STATIC_INLINE void mmtk_gc_wb_fast(const void *parent, const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE void mmtk_gc_wb_fast(const void *parent, const void *ptr)
 {
     if (MMTK_NEEDS_WRITE_BARRIER == MMTK_OBJECT_BARRIER) {
         intptr_t addr = (intptr_t) (void*) parent;
@@ -48,30 +48,30 @@ STATIC_INLINE void mmtk_gc_wb_fast(const void *parent, const void *ptr) JL_NOTSA
     }
 }
 
-STATIC_INLINE void jl_gc_wb(const void *parent, const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_gc_wb(const void *parent, const void *ptr)
 {
     mmtk_gc_wb_fast(parent, ptr);
 }
 
-STATIC_INLINE void jl_gc_wb_back(const void *ptr) JL_NOTSAFEPOINT // ptr isa jl_value_t*
+STATIC_INLINE void jl_gc_wb_back(const void *ptr) // ptr isa jl_value_t*
 {
     mmtk_gc_wb_fast(ptr, (void*)0);
 }
 
-STATIC_INLINE void jl_gc_multi_wb(const void *parent, const jl_value_t *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_gc_multi_wb(const void *parent, const jl_value_t *ptr)
 {
     mmtk_gc_wb_fast(parent, (void*)0);
 }
 
 STATIC_INLINE void jl_gc_wb_genericmemory_copy_boxed(const jl_value_t *dest_owner, _Atomic(void*) ** dest_pp,
                                           jl_genericmemory_t *src, _Atomic(void*) ** src_pp,
-                                          size_t* n) JL_NOTSAFEPOINT
+                                          size_t* n)
 {
     mmtk_gc_wb_fast(dest_owner, (void*)0);
 }
 
 STATIC_INLINE void jl_gc_wb_genericmemory_copy_ptr(const jl_value_t *owner, jl_genericmemory_t *src, char* src_p,
-                                          size_t n, jl_datatype_t *dt) JL_NOTSAFEPOINT
+                                          size_t n, jl_datatype_t *dt)
 {
     mmtk_gc_wb_fast(owner, (void*)0);
 }

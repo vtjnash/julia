@@ -164,7 +164,7 @@ void jl_dump_llvm_opt_impl(void *s)
     **jl_ExecutionEngine->get_dump_llvm_opt_stream() = (ios_t*)s;
 }
 
-static void decorate_module(Module &M) JL_NOTSAFEPOINT;
+static void decorate_module(Module &M);
 
 // convert local roots into global roots, if they are needed
 static void jl_promote_method_roots(jl_codegen_output_t &out, jl_method_instance_t *mi) JL_CANSAFEPOINT
@@ -231,7 +231,7 @@ std::string jl_codegen_output_t::make_name(jl_symbol_prefix_t type, jl_invoke_ap
 static std::atomic<size_t> global_name_counter;
 
 template<class... Ts>
-static std::string make_name_unique(Ts... args) JL_NOTSAFEPOINT
+static std::string make_name_unique(Ts... args)
 {
     std::string name;
     raw_string_ostream s{name};
@@ -291,7 +291,7 @@ jl_emitted_output_t jl_codegen_output_t::finish(std::unique_ptr<LLVMContext> ctx
                                                 orc::SymbolStringPool &SSP)
 {
     auto info = std::make_unique<jl_linker_info_t>();
-    auto intern = [&](StringRef name) JL_NOTSAFEPOINT {
+    auto intern = [&](StringRef name) {
         SmallString<128> buf;
         Mangler::getNameWithPrefix(buf, name, DL);
         return SSP.intern(buf);
@@ -406,7 +406,7 @@ static jl_mutex_t jitlock;
 //     as materialization may need to acquire TSC locks.
 
 static void jl_publish_compiled_ci(jl_code_instance_t *ci,
-                                   const jl_codeinst_funcs_t<void *> &addrs) JL_NOTSAFEPOINT
+                                   const jl_codeinst_funcs_t<void *> &addrs)
 {
     void *spec = addrs.specptr;
     jl_callptr_t invoke = addrs.invoke_api == JL_INVOKE_SPECSIG ?
@@ -433,7 +433,7 @@ static void jl_publish_compiled_ci(jl_code_instance_t *ci,
     }
 }
 
-static void jl_do_dump_compile(jl_code_instance_t *codeinst, uint64_t time) JL_NOTSAFEPOINT
+static void jl_do_dump_compile(jl_code_instance_t *codeinst, uint64_t time)
 {
     jl_method_instance_t *mi = jl_get_ci_mi(codeinst);
     if (jl_is_method(mi->def.method)) {
@@ -626,14 +626,14 @@ CodeGenOpt::Level CodeGenOptLevelFor(int optlevel)
 }
 #endif
 
-static auto countBasicBlocks(const Function &F) JL_NOTSAFEPOINT
+static auto countBasicBlocks(const Function &F)
 {
     return std::distance(F.begin(), F.end());
 }
 
 static constexpr size_t N_optlevels = 4;
 
-static void selectOptLevel(Module &M) JL_NOTSAFEPOINT {
+static void selectOptLevel(Module &M) {
     size_t opt_level = std::max(static_cast<int>(jl_options.opt_level), 0);
     do {
         if (jl_generating_output()) {
@@ -660,7 +660,7 @@ static void selectOptLevel(Module &M) JL_NOTSAFEPOINT {
     M.addModuleFlag(Module::Warning, "julia.optlevel", opt_level);
 }
 
-static bool isJITLinkEHFrameSection(StringRef Name) JL_NOTSAFEPOINT
+static bool isJITLinkEHFrameSection(StringRef Name)
 {
     // EH-frame sections are handled by the EH-frame registration plugin. Its
     // post-allocation graph state is not suitable for generic section range
@@ -838,7 +838,7 @@ public:
     // Must hold LinkerMutex when calling Create and until the
     // MaterializationUnit has been added to the JITDylib.
     static JLMaterializationUnit Create(JuliaOJIT &JIT, ObjectLinkingLayer &OL,
-                                        jl_emitted_output_t Out) JL_NOTSAFEPOINT
+                                        jl_emitted_output_t Out)
     {
         Interface I;
         auto &Syms = I.SymbolFlags;
@@ -945,7 +945,7 @@ public:
         OL.emit(std::move(R), std::move(*G), std::move(Obj));
     }
 
-    StringRef getName() const override JL_NOTSAFEPOINT
+    StringRef getName() const override
     {
         return Out.module->getName();
     }
@@ -954,7 +954,7 @@ public:
 
 protected:
     JLMaterializationUnit(JuliaOJIT &JIT, ObjectLinkingLayer &OL, jl_emitted_output_t Out,
-                          Interface I) JL_NOTSAFEPOINT : orc::MaterializationUnit(I),
+                          Interface I) : orc::MaterializationUnit(I),
                                                          JIT(JIT),
                                                          OL(OL),
                                                          Out(std::move(Out))
@@ -971,7 +971,7 @@ class JLTrampolineMaterializationUnit : public orc::MaterializationUnit {
 public:
     JLTrampolineMaterializationUnit(JuliaOJIT &JIT, ObjectLinkingLayer &OL,
                                     SymbolStringPtr Sym, jl_code_instance_t *CI,
-                                    jl_invoke_api_t API) JL_NOTSAFEPOINT
+                                    jl_invoke_api_t API)
       : orc::MaterializationUnit({{{JIT.mangle(*Sym),
                                     JITSymbolFlags::Exported | JITSymbolFlags::Callable}},
                                   {}}),
@@ -1012,7 +1012,7 @@ public:
         }
     }
 
-    StringRef getName() const override JL_NOTSAFEPOINT { return *Sym; }
+    StringRef getName() const override { return *Sym; }
 
     void discard(const JITDylib &JD, const SymbolStringPtr &Name) override {}
 
@@ -1119,7 +1119,7 @@ public:
 }  // anonymous namespace
 
 namespace {
-    static std::unique_ptr<TargetMachine> createTargetMachine() JL_NOTSAFEPOINT {
+    static std::unique_ptr<TargetMachine> createTargetMachine() {
         TargetOptions options = TargetOptions();
 
         Triple TheTriple(sys::getProcessTriple());
@@ -1201,7 +1201,7 @@ namespace {
 
     typedef NewPM PassManager;
 
-    orc::JITTargetMachineBuilder createJTMBFromTM(TargetMachine &TM, int optlevel) JL_NOTSAFEPOINT {
+    orc::JITTargetMachineBuilder createJTMBFromTM(TargetMachine &TM, int optlevel) {
         return orc::JITTargetMachineBuilder(TM.getTargetTriple())
             .setCPU(TM.getTargetCPU().str())
             .setFeatures(TM.getTargetFeatureString())
@@ -1214,11 +1214,11 @@ namespace {
     struct TMCreator {
         orc::JITTargetMachineBuilder JTMB;
 
-        TMCreator(TargetMachine &TM, int optlevel) JL_NOTSAFEPOINT
+        TMCreator(TargetMachine &TM, int optlevel)
             : JTMB(createJTMBFromTM(TM, optlevel)) {}
-        ~TMCreator() JL_NOTSAFEPOINT = default;
+        ~TMCreator() = default;
 
-        std::unique_ptr<TargetMachine> operator()() JL_NOTSAFEPOINT {
+        std::unique_ptr<TargetMachine> operator()() {
             auto TM = cantFail(JTMB.createTargetMachine());
             fixupTM(*TM);
             return TM;
@@ -1231,11 +1231,11 @@ namespace {
         SmallVector<std::function<void()>, 0> &printers;
         std::mutex &llvm_printing_mutex;
         bool cache_enabled;
-        PMCreator(TargetMachine &TM, int optlevel, SmallVector<std::function<void()>, 0> &printers, std::mutex &llvm_printing_mutex, bool cache_enabled) JL_NOTSAFEPOINT
+        PMCreator(TargetMachine &TM, int optlevel, SmallVector<std::function<void()>, 0> &printers, std::mutex &llvm_printing_mutex, bool cache_enabled)
             : JTMB(createJTMBFromTM(TM, optlevel)), O(getOptLevel(optlevel)), printers(printers), llvm_printing_mutex(llvm_printing_mutex), cache_enabled(cache_enabled) {}
-        ~PMCreator() JL_NOTSAFEPOINT = default;
+        ~PMCreator() = default;
 
-        auto operator()() JL_NOTSAFEPOINT {
+        auto operator()() {
             auto TM = cantFail(JTMB.createTargetMachine());
             fixupTM(*TM);
             auto options = OptimizationOptions::defaults();
@@ -1246,7 +1246,7 @@ namespace {
             // TODO this needs to be locked, as different resource pools may add to the printer vector at the same time
             {
                 std::lock_guard<std::mutex> lock(llvm_printing_mutex);
-                printers.push_back([NPM = NPM.get()]() JL_NOTSAFEPOINT {
+                printers.push_back([NPM = NPM.get()]() {
                     NPM->printTimers();
                 });
             }
@@ -1256,13 +1256,13 @@ namespace {
 
     template<size_t N>
     struct sizedOptimizerT {
-        sizedOptimizerT(TargetMachine &TM, SmallVector<std::function<void()>, 0> &printers, std::mutex &llvm_printing_mutex, bool cache_enabled) JL_NOTSAFEPOINT {
+        sizedOptimizerT(TargetMachine &TM, SmallVector<std::function<void()>, 0> &printers, std::mutex &llvm_printing_mutex, bool cache_enabled) {
             for (size_t i = 0; i < N; i++) {
                 PMs[i] = std::make_unique<JuliaOJIT::ResourcePool<std::unique_ptr<PassManager>>>(PMCreator(TM, i, printers, llvm_printing_mutex, cache_enabled));
             }
         }
 
-        void operator()(Module &M) JL_NOTSAFEPOINT {
+        void operator()(Module &M) {
             auto PoolIdx = cast<ConstantInt>(cast<ConstantAsMetadata>(M.getModuleFlag("julia.optlevel"))->getValue())->getZExtValue();
             assert(PoolIdx < N && "Invalid optimization pool index");
 
@@ -1273,15 +1273,15 @@ namespace {
                 uint64_t insts;
                 uint64_t bbs;
 
-                void dump(ios_t *stream) JL_NOTSAFEPOINT {
+                void dump(ios_t *stream) {
                     ios_printf(stream, "    \"%s\":\n", name.c_str());
                     ios_printf(stream, "        instructions: %u\n", insts);
                     ios_printf(stream, "        basicblocks: %zd\n", bbs);
                 }
 
-                Stat(Function &F) JL_NOTSAFEPOINT : name(F.getName().str()), insts(F.getInstructionCount()), bbs(countBasicBlocks(F)) {}
+                Stat(Function &F) : name(F.getName().str()), insts(F.getInstructionCount()), bbs(countBasicBlocks(F)) {}
 
-                ~Stat() JL_NOTSAFEPOINT = default;
+                ~Stat() = default;
             };
             SmallVector<Stat, 8> before_stats;
             {
@@ -1374,10 +1374,10 @@ namespace {
     // shim for converting a unique_ptr to a TransformFunction to a TransformFunction
     template <typename T>
     struct IRTransformRef {
-        IRTransformRef(T &transform) JL_NOTSAFEPOINT : transform(transform) {}
-        ~IRTransformRef() JL_NOTSAFEPOINT = default;
-        OptimizerResultT operator()(orc::ThreadSafeModule TSM, orc::MaterializationResponsibility &R) JL_NOTSAFEPOINT {
-            TSM.withModuleDo([&](Module &M) JL_NOTSAFEPOINT {
+        IRTransformRef(T &transform) : transform(transform) {}
+        ~IRTransformRef() = default;
+        OptimizerResultT operator()(orc::ThreadSafeModule TSM, orc::MaterializationResponsibility &R) {
+            TSM.withModuleDo([&](Module &M) {
                 transform(M, R);
             });
             return std::move(TSM);
@@ -1389,7 +1389,7 @@ namespace {
     template<size_t N>
     struct CompilerT : orc::IRCompileLayer::IRCompiler {
 
-        CompilerT(orc::IRSymbolMapper::ManglingOptions MO, TargetMachine &TM) JL_NOTSAFEPOINT
+        CompilerT(orc::IRSymbolMapper::ManglingOptions MO, TargetMachine &TM)
             : orc::IRCompileLayer::IRCompiler(MO) {
             for (size_t i = 0; i < N; ++i) {
                 TMs[i] = std::make_unique<JuliaOJIT::ResourcePool<std::unique_ptr<TargetMachine>>>(TMCreator(TM, i));
@@ -1439,10 +1439,10 @@ namespace {
 struct JuliaOJIT::OptimizerT {
     OptimizerT(TargetMachine &TM, SmallVector<std::function<void()>, 0> &printers, std::mutex &llvm_printing_mutex, bool cache_enabled)
         : opt(TM, printers, llvm_printing_mutex, cache_enabled) {}
-    void operator()(Module &M) JL_NOTSAFEPOINT {
+    void operator()(Module &M) {
         opt(M);
     }
-    void operator()(Module &M, orc::MaterializationResponsibility &R) JL_NOTSAFEPOINT {
+    void operator()(Module &M, orc::MaterializationResponsibility &R) {
         return opt(M);
     }
 private:
@@ -1450,10 +1450,10 @@ private:
 };
 
 struct JuliaOJIT::JITPointersT {
-    JITPointersT(SharedBytesT &SharedBytes, std::mutex &Lock) JL_NOTSAFEPOINT
+    JITPointersT(SharedBytesT &SharedBytes, std::mutex &Lock)
         : SharedBytes(SharedBytes), Lock(Lock) {}
 
-    void operator()(Module &M) JL_NOTSAFEPOINT {
+    void operator()(Module &M) {
         std::lock_guard<std::mutex> locked(Lock);
         for (auto &GV : make_early_inc_range(M.globals())) {
             if (auto *Shared = getSharedBytes(GV)) {
@@ -1463,7 +1463,7 @@ struct JuliaOJIT::JITPointersT {
             }
         }
     }
-    void operator()(Module &M, orc::MaterializationResponsibility &R) JL_NOTSAFEPOINT {
+    void operator()(Module &M, orc::MaterializationResponsibility &R) {
         return operator()(M);
     }
 
@@ -1472,7 +1472,7 @@ private:
     // making a copy per object file of output.
     // we memoize them using a StringSet with a custom-alignment allocator
     // to ensure they are properly aligned
-    Constant *getSharedBytes(GlobalVariable &GV) JL_NOTSAFEPOINT {
+    Constant *getSharedBytes(GlobalVariable &GV) {
         // We could probably technically get away with
         // interning even external linkage globals,
         // as long as they have global unnamedaddr,
@@ -1512,7 +1512,7 @@ private:
 
 
 struct JuliaOJIT::DLSymOptimizer {
-    DLSymOptimizer(bool named) JL_NOTSAFEPOINT {
+    DLSymOptimizer(bool named) {
         this->named = named;
 #define INIT_RUNTIME_LIBRARY(libname, handle) \
         do { \
@@ -1530,9 +1530,9 @@ struct JuliaOJIT::DLSymOptimizer {
 
 #undef INIT_RUNTIME_LIBRARY
     }
-    ~DLSymOptimizer() JL_NOTSAFEPOINT = default;
+    ~DLSymOptimizer() = default;
 
-    void *lookup_symbol(void *libhandle, const char *fname) JL_NOTSAFEPOINT {
+    void *lookup_symbol(void *libhandle, const char *fname) {
         void *addr;
         jl_dlsym(libhandle, fname, &addr, 0, 1);
         return addr;
@@ -1564,7 +1564,7 @@ struct JuliaOJIT::DLSymOptimizer {
         return handle;
     }
 
-    void *lookup(uintptr_t libidx, const char *fname) JL_NOTSAFEPOINT {
+    void *lookup(uintptr_t libidx, const char *fname) {
         std::lock_guard<std::mutex> lock(symbols_mutex);
         runtime_symbols.resize(std::max(runtime_symbols.size(), libidx + 1));
         auto it = runtime_symbols[libidx].second.find(fname);
@@ -1901,12 +1901,12 @@ JuliaOJIT::JuliaOJIT()
 #endif
 
     if (jl_is_timing_trace) {
-        PrintLLVMTimers.push_back([]() JL_NOTSAFEPOINT {
+        PrintLLVMTimers.push_back([]() {
             if (timeTraceProfilerEnabled()) {
                 StringRef FileName = jl_timing_trace_file.empty() ?
                     StringRef("julia_time_trace.json") : StringRef(jl_timing_trace_file);
                 if (auto E = timeTraceProfilerWrite(FileName, "")) {
-                    handleAllErrors(std::move(E), [](const StringError &SE) JL_NOTSAFEPOINT {
+                    handleAllErrors(std::move(E), [](const StringError &SE) {
                         errs() << SE.getMessage() << "\n";
                     });
                 }
@@ -1938,7 +1938,7 @@ void JuliaOJIT::addGlobalMapping(StringRef Name, uint64_t Addr)
 
 #ifdef ENABLE_TIMINGS
 static void timing_print_module_names(jl_timing_block_t *block,
-                                      Module &M) JL_NOTSAFEPOINT
+                                      Module &M)
 {
     for (auto &f : M) {
         if (!f.isDeclaration()) {
@@ -1974,7 +1974,7 @@ orc::JITDylib& JuliaOJIT::createJITDylib(StringRef NamePrefix)
 
 Error JuliaOJIT::addExternalModule(orc::JITDylib &JD, orc::ThreadSafeModule TSM, bool ShouldOptimize)
 {
-    if (auto Err = TSM.withModuleDo([&](Module &M) JL_NOTSAFEPOINT -> Error {
+    if (auto Err = TSM.withModuleDo([&](Module &M) -> Error {
             auto PostOptDL = TM->createDataLayout(); // excludes ni tags stripped by optzns
             if (M.getDataLayout().isDefault())
                 M.setDataLayout(PostOptDL);
@@ -2066,7 +2066,7 @@ void JuliaOJIT::publishCIs(ArrayRef<jl_code_instance_t *> CIs, bool Wait)
     JuliaTaskDispatcher::future<void> F;
     auto Callback = [this, CIs = SmallVector<jl_code_instance_t *, 1>(CIs),
                      P = Wait ? std::optional(F.get_promise()) :
-                                std::nullopt](Expected<SymbolMap> SymsE) JL_NOTSAFEPOINT {
+                                std::nullopt](Expected<SymbolMap> SymsE) {
         std::unique_lock Lock{LinkerMutex};
         if (!SymsE) {
             errs() << "Internal error: Lookup failed: " << SymsE.takeError() << "\n";
@@ -2213,10 +2213,10 @@ CISymbolPtr JuliaOJIT::makeUniqueCIName(jl_code_instance_t *CI, const CISymbolPt
 // Convenience function to get a map from string pool symbols to symbols in this
 // LinkGraph that participate in linking (defined and external).
 static DenseMap<orc::SymbolStringPtr, jitlink::Symbol *>
-linkGraphSymbols(jitlink::LinkGraph &G) JL_NOTSAFEPOINT
+linkGraphSymbols(jitlink::LinkGraph &G)
 {
     DenseMap<orc::SymbolStringPtr, jitlink::Symbol *> Syms;
-    auto AddSyms = [&](auto Symbols) JL_NOTSAFEPOINT {
+    auto AddSyms = [&](auto Symbols) {
         for (auto S : Symbols)
             if (S->getName())
                 Syms[S->getName()] = S;
@@ -2228,7 +2228,7 @@ linkGraphSymbols(jitlink::LinkGraph &G) JL_NOTSAFEPOINT
 
 static jitlink::Symbol *
 findLinkGraphSymbolByName(jitlink::LinkGraph &G,
-                          const orc::SymbolStringPtr &Name) JL_NOTSAFEPOINT
+                          const orc::SymbolStringPtr &Name)
 {
     if (auto *Sym = G.findDefinedSymbolByName(Name))
         return Sym;
@@ -2240,14 +2240,14 @@ findLinkGraphSymbolByName(jitlink::LinkGraph &G,
 }
 
 static void retargetLinkGraphEdges(jitlink::LinkGraph &G, jitlink::Symbol &From,
-                                   jitlink::Symbol &To) JL_NOTSAFEPOINT
+                                   jitlink::Symbol &To)
 {
     struct RetargetEdgeVisitor {
         jitlink::Symbol &From;
         jitlink::Symbol &To;
 
         bool visitEdge(jitlink::LinkGraph &, jitlink::Block *,
-                       jitlink::Edge &Edge) JL_NOTSAFEPOINT
+                       jitlink::Edge &Edge)
         {
             if (&Edge.getTarget() != &From)
                 return false;
@@ -2260,7 +2260,7 @@ static void retargetLinkGraphEdges(jitlink::LinkGraph &G, jitlink::Symbol &From,
 
 static jitlink::Symbol *
 makeAnonymousLinkGraphSymbol(jitlink::LinkGraph &G,
-                             jitlink::Symbol &Sym) JL_NOTSAFEPOINT
+                             jitlink::Symbol &Sym)
 {
     assert(Sym.isDefined());
     auto &Anon = G.addAnonymousSymbol(Sym.getBlock(), Sym.getOffset(),
@@ -2274,7 +2274,7 @@ makeAnonymousLinkGraphSymbol(jitlink::LinkGraph &G,
 
 static jitlink::Symbol *
 renameLinkGraphSymbol(jitlink::LinkGraph &G, jitlink::Symbol &Sym,
-                      const orc::SymbolStringPtr &Name) JL_NOTSAFEPOINT
+                      const orc::SymbolStringPtr &Name)
 {
     if (Sym.getName() == Name)
         return &Sym;
@@ -2308,7 +2308,7 @@ bool JuliaOJIT::linkOutput(orc::MaterializationResponsibility &MR, MemoryBufferR
 
     // Rename the defined CI functions.
     auto RenameDef = [&](const SymbolStringPtr &Orig, const SymbolStringPtr &Dest)
-                             JL_NOTSAFEPOINT {
+                             {
         auto It = Syms.find(Orig);
         assert(It != Syms.end());
         It->second = renameLinkGraphSymbol(G, *It->second, Dest);
@@ -2389,7 +2389,7 @@ bool JuliaOJIT::linkOutput(orc::MaterializationResponsibility &MR, MemoryBufferR
     void **Ptrs;
     #ifdef __clang_analyzer__
     // hide this "leak" from clang-sa analysis
-    extern void** make_new_pointers(size_t) JL_NOTSAFEPOINT;
+    extern void** make_new_pointers(size_t);
     Ptrs = make_new_pointers(Info->global_targets.size());
     #else
     Ptrs = new void *[Info->global_targets.size()];
@@ -2483,7 +2483,7 @@ CISymbolPtr *JuliaOJIT::linkCISymbol(jl_code_instance_t *CI)
 #if defined(__clang_safetyanalysis__) || defined(__clang_gcanalyzer__)
     #define jl_read_codeinst_invoke jl_read_codeinst_invoke_nosafepoint
 #endif
-    void jl_read_codeinst_invoke(jl_code_instance_t *, uint8_t *, jl_callptr_t *, void **, int) JL_NOTSAFEPOINT;
+    void jl_read_codeinst_invoke(jl_code_instance_t *, uint8_t *, jl_callptr_t *, void **, int);
     jl_read_codeinst_invoke(CI, &Flags, &Invoke, &SpecPtr, 0);
 #if defined(__clang_safetyanalysis__) || defined(__clang_gcanalyzer__)
     #undef jl_read_codeinst_invoke
@@ -2677,7 +2677,7 @@ static void decorate_module(Module &M) {
 }
 
 extern "C" JL_DLLEXPORT_CODEGEN
-void jl_decorate_llvm_module_impl(LLVMModuleRef m) JL_NOTSAFEPOINT
+void jl_decorate_llvm_module_impl(LLVMModuleRef m)
 {
     decorate_module(*unwrap(m));
 }

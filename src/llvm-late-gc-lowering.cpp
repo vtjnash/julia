@@ -1184,7 +1184,7 @@ static SmallSetVector<AllocaInst *, 1> FindAllocaBases(Value *V) {
             }
         }
     }
-    assert(std::all_of(allocas.begin(), allocas.end(), [&] (AllocaInst *AI) JL_NOTSAFEPOINT {
+    assert(std::all_of(allocas.begin(), allocas.end(), [&] (AllocaInst *AI) {
             return (AI->getArraySize() == allocas[0]->getArraySize() &&
                 AI->getAllocatedType() == allocas[0]->getAllocatedType());
         }

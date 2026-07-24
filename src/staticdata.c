@@ -102,12 +102,12 @@ typedef struct {
     htable_t type_in_worklist;
 } jl_query_cache;
 
-static void init_query_cache(jl_query_cache *cache) JL_NOTSAFEPOINT
+static void init_query_cache(jl_query_cache *cache)
 {
     htable_new(&cache->type_in_worklist, 0);
 }
 
-static void destroy_query_cache(jl_query_cache *cache) JL_NOTSAFEPOINT
+static void destroy_query_cache(jl_query_cache *cache)
 {
     htable_free(&cache->type_in_worklist);
 }
@@ -175,12 +175,12 @@ void jl_init_staticdata(void)
 
 // HT_NOTFOUND is a valid integer ID, so we store the integer ids mangled.
 // This pair of functions mangles/demanges
-static size_t from_seroder_entry(void *entry) JL_NOTSAFEPOINT
+static size_t from_seroder_entry(void *entry)
 {
     return (size_t)((char*)entry - (char*)HT_NOTFOUND - 1);
 }
 
-static void *to_seroder_entry(size_t idx) JL_NOTSAFEPOINT
+static void *to_seroder_entry(size_t idx)
 {
     return (void*)((char*)HT_NOTFOUND + 1 + idx);
 }
@@ -189,25 +189,25 @@ static htable_t new_methtables;
 //static size_t precompilation_world;
 
 // Query if a Julia object is in a permalloc region (due to part of a sys- pkg-image)
-static size_t n_linkage_blobs(void) JL_NOTSAFEPOINT
+static size_t n_linkage_blobs(void)
 {
     return image_tree.nranges;
 }
 
-static image_metadata_t *external_blob_metadata(jl_value_t *v) JL_NOTSAFEPOINT
+static image_metadata_t *external_blob_metadata(jl_value_t *v)
 {
     assert((uintptr_t) v % 4 == 0 && "Object not 4-byte aligned!");
     void *data = eyt_tree_find_data(&image_tree, (uintptr_t)v);
     return data == EYT_NOTFOUND ? NULL : (image_metadata_t*)data;
 }
 
-static size_t external_blob_index(jl_value_t *v) JL_NOTSAFEPOINT
+static size_t external_blob_index(jl_value_t *v)
 {
     image_metadata_t *meta = external_blob_metadata(v);
     return meta ? meta->idx : (size_t)-1;
 }
 
-JL_DLLEXPORT uint8_t jl_object_in_image(jl_value_t *obj) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint8_t jl_object_in_image(jl_value_t *obj)
 {
     if (obj == NULL)
         return 0;
@@ -218,7 +218,7 @@ JL_DLLEXPORT uint8_t jl_object_in_image(jl_value_t *obj) JL_NOTSAFEPOINT
 }
 
 // Map an object to its "owning" top module
-JL_DLLEXPORT jl_value_t *jl_object_top_module(jl_value_t* v) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *jl_object_top_module(jl_value_t* v)
 {
     image_metadata_t *meta = external_blob_metadata(v);
     if (meta)
@@ -314,7 +314,7 @@ typedef uint32_t reloc_t;
 #else
 typedef uint64_t reloc_t;
 #endif
-static void write_reloc_t(ios_t *s, uintptr_t reloc_id) JL_NOTSAFEPOINT
+static void write_reloc_t(ios_t *s, uintptr_t reloc_id)
 {
     if (sizeof(reloc_t) <= sizeof(uint32_t)) {
         assert(reloc_id < UINT32_MAX);
@@ -353,7 +353,7 @@ JL_DLLEXPORT int jl_running_on_valgrind(void)
 
 #define NBOX_C 1024
 
-static int jl_needs_serialization(jl_serializer_state *s, jl_value_t *v) JL_NOTSAFEPOINT
+static int jl_needs_serialization(jl_serializer_state *s, jl_value_t *v)
 {
     // ignore items that are given a special relocation representation
     if (s->incremental && jl_object_in_image(v))
@@ -382,7 +382,7 @@ static int jl_needs_serialization(jl_serializer_state *s, jl_value_t *v) JL_NOTS
     return 1;
 }
 
-static int caching_tag(jl_value_t *v, jl_query_cache *query_cache) JL_NOTSAFEPOINT
+static int caching_tag(jl_value_t *v, jl_query_cache *query_cache)
 {
     if (jl_is_method_instance(v)) {
         jl_method_instance_t *mi = (jl_method_instance_t*)v;
@@ -412,24 +412,24 @@ static int caching_tag(jl_value_t *v, jl_query_cache *query_cache) JL_NOTSAFEPOI
     return 0;
 }
 
-static int needs_recaching(jl_value_t *v, jl_query_cache *query_cache) JL_NOTSAFEPOINT
+static int needs_recaching(jl_value_t *v, jl_query_cache *query_cache)
 {
     return caching_tag(v, query_cache) == 2;
 }
 
-static int needs_uniquing(jl_value_t *v, jl_query_cache *query_cache) JL_NOTSAFEPOINT
+static int needs_uniquing(jl_value_t *v, jl_query_cache *query_cache)
 {
     assert(!jl_object_in_image(v));
     return caching_tag(v, query_cache) == 1;
 }
 
 // whether `record_field_change` has already registered a replacement for `addr`
-static int has_field_change(jl_value_t **addr) JL_NOTSAFEPOINT
+static int has_field_change(jl_value_t **addr)
 {
     return ptrhash_get(&field_replace, (void*)addr) != HT_NOTFOUND;
 }
 
-static void record_field_change(jl_value_t **addr, jl_value_t *newval) JL_NOTSAFEPOINT
+static void record_field_change(jl_value_t **addr, jl_value_t *newval)
 {
     if (has_field_change(addr) || *addr != newval)
         ptrhash_put(&field_replace, (void*)addr, newval);
@@ -1048,7 +1048,7 @@ static void jl_serialize_reachable(jl_serializer_state *s) JL_CANSAFEPOINT JL_GC
     }
 }
 
-static void ios_ensureroom(ios_t *s, size_t newsize) JL_NOTSAFEPOINT
+static void ios_ensureroom(ios_t *s, size_t newsize)
 {
     size_t prevsize = s->size;
     if (prevsize < newsize) {
@@ -1058,7 +1058,7 @@ static void ios_ensureroom(ios_t *s, size_t newsize) JL_NOTSAFEPOINT
     }
 }
 
-static void write_padding(ios_t *s, size_t nb) JL_NOTSAFEPOINT
+static void write_padding(ios_t *s, size_t nb)
 {
     static const char zeros[16] = {0};
     while (nb > 16) {
@@ -1069,7 +1069,7 @@ static void write_padding(ios_t *s, size_t nb) JL_NOTSAFEPOINT
         ios_write(s, zeros, nb);
 }
 
-static void write_pointer(ios_t *s) JL_NOTSAFEPOINT
+static void write_pointer(ios_t *s)
 {
     assert((ios_pos(s) & (sizeof(void*) - 1)) == 0 && "stream misaligned for writing a word-sized value");
     write_uint(s, 0);
@@ -1162,7 +1162,7 @@ static uintptr_t _backref_id(jl_serializer_state *s, jl_value_t *v, jl_array_t *
 }
 
 
-static void record_uniquing(jl_serializer_state *s, jl_value_t *fld, uintptr_t offset) JL_NOTSAFEPOINT
+static void record_uniquing(jl_serializer_state *s, jl_value_t *fld, uintptr_t offset)
 {
     if (s->incremental && jl_needs_serialization(s, fld) && needs_uniquing(fld, s->query_cache)) {
         if (jl_is_datatype(fld) || jl_is_datatype_singleton((jl_datatype_t*)jl_typeof(fld)))
@@ -1332,7 +1332,7 @@ static void record_gvars(jl_serializer_state *s, arraylist_t *globals) JL_CANSAF
         jl_queue_for_serialization(s, globals->items[i]);
 }
 
-static void record_external_fns(jl_serializer_state *s, arraylist_t *external_fns) JL_NOTSAFEPOINT
+static void record_external_fns(jl_serializer_state *s, arraylist_t *external_fns)
 {
     if (!s->incremental) {
         assert(external_fns->len == 0);
@@ -1993,8 +1993,8 @@ static inline uintptr_t get_item_for_reloc(jl_serializer_state *s, uintptr_t bas
         return (uintptr_t)deser_sym.items[offset];
     case TagRef: {
         // for the purpose of this function, we only access boxes we know are perm-alloc
-        jl_value_t *jl_box_int64(int64_t) JL_NOTSAFEPOINT;
-        jl_value_t *jl_box_int32(int32_t) JL_NOTSAFEPOINT;
+        jl_value_t *jl_box_int64(int64_t);
+        jl_value_t *jl_box_int32(int32_t);
         if (offset == 0)
             return (uintptr_t)s->ptls->root_task;
         if (offset == 1)
@@ -2778,7 +2778,7 @@ JL_DLLEXPORT void jl_set_precompile_field_replace(jl_value_t *val, jl_value_t *f
 }
 
 
-JL_DLLEXPORT int jl_is_globally_rooted(jl_value_t *val JL_MAYBE_UNROOTED) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_is_globally_rooted(jl_value_t *val JL_MAYBE_UNROOTED)
 {
     if (jl_is_datatype(val)) {
         jl_datatype_t *dt = (jl_datatype_t*)val;
@@ -2794,7 +2794,7 @@ JL_DLLEXPORT int jl_is_globally_rooted(jl_value_t *val JL_MAYBE_UNROOTED) JL_NOT
     return 0;
 }
 
-static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT JL_GLOBALLY_ROOTED
+static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_GLOBALLY_ROOTED
 {
     t = jl_unwrap_unionall(t);
     if (jl_is_datatype(t))
@@ -3611,10 +3611,10 @@ JL_DLLEXPORT void jl_image_unpack_zstd(void *handle, jl_image_buf_t *image) JL_C
 }
 
 // From a shared library handle, verify consistency and return a jl_image_buf_t
-static jl_image_buf_t get_image_buf(void *handle, int is_pkgimage) JL_NOTSAFEPOINT
+static jl_image_buf_t get_image_buf(void *handle, int is_pkgimage)
 {
     // verify that the linker resolved the symbols in this image against ourselves (libjulia-internal)
-    typedef void** (JL_NOTSAFEPOINT *jl_RTLD_DEFAULT_handle_func_t)(void);
+    typedef void** (*jl_RTLD_DEFAULT_handle_func_t)(void);
     jl_RTLD_DEFAULT_handle_func_t get_jl_RTLD_DEFAULT_handle_addr = NULL;
     if (handle != jl_RTLD_DEFAULT_handle) {
         int symbol_found = jl_dlsym(handle, "get_jl_RTLD_DEFAULT_handle_addr", (void **)&get_jl_RTLD_DEFAULT_handle_addr, 0, 0);

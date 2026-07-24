@@ -194,7 +194,7 @@ void jl_start_gc_threads(void) {
     mmtk_initialize_collection((void *)ptls);
 }
 
-void jl_init_thread_heap(struct _jl_tls_states_t *ptls) JL_NOTSAFEPOINT {
+void jl_init_thread_heap(struct _jl_tls_states_t *ptls) {
     jl_thread_heap_common_t *heap = &ptls->gc_tls_common.heap;
     small_arraylist_new(&heap->weak_refs, 0);
     small_arraylist_new(&heap->live_tasks, 0);
@@ -393,7 +393,7 @@ int64_t live_bytes = 0;
 // are likely different (e.g., MMTk doesn't track the bytes allocated in the fastpath,
 // but only when the slowpath is called). We might need to adapt these later so that
 // the statistics are the same or as close as possible for each GC.
-static void combine_thread_gc_counts(jl_gc_num_t *dest, int update_heap) JL_NOTSAFEPOINT
+static void combine_thread_gc_counts(jl_gc_num_t *dest, int update_heap)
 {
     int gc_n_threads;
     jl_ptls_t* gc_all_tls_states;
@@ -416,7 +416,7 @@ static void combine_thread_gc_counts(jl_gc_num_t *dest, int update_heap) JL_NOTS
     }
 }
 
-void reset_thread_gc_counts(void) JL_NOTSAFEPOINT
+void reset_thread_gc_counts(void)
 {
     int gc_n_threads;
     jl_ptls_t* gc_all_tls_states;
@@ -444,7 +444,7 @@ JL_DLLEXPORT jl_gc_num_t jl_gc_num(void) {
     return num;
 }
 
-JL_DLLEXPORT int64_t jl_gc_diff_total_bytes(void) JL_NOTSAFEPOINT {
+JL_DLLEXPORT int64_t jl_gc_diff_total_bytes(void) {
     int64_t oldtb = last_gc_total_bytes;
     int64_t newtb;
     jl_gc_get_total_bytes(&newtb);
@@ -452,7 +452,7 @@ JL_DLLEXPORT int64_t jl_gc_diff_total_bytes(void) JL_NOTSAFEPOINT {
     return newtb - oldtb;
 }
 
-JL_DLLEXPORT int64_t jl_gc_sync_total_bytes(int64_t offset) JL_NOTSAFEPOINT
+JL_DLLEXPORT int64_t jl_gc_sync_total_bytes(int64_t offset)
 {
     int64_t oldtb = last_gc_total_bytes;
     int64_t newtb;
@@ -465,24 +465,24 @@ JL_DLLEXPORT int64_t jl_gc_pool_live_bytes(void) {
     return 0;
 }
 
-void jl_gc_count_allocd(size_t sz) JL_NOTSAFEPOINT
+void jl_gc_count_allocd(size_t sz)
 {
     jl_ptls_t ptls = jl_current_task->ptls;
     jl_atomic_store_relaxed(&ptls->gc_tls_common.gc_num.allocd,
         jl_atomic_load_relaxed(&ptls->gc_tls_common.gc_num.allocd) + sz);
 }
 
-void jl_gc_count_freed(size_t sz) JL_NOTSAFEPOINT
+void jl_gc_count_freed(size_t sz)
 {
 }
 
-int64_t inc_live_bytes(int64_t inc) JL_NOTSAFEPOINT
+int64_t inc_live_bytes(int64_t inc)
 {
     jl_timing_counter_inc(JL_TIMING_COUNTER_HeapSize, inc);
     return live_bytes += inc;
 }
 
-void jl_gc_reset_alloc_count(void) JL_NOTSAFEPOINT
+void jl_gc_reset_alloc_count(void)
 {
     combine_thread_gc_counts(&gc_num, 0);
     inc_live_bytes(gc_num.deferred_alloc + gc_num.allocd);
@@ -495,7 +495,7 @@ JL_DLLEXPORT int64_t jl_gc_live_bytes(void) {
     return last_live_bytes;
 }
 
-JL_DLLEXPORT void jl_gc_get_total_bytes(int64_t *bytes) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_get_total_bytes(int64_t *bytes)
 {
     jl_gc_num_t num = gc_num;
     combine_thread_gc_counts(&num, 0);
@@ -635,7 +635,7 @@ JL_DLLEXPORT void jl_gc_scan_julia_exc_obj(void* obj_raw, void* closure, Process
 // This is used in mmtk_sweep_malloced_memory and it is slightly different
 // from jl_gc_free_memory from gc-stock.c as the stock GC updates the
 // information in the global variable gc_heap_stats (which is specific to the stock GC)
-static void jl_gc_free_memory(jl_genericmemory_t *m, int isaligned) JL_NOTSAFEPOINT
+static void jl_gc_free_memory(jl_genericmemory_t *m, int isaligned)
 {
     assert(jl_is_genericmemory(m));
     assert(jl_genericmemory_how(m) == JL_GENERICMEMORY_GCMANAGED ||
@@ -651,7 +651,7 @@ static void jl_gc_free_memory(jl_genericmemory_t *m, int isaligned) JL_NOTSAFEPO
     gc_num.freecall++;
 }
 
-JL_DLLEXPORT void jl_gc_mmtk_sweep_malloced_memory(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_mmtk_sweep_malloced_memory(void)
 {
     void* iter = mmtk_new_mutator_iterator();
     jl_ptls_t ptls2 = (jl_ptls_t)mmtk_get_next_mutator_tls(iter);
@@ -792,7 +792,7 @@ JL_DLLEXPORT void jl_gc_mmtk_sweep_stack_pools(void)
     }
 }
 
-JL_DLLEXPORT void jl_gc_sweep_stack_pools_and_mtarraylist_buffers(jl_ptls_t ptls) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_sweep_stack_pools_and_mtarraylist_buffers(jl_ptls_t ptls)
 {
     jl_gc_mmtk_sweep_stack_pools();
     sweep_mtarraylist_buffers();
@@ -821,7 +821,7 @@ JL_DLLEXPORT void* jl_gc_get_owner_address_to_mmtk(void* m) {
 
 // same as jl_genericmemory_how but with JL_DLLEXPORT
 // we should probably inline this in Rust
-JL_DLLEXPORT size_t jl_gc_genericmemory_how(void *arg) JL_NOTSAFEPOINT
+JL_DLLEXPORT size_t jl_gc_genericmemory_how(void *arg)
 {
     jl_genericmemory_t* m = (jl_genericmemory_t*)arg;
     if (m->ptr == (void*)((char*)m + 16)) // JL_SMALL_BYTE_ALIGNMENT (from julia_internal.h)
@@ -881,7 +881,7 @@ int jl_gc_classify_pools(size_t sz, int *osize)
 
 #define MMTK_MIN_ALIGNMENT 4
 // MMTk assumes allocation size is aligned to min alignment.
-STATIC_INLINE size_t mmtk_align_alloc_sz(size_t sz) JL_NOTSAFEPOINT
+STATIC_INLINE size_t mmtk_align_alloc_sz(size_t sz)
 {
     return (sz + MMTK_MIN_ALIGNMENT - 1) & ~(MMTK_MIN_ALIGNMENT - 1);
 }
@@ -1097,7 +1097,7 @@ void *jl_gc_perm_alloc(size_t sz, int zero, unsigned align, unsigned offset)
     return jl_gc_perm_alloc_nolock(ptls, sz, zero, align, offset);
 }
 
-jl_value_t *jl_gc_permobj(jl_ptls_t ptls, size_t sz, void *ty, unsigned align) JL_NOTSAFEPOINT
+jl_value_t *jl_gc_permobj(jl_ptls_t ptls, size_t sz, void *ty, unsigned align)
 {
     const size_t allocsz = sz + sizeof(jl_taggedvalue_t);
     if (align == 0) {
@@ -1171,7 +1171,7 @@ JL_DLLEXPORT void jl_gc_take_page_profile(ios_t *stream)
 #define JL_GC_N_MAX_POOLS 51
 JL_DLLEXPORT double jl_gc_page_utilization_stats[JL_GC_N_MAX_POOLS];
 
-STATIC_INLINE void gc_dump_page_utilization_data(void) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_dump_page_utilization_data(void)
 {
     // FIXME: MMTk would have to provide its own stats
 }
@@ -1197,21 +1197,21 @@ _Atomic(int) gc_ptls_sweep_idx;
 // counter for round robin of giving back stack pages to the OS
 _Atomic(int) gc_stack_free_idx = 0;
 
-JL_DLLEXPORT void jl_gc_queue_root(const struct _jl_value_t *ptr) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_queue_root(const struct _jl_value_t *ptr)
 {
     jl_task_t *ct = jl_current_task;
     jl_ptls_t ptls = ct->ptls;
     mmtk_object_reference_write_slow(&ptls->gc_tls.mmtk_mutator, ptr, (const void*) 0);
 }
 
-JL_DLLEXPORT void jl_gc_wb_cold(const void *parent, const void *ptr) JL_NOTSAFEPOINT {
+JL_DLLEXPORT void jl_gc_wb_cold(const void *parent, const void *ptr) {
     jl_task_t *ct = jl_current_task;
     jl_ptls_t ptls = ct->ptls;
     mmtk_object_reference_write_slow(&ptls->gc_tls.mmtk_mutator, ptr, (const void*) 0);
 }
 
 JL_DLLEXPORT void jl_gc_queue_multiroot(const struct _jl_value_t *root, const void *stored,
-                                        struct _jl_datatype_t *dt) JL_NOTSAFEPOINT
+                                        struct _jl_datatype_t *dt)
 {
     mmtk_unreachable();
 }
@@ -1245,16 +1245,16 @@ JL_DLLEXPORT jl_taggedvalue_t *jl_gc_find_taggedvalue_pool(char *p, size_t *osiz
     return NULL;
 }
 
-void jl_gc_debug_fprint_critical_error(ios_t *s) JL_NOTSAFEPOINT
+void jl_gc_debug_fprint_critical_error(ios_t *s)
 {
 }
 
-int gc_is_collector_thread(int tid) JL_NOTSAFEPOINT
+int gc_is_collector_thread(int tid)
 {
     return 0;
 }
 
-void jl_gc_debug_fprint_status(ios_t *s) JL_NOTSAFEPOINT
+void jl_gc_debug_fprint_status(ios_t *s)
 {
     // May not be accurate but should be helpful enough
     uint64_t pool_count = gc_num.poolalloc;

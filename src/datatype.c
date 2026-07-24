@@ -20,7 +20,7 @@ extern "C" {
 
 // allocating TypeNames -----------------------------------------------------------
 
-static jl_sym_t *jl_demangle_typename(jl_sym_t *s) JL_NOTSAFEPOINT
+static jl_sym_t *jl_demangle_typename(jl_sym_t *s)
 {
     char *n = jl_symbol_name(s);
     if (n[0] != '#')
@@ -130,14 +130,14 @@ jl_datatype_t *jl_new_uninitialized_datatype(void)
 
 #include "support/htable.inc"
 
-static uint32_t _hash_djb2(uint32_t hash, const char *mem, size_t s) JL_NOTSAFEPOINT
+static uint32_t _hash_djb2(uint32_t hash, const char *mem, size_t s)
 {
     for (size_t i = 0; i < s; i++)
         hash = ((hash << 5) + hash) + mem[i];
     return hash;
 }
 
-static uint32_t _hash_layout_djb2(uintptr_t _layout, void *unused) JL_NOTSAFEPOINT
+static uint32_t _hash_layout_djb2(uintptr_t _layout, void *unused)
 {
     (void)unused;
     jl_datatype_layout_t* layout = (jl_datatype_layout_t *)_layout;
@@ -157,7 +157,7 @@ static uint32_t _hash_layout_djb2(uintptr_t _layout, void *unused) JL_NOTSAFEPOI
     return hash;
 }
 
-static int layout_eq(void *_l1, void *_l2, void *unused) JL_NOTSAFEPOINT
+static int layout_eq(void *_l1, void *_l2, void *unused)
 {
     (void)unused;
     jl_datatype_layout_t *l1 = (jl_datatype_layout_t *)_l1;
@@ -178,9 +178,9 @@ static int layout_eq(void *_l1, void *_l2, void *unused) JL_NOTSAFEPOINT
 }
 
 //HTPROT(layoutcache)
-static void **layoutcache_lookup_bp_r_impl(htable_t *h, void *key, void *ctx, int key_owned) JL_NOTSAFEPOINT;
-static void **layoutcache_lookup_bp_r(htable_t *h, void *key, void *ctx) JL_NOTSAFEPOINT;
-static void **layoutcache_peek_bp_r(htable_t *h, void *key, void *ctx) JL_NOTSAFEPOINT;
+static void **layoutcache_lookup_bp_r_impl(htable_t *h, void *key, void *ctx, int key_owned);
+static void **layoutcache_lookup_bp_r(htable_t *h, void *key, void *ctx);
+static void **layoutcache_peek_bp_r(htable_t *h, void *key, void *ctx);
 HTPROT_R(layoutcache, static JL_UNUSED)
 HTIMPL_R(layoutcache, _hash_layout_djb2, layout_eq, _HTIMPL_IDENTITY_KEYALLOC, _HTIMPL_NOOP_KEYFREE)
 static htable_t layoutcache;
@@ -195,7 +195,7 @@ static jl_datatype_layout_t *jl_get_layout(uint32_t sz,
                                            int arrayelem,
                                            uint8_t unused_bits,
                                            jl_fielddesc32_t desc[],
-                                           uint32_t pointers[]) JL_NOTSAFEPOINT
+                                           uint32_t pointers[])
 {
     assert(alignment); // should have been verified by caller
 
@@ -350,13 +350,13 @@ unsigned jl_special_vector_alignment(size_t nfields, jl_value_t *t)
     return next_power_of_two(size);
 }
 
-STATIC_INLINE int jl_is_datatype_make_singleton(jl_datatype_t *d) JL_NOTSAFEPOINT
+STATIC_INLINE int jl_is_datatype_make_singleton(jl_datatype_t *d)
 {
     // Check d->layout first to avoid NULL dereference (can be NULL during typegroup resolution)
     return d->layout && d->isconcretetype && jl_datatype_size(d) == 0 && d->layout->npointers == 0 && !d->name->mutabl; // implies jl_is_layout_opaque
 }
 
-STATIC_INLINE void jl_maybe_allocate_singleton_instance(jl_datatype_t *st) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_maybe_allocate_singleton_instance(jl_datatype_t *st)
 {
     // It's possible for st to already have an ->instance if it was redefined
     if (st->instance)
@@ -1119,7 +1119,7 @@ typedef struct _jl_uint128_t {
 } jl_uint128_t;
 #endif
 
-static inline uint32_t zext_read32(const jl_value_t *x, size_t nb) JL_NOTSAFEPOINT
+static inline uint32_t zext_read32(const jl_value_t *x, size_t nb)
 {
     uint32_t y = *(uint32_t*)x;
     if (nb == 4)
@@ -1129,7 +1129,7 @@ static inline uint32_t zext_read32(const jl_value_t *x, size_t nb) JL_NOTSAFEPOI
 }
 
 #if MAX_POINTERATOMIC_SIZE >= 8
-static inline uint64_t zext_read64(const jl_value_t *x, size_t nb) JL_NOTSAFEPOINT
+static inline uint64_t zext_read64(const jl_value_t *x, size_t nb)
 {
     uint64_t y = *(uint64_t*)x;
     if (nb == 8)
@@ -1144,7 +1144,7 @@ static inline uint64_t zext_read64(const jl_value_t *x, size_t nb) JL_NOTSAFEPOI
 #endif
 
 #if MAX_POINTERATOMIC_SIZE >= 16
-static inline jl_uint128_t zext_read128(const jl_value_t *x, size_t nb) JL_NOTSAFEPOINT
+static inline jl_uint128_t zext_read128(const jl_value_t *x, size_t nb)
 {
     jl_uint128_t y = {0};
     if (nb == 16)
@@ -1153,7 +1153,7 @@ static inline jl_uint128_t zext_read128(const jl_value_t *x, size_t nb) JL_NOTSA
         memcpy(&y, x, nb);
     return y;
 }
-static void assign_uint128(jl_value_t *v, jl_uint128_t x, size_t nb) JL_NOTSAFEPOINT
+static void assign_uint128(jl_value_t *v, jl_uint128_t x, size_t nb)
 {
     memcpy(v, &x, nb);
 }
@@ -1502,7 +1502,7 @@ JL_DLLEXPORT int jl_atomic_storeonce_bits(jl_datatype_t *dt, char *dst, const jl
 }
 
 #define PERMBOXN_FUNC(nb)                                                  \
-    extern jl_value_t *jl_permbox##nb(jl_datatype_t *t, uintptr_t tag, uint##nb##_t x) JL_NOTSAFEPOINT \
+    extern jl_value_t *jl_permbox##nb(jl_datatype_t *t, uintptr_t tag, uint##nb##_t x) \
     {   /* n.b. t must be a concrete isbits datatype of the right size */               \
         jl_task_t *ct = jl_current_task;                                                \
         jl_value_t *v = jl_gc_permobj(ct->ptls, LLT_ALIGN(nb, sizeof(void*)), t, 0);    \
@@ -1517,7 +1517,7 @@ PERMBOXN_FUNC(32)
 PERMBOXN_FUNC(64)
 
 #define UNBOX_FUNC(j_type,c_type)                                       \
-    JL_DLLEXPORT c_type jl_unbox_##j_type(jl_value_t *v) JL_NOTSAFEPOINT\
+    JL_DLLEXPORT c_type jl_unbox_##j_type(jl_value_t *v)\
     {                                                                   \
         assert(jl_is_primitivetype(jl_typeof(v)));                      \
         assert(jl_datatype_size(jl_typeof(v)) == sizeof(c_type));       \
@@ -1800,7 +1800,7 @@ JL_DLLEXPORT void jl_unlock_field(jl_mutex_t *v)
     JL_UNLOCK_NOGC(v);
 }
 
-static inline char *lock(char *p, jl_value_t *parent, int needlock, enum atomic_kind isatomic) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER JL_NO_SAFEPOINT_ANALYSIS
+static inline char *lock(char *p, jl_value_t *parent, int needlock, enum atomic_kind isatomic) JL_NOTSAFEPOINT_ENTER JL_NO_SAFEPOINT_ANALYSIS
 {
     if (needlock) {
         if (isatomic == isatomic_object) {
@@ -1814,7 +1814,7 @@ static inline char *lock(char *p, jl_value_t *parent, int needlock, enum atomic_
     return p;
 }
 
-static inline void unlock(char *p, jl_value_t *parent, int needlock, enum atomic_kind isatomic) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE JL_NO_SAFEPOINT_ANALYSIS
+static inline void unlock(char *p, jl_value_t *parent, int needlock, enum atomic_kind isatomic) JL_NOTSAFEPOINT_LEAVE JL_NO_SAFEPOINT_ANALYSIS
 {
     if (needlock) {
         if (isatomic == isatomic_object) {
@@ -1894,7 +1894,7 @@ JL_DLLEXPORT jl_value_t *jl_get_nth_field(jl_value_t *v, size_t i)
     return undefref_check((jl_datatype_t*)layout_ty, r);
 }
 
-JL_DLLEXPORT jl_value_t *jl_get_nth_field_noalloc(jl_value_t *v JL_PROPAGATES_ROOT, size_t i) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *jl_get_nth_field_noalloc(jl_value_t *v JL_PROPAGATES_ROOT, size_t i)
 {
     jl_datatype_t *st = (jl_datatype_t*)jl_typeof(v);
     assert(i < jl_datatype_nfields(st));
@@ -1911,7 +1911,7 @@ JL_DLLEXPORT jl_value_t *jl_get_nth_field_checked(jl_value_t *v, size_t i)
     return r;
 }
 
-inline void set_nth_field(jl_datatype_t *st, jl_value_t *v, size_t i, jl_value_t *rhs, int isatomic) JL_NOTSAFEPOINT
+inline void set_nth_field(jl_datatype_t *st, jl_value_t *v, size_t i, jl_value_t *rhs, int isatomic)
 {
     size_t offs = jl_field_offset(st, i);
     if (rhs == NULL) { // TODO: this should be invalid, but it happens frequently in ircode.c
@@ -2349,7 +2349,7 @@ int set_nth_fieldonce(jl_datatype_t *st, jl_value_t *v, size_t i, jl_value_t *rh
     return success;
 }
 
-JL_DLLEXPORT int jl_field_isdefined(jl_value_t *v, size_t i) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_field_isdefined(jl_value_t *v, size_t i)
 {
     jl_datatype_t *st = (jl_datatype_t*)jl_typeof(v);
     size_t offs = jl_field_offset(st, i);
@@ -2432,7 +2432,7 @@ static jl_value_t *resolve_type_refs(jl_value_t *t, htable_t *subst_map) JL_CANS
 // Check if a typename is reachable from a type through struct fields
 // This is used to detect cycles in type definitions for mayinlinealloc
 // visited: hash table of already-visited typenames (to avoid infinite loops)
-static int is_typename_reachable(jl_value_t *t, jl_typename_t *target, htable_t *visited) JL_NOTSAFEPOINT
+static int is_typename_reachable(jl_value_t *t, jl_typename_t *target, htable_t *visited)
 {
     if (t == NULL)
         return 0;
@@ -2598,7 +2598,7 @@ static jl_value_t *resolve_type_refs(jl_value_t *t, htable_t *subst_map)
 // Helper to unwrap UnionAlls to get the underlying DataType
 // For parametric types, results[i] is a UnionAll wrapping the DataType
 // For non-parametric types, results[i] IS the DataType
-static jl_datatype_t *unwrap_to_datatype(jl_value_t *v) JL_NOTSAFEPOINT
+static jl_datatype_t *unwrap_to_datatype(jl_value_t *v)
 {
     while (jl_is_unionall(v))
         v = ((jl_unionall_t*)v)->body;

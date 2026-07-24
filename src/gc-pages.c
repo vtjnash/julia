@@ -40,7 +40,7 @@ void jl_gc_init_page(void)
 
 // Try to allocate a memory block for multiple pages
 // Return `NULL` if allocation failed. Result is aligned to `GC_PAGE_SZ`.
-static char *jl_gc_try_alloc_pages_(int pg_cnt) JL_NOTSAFEPOINT
+static char *jl_gc_try_alloc_pages_(int pg_cnt)
 {
     size_t pages_sz = GC_PAGE_SZ * pg_cnt;
 #ifdef _OS_WINDOWS_
@@ -99,7 +99,7 @@ STATIC_INLINE char *jl_gc_try_alloc_pages(void) JL_NOTSAFEPOINT_LEAVE_ENTER
 
 // get a new page, either from the freemap
 // or from the kernel if none are available
-NOINLINE jl_gc_pagemeta_t *jl_gc_alloc_page(void) JL_NOTSAFEPOINT
+NOINLINE jl_gc_pagemeta_t *jl_gc_alloc_page(void)
 {
     int last_errno = errno;
 #ifdef _OS_WINDOWS_
@@ -178,7 +178,7 @@ exit:
 }
 
 // return a page to the freemap allocator
-NOINLINE void jl_gc_free_page(jl_gc_pagemeta_t *pg) JL_NOTSAFEPOINT
+NOINLINE void jl_gc_free_page(jl_gc_pagemeta_t *pg)
 {
     void *p = pg->data;
     gc_alloc_map_set((char*)p, GC_PAGE_FREED);

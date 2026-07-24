@@ -1103,7 +1103,7 @@ JL_DLLEXPORT jl_method_t *jl_new_method_uninit(jl_module_t *module)
 // Initialize iteration with `i = 0`. Returns `i` for the next backedge to be extracted.
 int get_next_edge(jl_array_t *list JL_PROPAGATES_ROOT, int i,
                   jl_value_t **invokesig JL_OUT_ROOTED_BY_ARG(0),
-                  jl_code_instance_t **caller JL_OUT_ROOTED_BY_ARG(0)) JL_NOTSAFEPOINT
+                  jl_code_instance_t **caller JL_OUT_ROOTED_BY_ARG(0))
 {
     jl_value_t *item = jl_array_ptr_ref(list, i);
     if (!item || jl_is_code_instance(item)) {
@@ -1125,7 +1125,7 @@ int get_next_edge(jl_array_t *list JL_PROPAGATES_ROOT, int i,
 
 int set_next_edge(jl_array_t *list JL_PROPAGATES_ROOT, int i,
                   jl_value_t *invokesig JL_ROOTED_BY_ARG(0),
-                  jl_code_instance_t *caller JL_ROOTED_BY_ARG(0)) JL_NOTSAFEPOINT
+                  jl_code_instance_t *caller JL_ROOTED_BY_ARG(0))
 {
     if (invokesig)
         jl_array_ptr_set(list, i++, invokesig);
@@ -1134,7 +1134,7 @@ int set_next_edge(jl_array_t *list JL_PROPAGATES_ROOT, int i,
 }
 
 int clear_next_edge(jl_array_t *list JL_PROPAGATES_ROOT, int i,
-                    jl_value_t *invokesig, jl_code_instance_t *caller) JL_NOTSAFEPOINT
+                    jl_value_t *invokesig, jl_code_instance_t *caller)
 {
     if (invokesig)
         jl_array_ptr_set(list, i++, NULL);
@@ -1237,29 +1237,29 @@ JL_DLLEXPORT jl_value_t *jl_declare_const_gf(jl_module_t *mod, jl_sym_t *name)
 
 
 // get the MethodTable for dispatch, or `nothing` if cannot be determined
-JL_DLLEXPORT jl_methtable_t *jl_method_table_for(jl_value_t *argtypes JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_methtable_t *jl_method_table_for(jl_value_t *argtypes JL_PROPAGATES_ROOT)
 {
     return jl_method_table;
 }
 
 // get a MethodCache for dispatch
-JL_DLLEXPORT jl_methcache_t *jl_method_cache_for(jl_value_t *argtypes JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_methcache_t *jl_method_cache_for(jl_value_t *argtypes JL_PROPAGATES_ROOT)
 {
     return jl_method_table->cache;
 }
 
-jl_methcache_t *jl_kwmethod_cache_for(jl_value_t *argtypes JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+jl_methcache_t *jl_kwmethod_cache_for(jl_value_t *argtypes JL_PROPAGATES_ROOT)
 {
     return jl_method_table->cache;
 }
 
-JL_DLLEXPORT jl_methtable_t *jl_method_get_table(jl_method_t *method JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_methtable_t *jl_method_get_table(jl_method_t *method JL_PROPAGATES_ROOT)
 {
     return method->external_mt ? (jl_methtable_t*)method->external_mt : jl_method_table;
 }
 
 // get an arbitrary MethodCache for dispatch optimizations of method
-JL_DLLEXPORT jl_methcache_t *jl_method_get_cache(jl_method_t *method JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_methcache_t *jl_method_get_cache(jl_method_t *method JL_PROPAGATES_ROOT)
 {
     return jl_method_get_table(method)->cache;
 }

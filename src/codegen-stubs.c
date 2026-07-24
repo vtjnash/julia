@@ -81,11 +81,11 @@ JL_DLLEXPORT int jl_compile_extern_c_fallback(LLVMOrcThreadSafeModuleRef llvmmod
     return 1;
 }
 
-JL_DLLEXPORT void jl_teardown_codegen_fallback(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_teardown_codegen_fallback(void)
 {
 }
 
-JL_DLLEXPORT void jl_decorate_llvm_module_fallback(LLVMModuleRef m) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_decorate_llvm_module_fallback(LLVMModuleRef m)
 {
     (void)m;
 }
@@ -139,12 +139,12 @@ JL_DLLEXPORT void *jl_type_to_llvm_fallback(jl_value_t *jt, LLVMContextRef llvmc
 
 JL_DLLEXPORT void *jl_struct_to_llvm_fallback(jl_value_t *jt, LLVMContextRef llvmctxt, bool_t *isboxed) UNAVAILABLE
 
-JL_DLLEXPORT jl_value_t *jl_get_libllvm_fallback(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *jl_get_libllvm_fallback(void)
 {
     return jl_nothing;
 }
 
-JL_DLLEXPORT uint64_t jl_getUnwindInfo_fallback(uint64_t dwAddr) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint64_t jl_getUnwindInfo_fallback(uint64_t dwAddr)
 {
     return 0;
 }

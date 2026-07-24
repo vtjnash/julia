@@ -175,7 +175,7 @@ JL_DLLEXPORT void jl_set_safe_restore(jl_jmp_buf *sr)
     LOAD_ERRNO;
 }
 
-JL_CONST_FUNC jl_gcframe_t **jl_get_pgcstack(void) JL_NOTSAFEPOINT
+JL_CONST_FUNC jl_gcframe_t **jl_get_pgcstack(void)
 {
     SAVE_ERRNO;
     jl_gcframe_t **pgcstack = (jl_gcframe_t**)TlsGetValue(jl_pgcstack_key);
@@ -183,7 +183,7 @@ JL_CONST_FUNC jl_gcframe_t **jl_get_pgcstack(void) JL_NOTSAFEPOINT
     return pgcstack;
 }
 
-void jl_set_pgcstack(jl_gcframe_t **pgcstack) JL_NOTSAFEPOINT
+void jl_set_pgcstack(jl_gcframe_t **pgcstack)
 {
     // n.b.: this smashes GetLastError
     TlsSetValue(jl_pgcstack_key, (void*)pgcstack);
@@ -218,20 +218,20 @@ JL_DLLEXPORT void jl_pgcstack_setkey(jl_get_pgcstack_func_t *f, DWORD k)
 // fallback provided for embedding
 static jl_pgcstack_key_t jl_pgcstack_key;
 static __thread jl_gcframe_t **pgcstack_;
-static jl_gcframe_t **jl_get_pgcstack_fallback(void) JL_NOTSAFEPOINT JL_GLOBALLY_ROOTED
+static jl_gcframe_t **jl_get_pgcstack_fallback(void) JL_GLOBALLY_ROOTED
 {
     return pgcstack_;
 }
-static jl_gcframe_t ***jl_pgcstack_addr_fallback(void) JL_NOTSAFEPOINT
+static jl_gcframe_t ***jl_pgcstack_addr_fallback(void)
 {
     return &pgcstack_;
 }
-void jl_set_pgcstack(jl_gcframe_t **pgcstack) JL_NOTSAFEPOINT
+void jl_set_pgcstack(jl_gcframe_t **pgcstack)
 {
     *jl_pgcstack_key() = pgcstack;
 }
 
-static jl_gcframe_t **jl_get_pgcstack_init(void) JL_NOTSAFEPOINT JL_GLOBALLY_ROOTED;
+static jl_gcframe_t **jl_get_pgcstack_init(void) JL_GLOBALLY_ROOTED;
 static jl_get_pgcstack_func_t jl_get_pgcstack_cb = jl_get_pgcstack_init;
 static jl_gcframe_t **jl_get_pgcstack_init(void)
 {
@@ -291,7 +291,7 @@ static struct {
     uv_cond_t cond;
 } jl_mutex_park[JL_MUTEX_NPARK];
 
-static inline uint32_t jl_mutex_park_idx(jl_mutex_t *lock) JL_NOTSAFEPOINT
+static inline uint32_t jl_mutex_park_idx(jl_mutex_t *lock)
 {
     // Invertible xorshift (low bits dropped for alignment). Permutation-like on
     // purpose: the set of locks parked at once is small and often consecutively
@@ -317,7 +317,7 @@ JL_DLLEXPORT int16_t jl_threadid(void)
     return jl_atomic_load_relaxed(&jl_current_task->tid);
 }
 
-JL_DLLEXPORT int8_t jl_threadpoolid(int16_t tid) JL_NOTSAFEPOINT
+JL_DLLEXPORT int8_t jl_threadpoolid(int16_t tid)
 {
     int nthreads = jl_atomic_load_acquire(&jl_n_threads);
     if (tid < 0 || tid >= nthreads)
@@ -332,15 +332,15 @@ JL_DLLEXPORT int8_t jl_threadpoolid(int16_t tid) JL_NOTSAFEPOINT
 }
 
 // get thread local rng
-JL_DLLEXPORT uint64_t jl_get_ptls_rng(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint64_t jl_get_ptls_rng(void)
 {
     return jl_current_task->ptls->rngseed;
 }
 
-typedef void (*unw_tls_ensure_func)(void) JL_NOTSAFEPOINT;
+typedef void (*unw_tls_ensure_func)(void);
 
 // set thread local rng
-JL_DLLEXPORT void jl_set_ptls_rng(uint64_t new_seed) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_set_ptls_rng(uint64_t new_seed)
 {
     jl_current_task->ptls->rngseed = new_seed;
 }
@@ -633,7 +633,7 @@ static inline size_t jl_add_tls_size(size_t orig_size, size_t size, size_t align
 {
     return LLT_ALIGN(orig_size, align) + size;
 }
-static inline ssize_t jl_check_tls_bound(void *tp, jl_gcframe_t ***k0, size_t tls_size) JL_NOTSAFEPOINT
+static inline ssize_t jl_check_tls_bound(void *tp, jl_gcframe_t ***k0, size_t tls_size)
 {
     ssize_t offset = (char*)k0 - (char*)tp;
     if (offset < JL_ELF_TLS_INIT_SIZE ||
@@ -648,7 +648,7 @@ static inline size_t jl_add_tls_size(size_t orig_size, size_t size, size_t align
 {
     return LLT_ALIGN(orig_size + size, align);
 }
-static inline ssize_t jl_check_tls_bound(void *tp, jl_gcframe_t ***k0, size_t tls_size) JL_NOTSAFEPOINT
+static inline ssize_t jl_check_tls_bound(void *tp, jl_gcframe_t ***k0, size_t tls_size)
 {
     ssize_t offset = (char*)tp - (char*)k0;
     if (offset < sizeof(*k0) || offset > tls_size)
@@ -684,7 +684,7 @@ static int check_tls_cb(struct dl_phdr_info *info, size_t size, void *_data)
     return 1;
 }
 
-static void jl_check_tls(void) JL_NOTSAFEPOINT
+static void jl_check_tls(void)
 {
     jl_get_pgcstack_func_t f;
     jl_pgcstack_key_t k;
@@ -951,7 +951,7 @@ JL_DLLEXPORT void jl_set_io_loop_tid(int16_t tid) JL_CANSAFEPOINT
 
 // Profiling stubs
 
-void _jl_mutex_init(jl_mutex_t *lock, const char *name) JL_NOTSAFEPOINT
+void _jl_mutex_init(jl_mutex_t *lock, const char *name)
 {
     jl_atomic_store_relaxed(&lock->owner, (jl_task_t*)NULL);
     lock->count = 0;
@@ -1029,7 +1029,7 @@ void _jl_mutex_wait(jl_task_t *self, jl_mutex_t *lock, int safepoint) JL_NO_SAFE
 #endif
 }
 
-static void jl_lock_frame_push(jl_task_t *self, jl_mutex_t *lock) JL_NOTSAFEPOINT
+static void jl_lock_frame_push(jl_task_t *self, jl_mutex_t *lock)
 {
     jl_ptls_t ptls = self->ptls;
     small_arraylist_t *locks = &ptls->locks;

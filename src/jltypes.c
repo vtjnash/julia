@@ -35,7 +35,7 @@ struct jl_internal_global internal_global;
 
 // --- type properties and predicates ---
 
-static int typeenv_has(jl_typeenv_t *env, jl_tvar_t *v) JL_NOTSAFEPOINT
+static int typeenv_has(jl_typeenv_t *env, jl_tvar_t *v)
 {
     while (env != NULL) {
         if (env->var == v)
@@ -45,7 +45,7 @@ static int typeenv_has(jl_typeenv_t *env, jl_tvar_t *v) JL_NOTSAFEPOINT
     return 0;
 }
 
-static int typeenv_has_ne(jl_typeenv_t *env, jl_tvar_t *v) JL_NOTSAFEPOINT
+static int typeenv_has_ne(jl_typeenv_t *env, jl_tvar_t *v)
 {
     while (env != NULL) {
         if (env->var == v)
@@ -123,7 +123,7 @@ static int layout_uses_free_typevars(jl_value_t *v, jl_typeenv_t *env) JL_CANSAF
     }
 }
 
-static int has_free_typevars(jl_value_t *v, jl_typeenv_t *env) JL_NOTSAFEPOINT
+static int has_free_typevars(jl_value_t *v, jl_typeenv_t *env)
 {
     while (1) {
         if (jl_is_typevar(v)) {
@@ -179,7 +179,7 @@ static int has_free_typevars(jl_value_t *v, jl_typeenv_t *env) JL_NOTSAFEPOINT
     }
 }
 
-JL_DLLEXPORT int jl_has_free_typevars(jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_has_free_typevars(jl_value_t *v)
 {
     return has_free_typevars(v, NULL);
 }
@@ -262,7 +262,7 @@ JL_DLLEXPORT jl_array_t *jl_find_free_typevars(jl_value_t *v)
 }
 
 // test whether a type has vars bound by the given environment
-int jl_has_bound_typevars(jl_value_t *v, jl_typeenv_t *env) JL_NOTSAFEPOINT
+int jl_has_bound_typevars(jl_value_t *v, jl_typeenv_t *env)
 {
     while (1) {
         if (jl_is_typevar(v)) {
@@ -327,7 +327,7 @@ int jl_has_bound_typevars(jl_value_t *v, jl_typeenv_t *env) JL_NOTSAFEPOINT
     }
 }
 
-JL_DLLEXPORT int jl_has_typevar(jl_value_t *t, jl_tvar_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_has_typevar(jl_value_t *t, jl_tvar_t *v)
 {
     jl_typeenv_t env = { v, NULL, NULL };
     return jl_has_bound_typevars(t, &env);
@@ -427,7 +427,7 @@ int jl_count_union_components(jl_value_t *v)
 // Return the `*pi`th element of a nested type union, according to a
 // standard traversal order. Anything that is not itself a `Union` is
 // considered an "element". `*pi` is destroyed in the process.
-static jl_value_t *nth_union_component(jl_value_t *v, int *pi) JL_NOTSAFEPOINT
+static jl_value_t *nth_union_component(jl_value_t *v, int *pi)
 {
     while (jl_is_uniontype(v)) {
         jl_uniontype_t *u = (jl_uniontype_t*)v;
@@ -441,13 +441,13 @@ static jl_value_t *nth_union_component(jl_value_t *v, int *pi) JL_NOTSAFEPOINT
     return NULL;
 }
 
-jl_value_t *jl_nth_union_component(jl_value_t *v, int i) JL_NOTSAFEPOINT
+jl_value_t *jl_nth_union_component(jl_value_t *v, int i)
 {
     return nth_union_component(v, &i);
 }
 
 // inverse of jl_nth_union_component
-static int union_component_matches(jl_value_t *haystack, jl_value_t *needle) JL_NOTSAFEPOINT
+static int union_component_matches(jl_value_t *haystack, jl_value_t *needle)
 {
     if (needle == haystack)
         return 1;
@@ -462,7 +462,7 @@ static int union_component_matches(jl_value_t *haystack, jl_value_t *needle) JL_
     return 0;
 }
 
-int jl_find_union_component(jl_value_t *haystack, jl_value_t *needle, unsigned *nth) JL_NOTSAFEPOINT
+int jl_find_union_component(jl_value_t *haystack, jl_value_t *needle, unsigned *nth)
 {
     while (jl_is_uniontype(haystack)) {
         jl_uniontype_t *u = (jl_uniontype_t*)haystack;
@@ -476,25 +476,25 @@ int jl_find_union_component(jl_value_t *haystack, jl_value_t *needle, unsigned *
     return 0;
 }
 
-STATIC_INLINE const char *datatype_module_name(jl_value_t *t) JL_NOTSAFEPOINT
+STATIC_INLINE const char *datatype_module_name(jl_value_t *t)
 {
     if (((jl_datatype_t*)t)->name->module == NULL)
         return NULL;
     return jl_symbol_name(((jl_datatype_t*)t)->name->module->name);
 }
 
-STATIC_INLINE const char *str_(const char *s) JL_NOTSAFEPOINT
+STATIC_INLINE const char *str_(const char *s)
 {
     return s == NULL ? "" : s;
 }
 
-STATIC_INLINE int cmp_(int a, int b) JL_NOTSAFEPOINT
+STATIC_INLINE int cmp_(int a, int b)
 {
     return a < b ? -1 : a > b;
 }
 
 // a/b are jl_datatype_t* & not NULL
-static int datatype_name_cmp(jl_value_t *a, jl_value_t *b) JL_NOTSAFEPOINT
+static int datatype_name_cmp(jl_value_t *a, jl_value_t *b)
 {
     if (!jl_is_datatype(a))
         return jl_is_datatype(b) ? 1 : 0;
@@ -536,7 +536,7 @@ static int datatype_name_cmp(jl_value_t *a, jl_value_t *b) JL_NOTSAFEPOINT
 
 // sort singletons first, then DataTypes, then UnionAlls,
 // ties broken alphabetically including module name & type parameters
-static int union_sort_cmp(jl_value_t *a, jl_value_t *b) JL_NOTSAFEPOINT
+static int union_sort_cmp(jl_value_t *a, jl_value_t *b)
 {
     if (a == NULL)
         return b == NULL ? 0 : 1;
@@ -634,7 +634,7 @@ static void flatten_type_union(jl_value_t **types, size_t n, jl_value_t **out, s
 }
 
 
-static void isort_union(jl_value_t **a, size_t len) JL_NOTSAFEPOINT
+static void isort_union(jl_value_t **a, size_t len)
 {
     size_t i, j;
     for (i = 1; i < len; i++) {
@@ -1125,9 +1125,9 @@ static int typekeyvalue_eq(jl_datatype_t *tt, jl_value_t *key1, jl_value_t **key
     return 1;
 }
 
-static unsigned typekey_hash(jl_typename_t *tn, jl_value_t **key, size_t n, int nofail) JL_NOTSAFEPOINT;
-static unsigned typekeyvalue_hash(jl_typename_t *tn, jl_value_t *key1, jl_value_t **key, size_t n, int leaf) JL_NOTSAFEPOINT;
-static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT JL_GLOBALLY_ROOTED;
+static unsigned typekey_hash(jl_typename_t *tn, jl_value_t **key, size_t n, int nofail);
+static unsigned typekeyvalue_hash(jl_typename_t *tn, jl_value_t *key1, jl_value_t **key, size_t n, int leaf);
+static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_GLOBALLY_ROOTED;
 
 /* returns val if key is in hash, otherwise NULL */
 static jl_datatype_t *lookup_type_set(jl_svec_t *cache, jl_value_t **key, size_t n, uint_t hv) JL_CANSAFEPOINT
@@ -1389,7 +1389,7 @@ jl_datatype_t *jl_lookup_cache_type_(jl_datatype_t *type)
 
 // compute whether kj might actually be a subtype of something in the cache
 // (which otherwise would normally be comparable with pointer-egal)
-static int maybe_subtype_of_cache(jl_value_t *kj, int covariant) JL_NOTSAFEPOINT
+static int maybe_subtype_of_cache(jl_value_t *kj, int covariant)
 {
     jl_value_t *uw = jl_is_unionall(kj) ? jl_unwrap_unionall(kj) : kj;
     if (jl_is_datatype(uw)) {
@@ -1414,7 +1414,7 @@ static int maybe_subtype_of_cache(jl_value_t *kj, int covariant) JL_NOTSAFEPOINT
 }
 
 // compute whether kj might have a supertype which is actually concrete
-static int has_concrete_supertype(jl_value_t *kj) JL_NOTSAFEPOINT
+static int has_concrete_supertype(jl_value_t *kj)
 {
     jl_value_t *uw = jl_is_unionall(kj) ? jl_unwrap_unionall(kj) : kj;
     if (jl_is_datatype(uw)) {
@@ -1454,7 +1454,7 @@ static int has_concrete_supertype(jl_value_t *kj) JL_NOTSAFEPOINT
     return 0;
 }
 
-int jl_type_equality_is_identity(jl_value_t *t1, jl_value_t *t2) JL_NOTSAFEPOINT
+int jl_type_equality_is_identity(jl_value_t *t1, jl_value_t *t2)
 {
     int c1 = jl_is_concrete_type(t1);
     int c2 = jl_is_concrete_type(t2);
@@ -1866,12 +1866,12 @@ static jl_value_t *lookup_type_stack(jl_typestack_t *stack, jl_datatype_t *tt, s
     return NULL;
 }
 
-static unsigned typeeq_hash(jl_value_t *T, int *failed) JL_NOTSAFEPOINT;
-static unsigned typeegal_hash(jl_value_t *T, int *failed) JL_NOTSAFEPOINT;
+static unsigned typeeq_hash(jl_value_t *T, int *failed);
+static unsigned typeegal_hash(jl_value_t *T, int *failed);
 
 // stable numbering for types--starts with name->hash, then falls back to objectid
 // sets *failed if the hash value isn't stable (if this param not set on entry)
-static unsigned type_hash(jl_value_t *kj, int *failed) JL_NOTSAFEPOINT
+static unsigned type_hash(jl_value_t *kj, int *failed)
 {
     jl_value_t *uw = jl_is_unionall(kj) ? jl_unwrap_unionall(kj) : kj;
     if (jl_is_datatype(uw)) {
@@ -1917,7 +1917,7 @@ static unsigned type_hash(jl_value_t *kj, int *failed) JL_NOTSAFEPOINT
 // hash of `Type{T}`. Shared between hashing by type (`type_hash`, e.g. type-cache
 // insertion) and by value (`typekeyvalue_hash`, e.g. argument-tuple dispatch
 // caching) so the two cannot diverge.
-static unsigned typeeq_hash(jl_value_t *T, int *failed) JL_NOTSAFEPOINT
+static unsigned typeeq_hash(jl_value_t *T, int *failed)
 {
     if (T == jl_bottom_type)
         return jl_typeofbottom_type->hash;
@@ -1967,7 +1967,7 @@ static unsigned typeeq_hash(jl_value_t *T, int *failed) JL_NOTSAFEPOINT
 
 // like `typeeq_hash`, but with a distinct mixing constant so `TypeEgal{T}`
 // does not collide with `Type{T}`
-static unsigned typeegal_hash(jl_value_t *T, int *failed) JL_NOTSAFEPOINT
+static unsigned typeegal_hash(jl_value_t *T, int *failed)
 {
     unsigned hashT;
     if (!*failed) {
@@ -1990,7 +1990,7 @@ static unsigned typeegal_hash(jl_value_t *T, int *failed) JL_NOTSAFEPOINT
     return bitmix(jl_typeegal_type->name->hash, hashT);
 }
 
-JL_DLLEXPORT uintptr_t jl_type_hash(jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT uintptr_t jl_type_hash(jl_value_t *v)
 {
     // NOTE: The value of `failed` is purposefully ignored here. The parameter is relevant
     // for other parts of the internal algorithm but not for exposing to the Julia side.
@@ -1998,7 +1998,7 @@ JL_DLLEXPORT uintptr_t jl_type_hash(jl_value_t *v) JL_NOTSAFEPOINT
     return type_hash(v, &failed);
 }
 
-JL_DLLEXPORT uintptr_t jl_type_cache_hash(jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT uintptr_t jl_type_cache_hash(jl_value_t *v)
 {
     int failed = 0;
     uintptr_t hash = type_hash(v, &failed);
@@ -2017,7 +2017,7 @@ JL_DLLEXPORT uintptr_t jl_type_cache_hash(jl_value_t *v) JL_NOTSAFEPOINT
     return 0;
 }
 
-static unsigned typekey_hash(jl_typename_t *tn, jl_value_t **key, size_t n, int nofail) JL_NOTSAFEPOINT
+static unsigned typekey_hash(jl_typename_t *tn, jl_value_t **key, size_t n, int nofail)
 {
     if (tn == jl_type_typename && key[0] == jl_bottom_type)
         return jl_typeofbottom_type->hash;
@@ -2045,7 +2045,7 @@ static unsigned typekey_hash(jl_typename_t *tn, jl_value_t **key, size_t n, int 
     return hash ? hash : 1;
 }
 
-static unsigned typekeyvalue_hash(jl_typename_t *tn, jl_value_t *key1, jl_value_t **key, size_t n, int leaf) JL_NOTSAFEPOINT
+static unsigned typekeyvalue_hash(jl_typename_t *tn, jl_value_t *key1, jl_value_t **key, size_t n, int leaf)
 {
     size_t j;
     unsigned hash = 3;
@@ -2184,7 +2184,7 @@ static int check_datatype_parameters(jl_typename_t *tn, jl_value_t **params, siz
     return 0;
 }
 
-static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT JL_GLOBALLY_ROOTED
+static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_GLOBALLY_ROOTED
 {
     t = jl_unwrap_unionall(t);
     if (jl_is_datatype(t))
@@ -2199,7 +2199,7 @@ static jl_value_t *extract_wrapper(jl_value_t *t JL_PROPAGATES_ROOT) JL_NOTSAFEP
     return NULL;
 }
 
-static int _may_substitute_ub(jl_value_t *v, jl_tvar_t *var, int inside_inv, int *cov_count) JL_NOTSAFEPOINT
+static int _may_substitute_ub(jl_value_t *v, jl_tvar_t *var, int inside_inv, int *cov_count)
 {
     while (1) {
         if (v == (jl_value_t*)var) {
@@ -2263,7 +2263,7 @@ static int _may_substitute_ub(jl_value_t *v, jl_tvar_t *var, int inside_inv, int
 //  * `var` does not appear in invariant position
 //  * `var` appears at most once (in covariant position) and not in a `Vararg`
 //    unless the upper bound is concrete (diagonal rule)
-static int may_substitute_ub(jl_value_t *v, jl_tvar_t *var) JL_NOTSAFEPOINT
+static int may_substitute_ub(jl_value_t *v, jl_tvar_t *var)
 {
     int cov_count = 0;
     return _may_substitute_ub(v, var, 0, &cov_count);

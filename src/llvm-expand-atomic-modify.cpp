@@ -431,7 +431,7 @@ static void expandAtomicModifyToCmpXchg(CallInst &Modify,
     // loop for the FP atomics.
     std::tie(OldVal, NewVal) = insertRMWCmpXchgLoop(
       Builder, Ty,  Ptr, *Alignment, Ordering, SSID, Modify,
-      [&](IRBuilderBase &Builder, Value *Loaded) JL_NOTSAFEPOINT {
+      [&](IRBuilderBase &Builder, Value *Loaded) {
         LoadedOp->set(Loaded);
         ModifyOp->moveBeforePreserving(*Builder.GetInsertBlock(), Builder.GetInsertPoint());
         return ModifyOp;

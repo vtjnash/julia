@@ -28,8 +28,8 @@ volatile int profile_running = 0;
 volatile int profile_all_tasks = 0;
 static const uint64_t GIGA = 1000000000ULL;
 // Timers to take samples at intervals
-JL_DLLEXPORT void jl_profile_stop_timer(void) JL_NOTSAFEPOINT;
-JL_DLLEXPORT int jl_profile_start_timer(uint8_t) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_profile_stop_timer(void);
+JL_DLLEXPORT int jl_profile_start_timer(uint8_t);
 
 ///////////////////////
 // Utility functions //
@@ -102,7 +102,7 @@ void jl_init_profile_lock(void)
 #endif
 }
 
-static uintptr_t jl_lock_profile_rd_held(void) JL_NOTSAFEPOINT
+static uintptr_t jl_lock_profile_rd_held(void)
 {
 #ifndef _OS_WINDOWS_
     return (uintptr_t)pthread_getspecific(debuginfo_asyncsafe_held);
@@ -216,7 +216,7 @@ static int *profile_get_randperm(int size)
 }
 
 
-JL_DLLEXPORT int jl_profile_is_buffer_full(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_profile_is_buffer_full(void)
 {
     // Declare buffer full if there isn't enough room to sample even just the
     // thread metadata and one max-sized frame. The `+ 6` is for the two block
@@ -227,7 +227,7 @@ JL_DLLEXPORT int jl_profile_is_buffer_full(void) JL_NOTSAFEPOINT
 #define PROFILE_TASK_DEBUG_FORCE_SAMPLING_FAILURE (0)
 #define PROFILE_TASK_DEBUG_FORCE_STOP_THREAD_FAILURE (0)
 
-void jl_profile_task(void) JL_NOTSAFEPOINT JL_NO_SAFEPOINT_ANALYSIS
+void jl_profile_task(void) JL_NO_SAFEPOINT_ANALYSIS
 {
     if (jl_profile_is_buffer_full()) {
         // Buffer full: Delete the timer
@@ -426,7 +426,7 @@ JL_DLLEXPORT void jl_set_peek_cond(uv_async_t *cond)
     JL_UNLOCK_NOGC(&profile_show_peek_cond_lock);
 }
 
-static void jl_check_profile_autostop(void) JL_NOTSAFEPOINT
+static void jl_check_profile_autostop(void)
 {
     if (profile_show_peek_cond_loc != NULL && profile_autostop_time != -1.0 && jl_hrtime() > profile_autostop_time) {
         profile_autostop_time = -1.0;
@@ -456,7 +456,7 @@ static void stack_overflow_warning(void)
 // string literals avoids gettext/malloc entirely and is portable across libc flavors
 // (musl/BSD/macOS lack glibc's sigdescr_np/sigabbrev_np). Cases are #ifdef-guarded so this
 // compiles wherever a given signal is (or is not) defined.
-static const char *jl_strsignal(int sig) JL_NOTSAFEPOINT
+static const char *jl_strsignal(int sig)
 {
     switch (sig) {
 #ifdef SIGHUP

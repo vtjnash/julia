@@ -25,7 +25,7 @@ typedef struct {
     size_t cap;
 } alloc_array_t;
 
-static void alloc_array_push(alloc_array_t *a, jl_raw_alloc_t val) JL_NOTSAFEPOINT
+static void alloc_array_push(alloc_array_t *a, jl_raw_alloc_t val)
 {
     if (a->len >= a->cap) {
         a->cap = a->cap ? a->cap * 2 : 8;
@@ -34,7 +34,7 @@ static void alloc_array_push(alloc_array_t *a, jl_raw_alloc_t val) JL_NOTSAFEPOI
     a->data[a->len++] = val;
 }
 
-static void alloc_array_clear(alloc_array_t *a) JL_NOTSAFEPOINT { a->len = 0; }
+static void alloc_array_clear(alloc_array_t *a) { a->len = 0; }
 
 // Per-thread profile: a growable array of alloc records.
 typedef struct {
@@ -56,7 +56,7 @@ static alloc_array_t g_combined_allocs; // Will live forever.
 
 // === stack stuff ===
 
-static jl_raw_backtrace_t get_raw_backtrace(void) JL_NOTSAFEPOINT
+static jl_raw_backtrace_t get_raw_backtrace(void)
 {
     // We first record the backtrace onto a MAX-sized buffer, so that we don't have to
     // allocate the buffer until we know the size. To ensure thread-safety, we use a
@@ -147,7 +147,7 @@ JL_DLLEXPORT void jl_free_alloc_profile(void)
 
 // == callback called into by the outside ==
 
-void _maybe_record_alloc_to_profile(jl_value_t *val, size_t size, jl_datatype_t *type) JL_NOTSAFEPOINT
+void _maybe_record_alloc_to_profile(jl_value_t *val, size_t size, jl_datatype_t *type)
 {
     size_t thread_id = jl_atomic_load_relaxed(&jl_current_task->tid);
     if (thread_id >= g_alloc_profile.num_profiles)

@@ -33,31 +33,31 @@ public:
             std::unique_lock<std::mutex> lock;
             CResourceT &resource;
 
-            Lock(std::mutex &mutex, CResourceT &resource) JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER : lock(mutex), resource(resource) {}
-            Lock(Lock &&) JL_NOTSAFEPOINT = default;
-            Lock &operator=(Lock &&) JL_NOTSAFEPOINT = default;
+            Lock(std::mutex &mutex, CResourceT &resource) JL_NOTSAFEPOINT_ENTER : lock(mutex), resource(resource) {}
+            Lock(Lock &&) = default;
+            Lock &operator=(Lock &&) = default;
 
-            CResourceT &operator*() JL_NOTSAFEPOINT {
+            CResourceT &operator*() {
                 return resource;
             }
 
-            const CResourceT &operator*() const JL_NOTSAFEPOINT {
+            const CResourceT &operator*() const {
                 return resource;
             }
 
-            CResourceT *operator->() JL_NOTSAFEPOINT {
+            CResourceT *operator->() {
                 return &**this;
             }
 
-            const CResourceT *operator->() const JL_NOTSAFEPOINT {
+            const CResourceT *operator->() const {
                 return &**this;
             }
 
-            operator const CResourceT &() const JL_NOTSAFEPOINT {
+            operator const CResourceT &() const {
                 return resource;
             }
 
-            ~Lock() JL_NOTSAFEPOINT JL_NOTSAFEPOINT_LEAVE = default;
+            ~Lock() JL_NOTSAFEPOINT_LEAVE = default;
         };
     private:
 
@@ -67,17 +67,17 @@ public:
         typedef Lock<ResourceT> LockT;
         typedef Lock<const ResourceT> ConstLockT;
 
-        Locked(ResourceT resource = ResourceT()) JL_NOTSAFEPOINT : mutex(), resource(std::move(resource)) {}
+        Locked(ResourceT resource = ResourceT()) : mutex(), resource(std::move(resource)) {}
 
-        LockT operator*() JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER {
+        LockT operator*() JL_NOTSAFEPOINT_ENTER {
             return LockT(mutex, resource);
         }
 
-        ConstLockT operator*() const JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER {
+        ConstLockT operator*() const JL_NOTSAFEPOINT_ENTER {
             return ConstLockT(mutex, resource);
         }
 
-        ~Locked() JL_NOTSAFEPOINT = default;
+        ~Locked() = default;
     };
 
     struct image_info_t {
@@ -89,13 +89,13 @@ public:
 
     struct libc_frames_t {
 #if defined(_OS_DARWIN_) && defined(LLVM_SHLIB)
-        typedef void (*frame_register_func)(void *) JL_NOTSAFEPOINT;
+        typedef void (*frame_register_func)(void *);
         std::atomic<frame_register_func> libc_register_frame_{nullptr};
         std::atomic<frame_register_func> libc_deregister_frame_{nullptr};
 
-        void libc_register_frame(const char *Entry) JL_NOTSAFEPOINT;
+        void libc_register_frame(const char *Entry);
 
-        void libc_deregister_frame(const char *Entry) JL_NOTSAFEPOINT;
+        void libc_deregister_frame(const char *Entry);
 #endif
     };
 private:
@@ -106,7 +106,7 @@ private:
         std::unique_ptr<const llvm::object::ObjectFile> object;
         std::unique_ptr<llvm::DIContext> context;
         LazyObjectInfo() = delete;
-        ~LazyObjectInfo() JL_NOTSAFEPOINT = default;
+        ~LazyObjectInfo() = default;
     };
 
     struct SectionInfo {
@@ -115,7 +115,7 @@ private:
         uint64_t slide;
         uint64_t SectionIndex;
         SectionInfo() = delete;
-        ~SectionInfo() JL_NOTSAFEPOINT = default;
+        ~SectionInfo() = default;
     };
 
     template<typename KeyT, typename ValT>
@@ -133,19 +133,19 @@ private:
 
 public:
 
-    JITDebugInfoRegistry() JL_NOTSAFEPOINT;
-    ~JITDebugInfoRegistry() JL_NOTSAFEPOINT = default;
+    JITDebugInfoRegistry();
+    ~JITDebugInfoRegistry() = default;
 
     libc_frames_t libc_frames{};
 
-    jl_code_instance_t *lookupCodeInstance(size_t pointer) JL_NOTSAFEPOINT;
+    jl_code_instance_t *lookupCodeInstance(size_t pointer);
     void registerJITObject(const llvm::object::ObjectFile &Object,
                            std::function<uint64_t(const llvm::StringRef &)> getLoadAddress,
-                           const jl_linker_info_t &Info) JL_NOTSAFEPOINT;
-    objectmap_t& getObjectMap() JL_NOTSAFEPOINT;
-    void add_image_info(image_info_t info) JL_NOTSAFEPOINT;
-    bool get_image_info(uint64_t base, image_info_t *info) const JL_NOTSAFEPOINT;
-    Locked<objfilemap_t>::LockT get_objfile_map() JL_NOTSAFEPOINT JL_NOTSAFEPOINT_ENTER;
+                           const jl_linker_info_t &Info);
+    objectmap_t& getObjectMap();
+    void add_image_info(image_info_t info);
+    bool get_image_info(uint64_t base, image_info_t *info) const;
+    Locked<objfilemap_t>::LockT get_objfile_map() JL_NOTSAFEPOINT_ENTER;
 
     std::shared_mutex symbol_mutex;
 };

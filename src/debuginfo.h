@@ -2,13 +2,13 @@
 
 // Declarations for debuginfo.cpp
 int jl_DI_for_fptr(uint64_t fptr, uint64_t *symsize, uint64_t *slide,
-        llvm::object::SectionRef *Section, llvm::DIContext **context) JL_NOTSAFEPOINT;
+        llvm::object::SectionRef *Section, llvm::DIContext **context);
 
 bool jl_dylib_DI_for_fptr(size_t pointer, llvm::object::SectionRef *Section, uint64_t *slide, llvm::DIContext **context,
-    bool onlyImage, bool *isImage, uint64_t* fbase, void **saddr, char **name, char **filename) JL_NOTSAFEPOINT;
+    bool onlyImage, bool *isImage, uint64_t* fbase, void **saddr, char **name, char **filename);
 
 static object::SectionedAddress makeAddress(
-        llvm::object::SectionRef Section, uint64_t address) JL_NOTSAFEPOINT
+        llvm::object::SectionRef Section, uint64_t address)
 {
     return object::SectionedAddress{address, Section.getIndex()};
 }

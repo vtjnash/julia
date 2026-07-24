@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-JL_DLLEXPORT void libsupport_init(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void libsupport_init(void);
 
 #ifdef __cplusplus
 }

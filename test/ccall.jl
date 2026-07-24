@@ -2053,7 +2053,7 @@ let llvm = sprint(code_llvm, world_counter, ())
 end
 
 function gc_safe_ccall()
-    # jl_rand is marked as JL_NOTSAFEPOINT
+    # jl_rand is not a safepoint
     Base.@assume_effects :nothrow @ccall gc_safe=true jl_rand()::UInt64
 end
 

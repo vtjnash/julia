@@ -105,7 +105,7 @@ static inline int jl_table_assign_bp(jl_genericmemory_t **pa, jl_value_t *key, j
 }
 
 /* returns bp if key is in hash, otherwise NULL */
-inline _Atomic(jl_value_t*) *jl_table_peek_bp(jl_genericmemory_t *a, jl_value_t *key) JL_NOTSAFEPOINT
+inline _Atomic(jl_value_t*) *jl_table_peek_bp(jl_genericmemory_t *a, jl_value_t *key)
 {
     size_t sz = hash_size(a);
     if (sz == 0)
@@ -149,13 +149,13 @@ jl_genericmemory_t *jl_eqtable_put(jl_genericmemory_t *h, jl_value_t *key, jl_va
 // Note: lookup in the IdDict is permitted concurrently, if you avoid deletions,
 // and assuming you do use an external lock around all insertions
 JL_DLLEXPORT
-jl_value_t *jl_eqtable_get(jl_genericmemory_t *h, jl_value_t *key, jl_value_t *deflt) JL_NOTSAFEPOINT
+jl_value_t *jl_eqtable_get(jl_genericmemory_t *h, jl_value_t *key, jl_value_t *deflt)
 {
     _Atomic(jl_value_t*) *bp = jl_table_peek_bp(h, key);
     return (bp == NULL) ? deflt : jl_atomic_load_relaxed(bp);
 }
 
-jl_value_t *jl_eqtable_getkey(jl_genericmemory_t *h, jl_value_t *key, jl_value_t *deflt) JL_NOTSAFEPOINT
+jl_value_t *jl_eqtable_getkey(jl_genericmemory_t *h, jl_value_t *key, jl_value_t *deflt)
 {
     _Atomic(jl_value_t*) *bp = jl_table_peek_bp(h, key);
     return (bp == NULL) ? deflt : jl_atomic_load_relaxed(bp - 1);

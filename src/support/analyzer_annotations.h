@@ -43,7 +43,7 @@
 //
 // -- Safepoint annotations (on function prototypes) --
 //
-//   JL_NOTSAFEPOINT   legacy annotation (unused).
+//     legacy annotation (unused).
 //   JL_CANSAFEPOINT   The function may reach a GC safepoint (may trigger GC), so
 //                     callers must keep live values rooted across the call.
 //   JL_NOTSAFEPOINT_ENTER   The function enters a no-safepoint region (e.g.
@@ -132,7 +132,6 @@
 #ifdef __clang_gcanalyzer__
 
 #define JL_PROPAGATES_ROOT __attribute__((annotate("julia_propagates_root")))
-#define JL_NOTSAFEPOINT
 #define JL_CANSAFEPOINT __attribute__((annotate("julia_can_safepoint")))
 #define JL_CANSAFEPOINT_ENTER_LEAVE __attribute__((annotate("julia_can_safepoint")))
 #define JL_NOTSAFEPOINT_LEAVE_ENTER
@@ -158,8 +157,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-  void JL_GC_PROMISE_ROOTED(const void *v) JL_NOTSAFEPOINT;
-  void jl_may_leak(const void *v) JL_NOTSAFEPOINT;
+  void JL_GC_PROMISE_ROOTED(const void *v);
+  void jl_may_leak(const void *v);
 #ifdef __cplusplus
 }
 #endif
@@ -185,7 +184,6 @@ extern struct GCUNSAFEREGION *jl_gcunsaferegion;
 #endif
 
 #define JL_PROPAGATES_ROOT
-#define JL_NOTSAFEPOINT
 #define JL_CANSAFEPOINT __attribute__((requires_capability(jl_gcunsaferegion), requires_capability(!jl_notsafepoint)))
 #define JL_CANSAFEPOINT_ENTER __attribute__((requires_capability(!jl_gcunsaferegion), acquire_capability(jl_gcunsaferegion), requires_capability(!jl_notsafepoint)))
 #define JL_CANSAFEPOINT_LEAVE __attribute__((release_capability(jl_gcunsaferegion), requires_capability(!jl_notsafepoint)))
@@ -215,7 +213,6 @@ extern struct GCUNSAFEREGION *jl_gcunsaferegion;
 #else
 
 #define JL_PROPAGATES_ROOT
-#define JL_NOTSAFEPOINT
 #define JL_CANSAFEPOINT
 #define JL_CANSAFEPOINT_ENTER
 #define JL_CANSAFEPOINT_LEAVE

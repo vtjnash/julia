@@ -45,7 +45,7 @@ typedef struct _jl_ast_context_t {
 static jl_ast_context_t jl_ast_main_ctx;
 
 #ifdef __clang_gcanalyzer__
-extern jl_ast_context_t *jl_ast_ctx(fl_context_t *fl) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT;
+extern jl_ast_context_t *jl_ast_ctx(fl_context_t *fl) JL_GLOBALLY_ROOTED;
 #else
 #define jl_ast_ctx(fl_ctx) container_of(fl_ctx, jl_ast_context_t, fl)
 #endif
@@ -62,7 +62,7 @@ static jl_value_t *jl_expand_macros(jl_value_t *expr, jl_module_t *inmodule, str
 #ifdef __clang_gcanalyzer__
 // this definition causes bugs in the new gc-analyzer (because it tracks e->args instead of e)
 #undef jl_exprargset
-extern void jl_exprargset(jl_array_t *a, size_t i, jl_value_t *v) JL_NOTSAFEPOINT;
+extern void jl_exprargset(jl_array_t *a, size_t i, jl_value_t *v);
 #endif
 
 static jl_sym_t *scmsym_to_julia(fl_context_t *fl_ctx, value_t s)
@@ -166,7 +166,7 @@ static const builtinspec_t julia_flisp_ast_ext[] = { // TODO: can we kill these 
     { NULL, NULL }
 };
 
-static void jl_init_ast_ctx(jl_ast_context_t *ctx) JL_NOTSAFEPOINT
+static void jl_init_ast_ctx(jl_ast_context_t *ctx)
 {
     fl_context_t *fl_ctx = &ctx->fl;
     fl_init(fl_ctx, 4*1024*1024);
@@ -194,7 +194,7 @@ static void jl_init_ast_ctx(jl_ast_context_t *ctx) JL_NOTSAFEPOINT
 static uv_mutex_t flisp_lock;
 static jl_ast_context_t *jl_ast_ctx_freed = NULL;
 
-static jl_ast_context_t *jl_ast_ctx_enter(jl_module_t *m) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT
+static jl_ast_context_t *jl_ast_ctx_enter(jl_module_t *m) JL_GLOBALLY_ROOTED
 {
     JL_SIGATOMIC_BEGIN();
     uv_mutex_lock(&flisp_lock);
@@ -213,7 +213,7 @@ static jl_ast_context_t *jl_ast_ctx_enter(jl_module_t *m) JL_GLOBALLY_ROOTED JL_
     return ctx;
 }
 
-static void jl_ast_ctx_leave_(jl_ast_context_t *ctx) JL_NOTSAFEPOINT
+static void jl_ast_ctx_leave_(jl_ast_context_t *ctx)
 {
     uv_mutex_lock(&flisp_lock);
     ctx->module = NULL;
@@ -626,7 +626,7 @@ static value_t julia_to_list2(fl_context_t *fl_ctx, jl_value_t *a, jl_value_t *b
     return l;
 }
 
-static int julia_to_scm_noalloc1(fl_context_t *fl_ctx, jl_value_t *v, value_t *retval) JL_NOTSAFEPOINT
+static int julia_to_scm_noalloc1(fl_context_t *fl_ctx, jl_value_t *v, value_t *retval)
 {
     if (v == NULL)
         lerror(fl_ctx, symbol(fl_ctx, "error"), "undefined reference in AST");
@@ -643,7 +643,7 @@ static int julia_to_scm_noalloc1(fl_context_t *fl_ctx, jl_value_t *v, value_t *r
     return 1;
 }
 
-static value_t julia_to_scm_noalloc2(fl_context_t *fl_ctx, jl_value_t *v, int check_valid) JL_NOTSAFEPOINT
+static value_t julia_to_scm_noalloc2(fl_context_t *fl_ctx, jl_value_t *v, int check_valid)
 {
     if (jl_is_long(v)) {
         if (fits_fixnum(jl_unbox_long(v))) {
@@ -670,7 +670,7 @@ static value_t julia_to_scm_noalloc2(fl_context_t *fl_ctx, jl_value_t *v, int ch
     return opaque;
 }
 
-static value_t julia_to_scm_noalloc(fl_context_t *fl_ctx, jl_value_t *v, int check_valid) JL_NOTSAFEPOINT
+static value_t julia_to_scm_noalloc(fl_context_t *fl_ctx, jl_value_t *v, int check_valid)
 {
     value_t retval;
     if (julia_to_scm_noalloc1(fl_ctx, v, &retval))
@@ -684,7 +684,7 @@ static value_t julia_to_scm_noalloc(fl_context_t *fl_ctx, jl_value_t *v, int che
     return julia_to_scm_noalloc2(fl_ctx, v, check_valid);
 }
 
-static value_t julia_to_list2_noalloc(fl_context_t *fl_ctx, jl_value_t *a, jl_value_t *b, int check_valid) JL_NOTSAFEPOINT
+static value_t julia_to_list2_noalloc(fl_context_t *fl_ctx, jl_value_t *a, jl_value_t *b, int check_valid)
 {
     value_t sa = julia_to_scm_noalloc(fl_ctx, a, check_valid);
     fl_gc_handle(fl_ctx, &sa);
@@ -945,7 +945,7 @@ JL_DLLEXPORT int jl_operator_precedence(const char *sym)
     return res;
 }
 
-int jl_has_meta(jl_array_t *body, jl_sym_t *sym) JL_NOTSAFEPOINT
+int jl_has_meta(jl_array_t *body, jl_sym_t *sym)
 {
     size_t i, l = jl_array_nrows(body);
     for (i = 0; i < l; i++) {
@@ -963,7 +963,7 @@ int jl_has_meta(jl_array_t *body, jl_sym_t *sym) JL_NOTSAFEPOINT
 // Utility function to return whether `e` is any of the special AST types or
 // will always evaluate to itself exactly unchanged. This corresponds to
 // `isa_ast_node` in Core.Compiler utilities.
-int jl_isa_ast_node(jl_value_t *e) JL_NOTSAFEPOINT
+int jl_isa_ast_node(jl_value_t *e)
 {
     return jl_is_newvarnode(e)
         || jl_is_code_info(e)
@@ -985,7 +985,7 @@ int jl_isa_ast_node(jl_value_t *e) JL_NOTSAFEPOINT
         || jl_is_expr(e);
 }
 
-static int is_self_escaping_expr(jl_expr_t *e) JL_NOTSAFEPOINT
+static int is_self_escaping_expr(jl_expr_t *e)
 {
     return (e->head == jl_inert_sym ||
             e->head == jl_leave_sym ||
@@ -1000,7 +1000,7 @@ static int is_self_escaping_expr(jl_expr_t *e) JL_NOTSAFEPOINT
 
 // any AST, except those that cannot contain symbols
 // and have no side effects
-static int need_esc_node(jl_value_t *e) JL_NOTSAFEPOINT
+static int need_esc_node(jl_value_t *e)
 {
     if (jl_is_linenode(e)
         || jl_is_ssavalue(e)

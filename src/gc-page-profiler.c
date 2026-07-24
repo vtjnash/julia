@@ -16,7 +16,7 @@ ios_t *page_profile_stream;
 // mutex for page profile
 uv_mutex_t page_profile_lock;
 
-gc_page_profiler_serializer_t gc_page_serializer_create(void) JL_NOTSAFEPOINT
+gc_page_profiler_serializer_t gc_page_serializer_create(void)
 {
     gc_page_profiler_serializer_t serializer;
     if (__unlikely(page_profile_enabled)) {
@@ -31,7 +31,7 @@ gc_page_profiler_serializer_t gc_page_serializer_create(void) JL_NOTSAFEPOINT
 }
 
 void gc_page_serializer_init(gc_page_profiler_serializer_t *serializer,
-                             jl_gc_pagemeta_t *pg) JL_NOTSAFEPOINT
+                             jl_gc_pagemeta_t *pg)
 {
     if (__unlikely(page_profile_enabled)) {
         serializer->typestrs.len = 0;
@@ -42,7 +42,7 @@ void gc_page_serializer_init(gc_page_profiler_serializer_t *serializer,
     }
 }
 
-void gc_page_serializer_destroy(gc_page_profiler_serializer_t *serializer) JL_NOTSAFEPOINT
+void gc_page_serializer_destroy(gc_page_profiler_serializer_t *serializer)
 {
     if (__unlikely(page_profile_enabled)) {
         arraylist_free(&serializer->typestrs);
@@ -51,30 +51,30 @@ void gc_page_serializer_destroy(gc_page_profiler_serializer_t *serializer) JL_NO
 }
 
 void gc_page_serializer_write(gc_page_profiler_serializer_t *serializer,
-                              const char *str) JL_NOTSAFEPOINT
+                              const char *str)
 {
     if (__unlikely(page_profile_enabled)) {
         arraylist_push(&serializer->typestrs, (void *)str);
     }
 }
 
-void gc_enable_page_profile(void) JL_NOTSAFEPOINT
+void gc_enable_page_profile(void)
 {
     page_profile_enabled = 1;
 }
 
-void gc_disable_page_profile(void) JL_NOTSAFEPOINT
+void gc_disable_page_profile(void)
 {
     page_profile_enabled = 0;
 }
 
-int gc_page_profile_is_enabled(void) JL_NOTSAFEPOINT
+int gc_page_profile_is_enabled(void)
 {
     return page_profile_enabled;
 }
 
 static void gc_page_profile_write_preamble(gc_page_profiler_serializer_t *serializer)
-    JL_NOTSAFEPOINT
+   
 {
     if (__unlikely(page_profile_enabled)) {
         char str[4096];
@@ -86,7 +86,7 @@ static void gc_page_profile_write_preamble(gc_page_profiler_serializer_t *serial
 }
 
 static void gc_page_profile_write_epilogue(gc_page_profiler_serializer_t *serializer)
-    JL_NOTSAFEPOINT
+   
 {
     if (__unlikely(page_profile_enabled)) {
         const char *str = "]}";
@@ -94,7 +94,7 @@ static void gc_page_profile_write_epilogue(gc_page_profiler_serializer_t *serial
     }
 }
 
-static void gc_page_profile_write_comma(gc_page_profiler_serializer_t *serializer) JL_NOTSAFEPOINT
+static void gc_page_profile_write_comma(gc_page_profiler_serializer_t *serializer)
 {
     if (__unlikely(page_profile_enabled)) {
         // write comma if not first page
@@ -106,7 +106,7 @@ static void gc_page_profile_write_comma(gc_page_profiler_serializer_t *serialize
 }
 
 void gc_page_profile_write_to_file(gc_page_profiler_serializer_t *serializer)
-    JL_NOTSAFEPOINT
+   
 {
     size_t large_enough_str_size = 4096;
     if (__unlikely(page_profile_enabled)) {
@@ -143,7 +143,7 @@ void gc_page_profile_write_to_file(gc_page_profiler_serializer_t *serializer)
     }
 }
 
-static void gc_page_profile_write_json_preamble(ios_t *stream) JL_NOTSAFEPOINT
+static void gc_page_profile_write_json_preamble(ios_t *stream)
 {
     if (__unlikely(page_profile_enabled)) {
         uv_mutex_lock(&page_profile_lock);
@@ -153,7 +153,7 @@ static void gc_page_profile_write_json_preamble(ios_t *stream) JL_NOTSAFEPOINT
     }
 }
 
-static void gc_page_profile_write_json_epilogue(ios_t *stream) JL_NOTSAFEPOINT
+static void gc_page_profile_write_json_epilogue(ios_t *stream)
 {
     if (__unlikely(page_profile_enabled)) {
         uv_mutex_lock(&page_profile_lock);

@@ -55,7 +55,7 @@ JL_BUILTIN_FUNCTIONS(BUILTIN_NAMES)
 
 // egal and object_id ---------------------------------------------------------
 
-static int bits_equal(const void *a, const void *b, int sz) JL_NOTSAFEPOINT
+static int bits_equal(const void *a, const void *b, int sz)
 {
     switch (sz) {
     case 1:  return *(uint8_t*)a == *(uint8_t*)b;
@@ -86,7 +86,7 @@ static int bits_equal(const void *a, const void *b, int sz) JL_NOTSAFEPOINT
 // The solution is to keep the code in jl_egal simple and split out the
 // (more) complex cases into their own functions which are marked with
 // NOINLINE.
-static int NOINLINE compare_svec(jl_svec_t *a, jl_svec_t *b) JL_NOTSAFEPOINT
+static int NOINLINE compare_svec(jl_svec_t *a, jl_svec_t *b)
 {
     size_t i, l = jl_svec_len(a);
     if (l != jl_svec_len(b))
@@ -98,13 +98,13 @@ static int NOINLINE compare_svec(jl_svec_t *a, jl_svec_t *b) JL_NOTSAFEPOINT
     return 1;
 }
 
-static inline uint8_t last_byte_mask(jl_datatype_t *dt) JL_NOTSAFEPOINT
+static inline uint8_t last_byte_mask(jl_datatype_t *dt)
 {
     uint32_t unused = jl_datatype_unusedbits(dt);
     return (uint8_t)(0xff >> unused);
 }
 
-static inline int primitive_bits_equal(const void *a, const void *b, jl_datatype_t *dt) JL_NOTSAFEPOINT
+static inline int primitive_bits_equal(const void *a, const void *b, jl_datatype_t *dt)
 {
     size_t sz = jl_datatype_size(dt);
     if (sz == 0)
@@ -114,7 +114,7 @@ static inline int primitive_bits_equal(const void *a, const void *b, jl_datatype
 }
 
 // See comment above for an explanation of NOINLINE.
-static int NOINLINE compare_fields(const jl_value_t *a, const jl_value_t *b, jl_datatype_t *dt) JL_NOTSAFEPOINT
+static int NOINLINE compare_fields(const jl_value_t *a, const jl_value_t *b, jl_datatype_t *dt)
 {
     size_t nf = jl_datatype_nfields(dt);
     // npointers is used at end, but fetched here for locality with nfields.
@@ -186,7 +186,7 @@ static int NOINLINE compare_fields(const jl_value_t *a, const jl_value_t *b, jl_
     return 1;
 }
 
-static int egal_types(const jl_value_t *a, const jl_value_t *b, jl_typeenv_t *env, int tvar_names) JL_NOTSAFEPOINT
+static int egal_types(const jl_value_t *a, const jl_value_t *b, jl_typeenv_t *env, int tvar_names)
 {
     if (a == b)
         return 1;
@@ -259,19 +259,19 @@ JL_DLLEXPORT int jl_types_struct_equiv(jl_value_t *a, jl_value_t *b)
     return egal_types(a, b, NULL, 0);
 }
 
-JL_DLLEXPORT int (jl_egal)(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED) JL_NOTSAFEPOINT
+JL_DLLEXPORT int (jl_egal)(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED)
 {
     // warning: a,b may NOT have been gc-rooted by the caller
     return jl_egal(a, b);
 }
 
-JL_DLLEXPORT int jl_egal__unboxed(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED, uintptr_t dtag) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_egal__unboxed(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED, uintptr_t dtag)
 {
     // warning: a,b may NOT have been gc-rooted by the caller
     return jl_egal__unboxed_(a, b, dtag);
 }
 
-JL_DLLEXPORT int jl_egal__bitstag(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED, uintptr_t dtag) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_egal__bitstag(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED, uintptr_t dtag)
 {
     if (dtag < jl_max_tags << 4) {
         switch ((enum jl_small_typeof_tags)(dtag >> 4)) {
@@ -360,7 +360,7 @@ JL_DLLEXPORT int jl_egal__bitstag(const jl_value_t *a JL_MAYBE_UNROOTED, const j
     return jl_egal__bits(a, b, (jl_datatype_t*)dtag);
 }
 
-inline int jl_egal__bits(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED, jl_datatype_t *dt) JL_NOTSAFEPOINT
+inline int jl_egal__bits(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t *b JL_MAYBE_UNROOTED, jl_datatype_t *dt)
 {
     size_t sz = jl_datatype_size(dt);
     if (sz == 0)
@@ -375,7 +375,7 @@ inline int jl_egal__bits(const jl_value_t *a JL_MAYBE_UNROOTED, const jl_value_t
 
 // object_id ------------------------------------------------------------------
 
-static uintptr_t bits_hash(const void *b, size_t sz) JL_NOTSAFEPOINT
+static uintptr_t bits_hash(const void *b, size_t sz)
 {
     switch (sz) {
     case 1:  return int32hash(*(const int8_t*)b);
@@ -395,7 +395,7 @@ static uintptr_t bits_hash(const void *b, size_t sz) JL_NOTSAFEPOINT
     }
 }
 
-static uintptr_t NOINLINE hash_svec(jl_svec_t *v) JL_NOTSAFEPOINT
+static uintptr_t NOINLINE hash_svec(jl_svec_t *v)
 {
     uintptr_t h = 0;
     size_t i, l = jl_svec_len(v);
@@ -407,14 +407,14 @@ static uintptr_t NOINLINE hash_svec(jl_svec_t *v) JL_NOTSAFEPOINT
     return h;
 }
 
-static uintptr_t immut_id_(jl_datatype_t *dt, jl_value_t *v, uintptr_t h) JL_NOTSAFEPOINT;
+static uintptr_t immut_id_(jl_datatype_t *dt, jl_value_t *v, uintptr_t h);
 
 typedef struct _varidx {
     jl_tvar_t *var;
     struct _varidx *prev;
 } jl_varidx_t;
 
-static uintptr_t type_object_id_(jl_value_t *v, jl_varidx_t *env) JL_NOTSAFEPOINT
+static uintptr_t type_object_id_(jl_value_t *v, jl_varidx_t *env)
 {
     if (v == NULL)
         return 0;
@@ -476,7 +476,7 @@ static uintptr_t type_object_id_(jl_value_t *v, jl_varidx_t *env) JL_NOTSAFEPOIN
     return immut_id_(tv, v, tv->hash);
 }
 
-static uintptr_t immut_id_(jl_datatype_t *dt, jl_value_t *v, uintptr_t h) JL_NOTSAFEPOINT
+static uintptr_t immut_id_(jl_datatype_t *dt, jl_value_t *v, uintptr_t h)
 {
     size_t sz = jl_datatype_size(dt);
     if (sz == 0)
@@ -529,7 +529,7 @@ static uintptr_t immut_id_(jl_datatype_t *dt, jl_value_t *v, uintptr_t h) JL_NOT
     return h;
 }
 
-static uintptr_t NOINLINE jl_object_id__cold(uintptr_t tv, jl_value_t *v) JL_NOTSAFEPOINT
+static uintptr_t NOINLINE jl_object_id__cold(uintptr_t tv, jl_value_t *v)
 {
     jl_datatype_t *dt = (jl_datatype_t*)jl_to_typeof(tv);
     if (dt->name->mutabl) {
@@ -559,7 +559,7 @@ static uintptr_t NOINLINE jl_object_id__cold(uintptr_t tv, jl_value_t *v) JL_NOT
     return immut_id_(dt, v, dt->hash);
 }
 
-JL_DLLEXPORT inline uintptr_t jl_object_id_(uintptr_t tv, jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT inline uintptr_t jl_object_id_(uintptr_t tv, jl_value_t *v)
 {
     if (tv == jl_symbol_tag << 4) {
         return ((jl_sym_t*)v)->hash;
@@ -578,7 +578,7 @@ JL_DLLEXPORT inline uintptr_t jl_object_id_(uintptr_t tv, jl_value_t *v) JL_NOTS
 }
 
 
-JL_DLLEXPORT uintptr_t jl_object_id(jl_value_t *v) JL_NOTSAFEPOINT
+JL_DLLEXPORT uintptr_t jl_object_id(jl_value_t *v)
 {
     return jl_object_id_(jl_typetagof(v), v);
 }
@@ -2398,7 +2398,7 @@ static int equiv_field_types(jl_value_t *old, jl_value_t *ft) JL_CANSAFEPOINT
 // would be possible, so we cannot change the layout now if so.
 // affects_layout is a (conservative) analysis of layout_uses_free_typevars
 // freevars is a (conservative) analysis of what calling jl_has_bound_typevars from name->wrapper gives (TODO: just call this instead?)
-static int references_name(jl_value_t *p, jl_typename_t *name, int affects_layout, int freevars) JL_NOTSAFEPOINT
+static int references_name(jl_value_t *p, jl_typename_t *name, int affects_layout, int freevars)
 {
     if (freevars && !jl_has_free_typevars(p))
         freevars = 0;

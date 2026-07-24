@@ -106,7 +106,7 @@ typedef struct {
 
 // System-wide initialization function. Responsible for initializing global locks as well as
 // global memory parameters (e.g. target heap size) used by the collector.
-void jl_gc_init(void) JL_NOTSAFEPOINT;
+void jl_gc_init(void);
 // Spawns GC threads.
 void jl_start_gc_threads(void);
 
@@ -117,7 +117,7 @@ void jl_start_gc_threads(void);
 // Initializes thread-local data structures such as thread-local object pools,
 // thread-local remembered sets and thread-local allocation counters.
 // Should be called exactly once per Julia thread.
-void jl_init_thread_heap(struct _jl_tls_states_t *ptls) JL_NOTSAFEPOINT;
+void jl_init_thread_heap(struct _jl_tls_states_t *ptls);
 // Deallocates any memory previously used for thread-local GC data structures.
 // Mostly used to ensure that we perform this memory cleanup for foreign threads that are
 // about to leave Julia.
@@ -138,12 +138,12 @@ JL_DLLEXPORT int jl_gc_enable(int on);
 // Returns whether the collector is enabled.
 JL_DLLEXPORT int jl_gc_is_enabled(void);
 // Sets a soft limit to Julia's heap.
-JL_DLLEXPORT void jl_gc_set_max_memory(uint64_t max_mem) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_set_max_memory(uint64_t max_mem);
 // Runs a GC cycle. This function's parameter determines whether we're running an
 // incremental, full, or automatic (i.e. heuristic driven) collection.
 JL_DLLEXPORT void jl_gc_collect(jl_gc_collection_t collection) JL_CANSAFEPOINT;
 // Returns whether the thread with `tid` is a collector thread
-JL_DLLEXPORT int gc_is_collector_thread(int tid) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int gc_is_collector_thread(int tid);
 // Enables or disables automatic full (non-generational) collections.
 // When disabled (on == 0), automatic collections will only be incremental
 // (young generation only). Explicit full collections via jl_gc_collect(JL_GC_FULL)
@@ -153,11 +153,11 @@ JL_DLLEXPORT int jl_gc_enable_auto_full_collection(int on);
 JL_DLLEXPORT int jl_gc_auto_full_collection_is_enabled(void);
 // Returns which GC implementation is being used and possibly its version according to the list of supported GCs
 // NB: it should clearly identify the GC by including e.g. 'stock' or 'mmtk' as a substring.
-JL_DLLEXPORT const char* jl_gc_active_impl(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT const char* jl_gc_active_impl(void);
 // Sweep Julia's stack pools and mtarray buffers. Note that this function has been added to the interface as
 // each GC should implement it but it will most likely not be used by other code in the runtime.
 // It still needs to be annotated with JL_DLLEXPORT since it is called from Rust by MMTk.
-JL_DLLEXPORT void jl_gc_sweep_stack_pools_and_mtarraylist_buffers(jl_ptls_t ptls) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_sweep_stack_pools_and_mtarraylist_buffers(jl_ptls_t ptls);
 
 // ========================================================================= //
 // Metrics
@@ -168,12 +168,12 @@ JL_DLLEXPORT jl_gc_num_t jl_gc_num(void);
 // Returns the difference between the current value of total live bytes now
 // (live bytes at the last collection plus number of bytes allocated since then),
 // compared to the value at the last time this function was called.
-JL_DLLEXPORT int64_t jl_gc_diff_total_bytes(void) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int64_t jl_gc_diff_total_bytes(void);
 // Returns the difference between the current value of total live bytes now
 // (live bytes at the last collection plus number of bytes allocated since then)
 // compared to the value at the last time this function was called. The offset parameter
 // is subtracted from this value in order to obtain the return value.
-JL_DLLEXPORT int64_t jl_gc_sync_total_bytes(int64_t offset) JL_NOTSAFEPOINT;
+JL_DLLEXPORT int64_t jl_gc_sync_total_bytes(int64_t offset);
 // Returns the number of pool allocated bytes. This could always return 0 for GC
 // implementations that do not use pools.
 JL_DLLEXPORT int64_t jl_gc_pool_live_bytes(void);
@@ -182,7 +182,7 @@ JL_DLLEXPORT int64_t jl_gc_pool_live_bytes(void);
 JL_DLLEXPORT int64_t jl_gc_live_bytes(void);
 // Stores the number of live bytes at the end of the last collection cycle plus the number
 // of bytes we allocated since then into the 64-bit integer pointer passed as an argument.
-JL_DLLEXPORT void jl_gc_get_total_bytes(int64_t *bytes) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_get_total_bytes(int64_t *bytes);
 // Retrieves the value of Julia's soft heap limit.
 JL_DLLEXPORT uint64_t jl_gc_get_max_memory(void);
 // High-resolution (nano-seconds) value of total time spent in GC.
@@ -246,7 +246,7 @@ JL_DLLEXPORT struct _jl_weakref_t *jl_gc_new_weakref_th(struct _jl_tls_states_t 
 // specified in the fourth parameter will be aligned according to the value given by the
 // third parameter in bytes.
 JL_DLLEXPORT void *jl_gc_perm_alloc(size_t sz, int zero, unsigned align,
-                                    unsigned offset) JL_NOTSAFEPOINT;
+                                    unsigned offset);
 // Permanently allocates an object of the size specified by the first parameter. Size of the
 // object header must be included in the object size. This object is allocated in an
 // immortal region that is never swept. The second parameter specifies the type of the
@@ -259,15 +259,15 @@ JL_DLLEXPORT void *jl_gc_perm_alloc(size_t sz, int zero, unsigned align,
 //              necessarily mark any objects that would have ordinarily been rooted by
 //              the allocated object. All objects stored in fields of this object
 //              must be either permanently allocated or have other roots.
-struct _jl_value_t *jl_gc_permobj(struct _jl_tls_states_t *ptls, size_t sz, void *ty, unsigned align) JL_NOTSAFEPOINT;
+struct _jl_value_t *jl_gc_permobj(struct _jl_tls_states_t *ptls, size_t sz, void *ty, unsigned align);
 // This function notifies the GC about memory addresses that are set when loading the boot image.
 // The GC may use that information to, for instance, determine that such objects should
 // be treated as marked and belonged to the old generation in nursery collections.
-void jl_gc_notify_image_load(const char* img_data, size_t len) JL_NOTSAFEPOINT;
+void jl_gc_notify_image_load(const char* img_data, size_t len);
 // This function notifies the GC about memory addresses that are set when allocating the boot image.
 // The GC may use that information to, for instance, determine that all objects in that chunk of memory should
 // be treated as marked and belonged to the old generation in nursery collections.
-void jl_gc_notify_image_alloc(const char* img_data, size_t len) JL_NOTSAFEPOINT;
+void jl_gc_notify_image_alloc(const char* img_data, size_t len);
 
 // ========================================================================= //
 // Runtime Write-Barriers
@@ -275,59 +275,59 @@ void jl_gc_notify_image_alloc(const char* img_data, size_t len) JL_NOTSAFEPOINT;
 
 // Write barrier slow-path. If a generational collector is used,
 // it may enqueue an old object into the remembered set of the calling thread.
-JL_DLLEXPORT void jl_gc_queue_root(const struct _jl_value_t *ptr) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_queue_root(const struct _jl_value_t *ptr);
 // Dedicated slow-path for `jl_gc_wb`. If a generational collector is used,
 // it may enqueue an old object into the remembered set of the calling thread.
-JL_DLLEXPORT void jl_gc_wb_cold(const void *parent, const void *ptr) JL_NOTSAFEPOINT;
+JL_DLLEXPORT void jl_gc_wb_cold(const void *parent, const void *ptr);
 // In a generational collector is used, this function walks over the fields of the
 // object specified by the second parameter (as defined by the data type in the third
 // parameter). If a field points to a young object, the first parameter is enqueued into the
 // remembered set of the calling thread.
 JL_DLLEXPORT void jl_gc_queue_multiroot(const struct _jl_value_t *root, const void *stored,
-                                        struct _jl_datatype_t *dt) JL_NOTSAFEPOINT;
+                                        struct _jl_datatype_t *dt);
 // If a generational collector is used, checks whether the function argument points to an
 // old object, and if so, calls the write barrier slow path above. In most cases, this
 // function is used when its caller has verified that there is a young reference in the
 // object that's being passed as an argument to this function.
-STATIC_INLINE void jl_gc_wb_back(const void *ptr) JL_NOTSAFEPOINT;
+STATIC_INLINE void jl_gc_wb_back(const void *ptr);
 // Write barrier function that must be used after pointer writes to heap-allocated objects –
 // the value of the field being written must also point to a heap-allocated object.
 // If a generational collector is used, it may check whether the two function arguments are
 // in different GC generations (i.e. if the first argument points to an old object and the
 // second argument points to a young object), and if so, call the write barrier slow-path.
-STATIC_INLINE void jl_gc_wb(const void *parent, const void *ptr) JL_NOTSAFEPOINT;
+STATIC_INLINE void jl_gc_wb(const void *parent, const void *ptr);
 // Freshly allocated objects are known to be in the young generation until the next safepoint,
 // so write barriers can be omitted until the next allocation. This function is a no-op that
 // can be used to annotate that a write barrier would be required were it not for this property
 // (as opposed to somebody just having forgotten to think about write barriers).
-STATIC_INLINE void jl_gc_wb_fresh(const void *parent JL_UNUSED, const void *ptr JL_UNUSED) JL_NOTSAFEPOINT {}
+STATIC_INLINE void jl_gc_wb_fresh(const void *parent JL_UNUSED, const void *ptr JL_UNUSED) {}
 // As an optimization, the current_task is explicitly added to the remset while it is running.
 // Upon deschedule, we conservatively move the write barrier into the young generation.
 // This allows the omission of write barriers for all GC roots on the current task stack (JL_GC_PUSH_*),
 // as well as the Task's explicit fields (but only for the current task).
 // This function is a no-op that can be used to annotate that a write barrier would be required were
 // it not for this property (as opposed to somebody just having forgotten to think about write barriers).
-STATIC_INLINE void jl_gc_wb_current_task(const void *parent JL_UNUSED, const void *ptr JL_UNUSED) JL_NOTSAFEPOINT {}
+STATIC_INLINE void jl_gc_wb_current_task(const void *parent JL_UNUSED, const void *ptr JL_UNUSED) {}
 // Used to annotate that a write barrier would be required, but may be omitted because `ptr`
 // is known to be an old object.
-STATIC_INLINE void jl_gc_wb_knownold(const void *parent JL_UNUSED, const void *ptr JL_UNUSED) JL_NOTSAFEPOINT {}
+STATIC_INLINE void jl_gc_wb_knownold(const void *parent JL_UNUSED, const void *ptr JL_UNUSED) {}
 // Write-barrier function that must be used after copying multiple fields of an object into
 // another. It should be semantically equivalent to triggering multiple write barriers – one
 // per field of the object being copied, but may be special-cased for performance reasons.
 STATIC_INLINE void jl_gc_multi_wb(const void *parent,
-                                  const struct _jl_value_t *ptr) JL_NOTSAFEPOINT;
+                                  const struct _jl_value_t *ptr);
 // Write-barrier function that must be used after copying fields of elements of genericmemory objects
 // into another. It should be semantically equivalent to triggering multiple write barriers – one
 // per field of the object being copied, but may be special-cased for performance reasons.
 STATIC_INLINE void jl_gc_wb_genericmemory_copy_ptr(const struct _jl_value_t *owner, struct _jl_genericmemory_t *src, char* src_p,
-                                          size_t n, struct _jl_datatype_t *dt) JL_NOTSAFEPOINT;
+                                          size_t n, struct _jl_datatype_t *dt);
 // Similar to jl_gc_wb_genericmemory_copy but must be used when copying *boxed* elements of a genericmemory
 // object. Note that this barrier also performs the copying unlike jl_gc_wb_genericmemory_copy_ptr.
 // `*dest_pp`, `*src_pp` and `*n` will be advanced past any elements the barrier copied inline, so that
 // the caller's trailing memmove_refs picks up where the barrier left off.
 STATIC_INLINE void jl_gc_wb_genericmemory_copy_boxed(const struct _jl_value_t *owner, _Atomic(void*) ** dest_pp,
                                           struct _jl_genericmemory_t *src, _Atomic(void*) ** src_pp,
-                                          size_t* n) JL_NOTSAFEPOINT;
+                                          size_t* n);
 #ifdef __cplusplus
 }
 #endif

@@ -61,7 +61,7 @@ uint64_t io_wakeup_enter;
 uint64_t io_wakeup_leave;
 );
 
-JL_DLLEXPORT int jl_set_task_tid(jl_task_t *task, int16_t tid) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_set_task_tid(jl_task_t *task, int16_t tid)
 {
     // Try to acquire the lock on this task.
     int16_t was = jl_atomic_load_relaxed(&task->tid);
@@ -72,7 +72,7 @@ JL_DLLEXPORT int jl_set_task_tid(jl_task_t *task, int16_t tid) JL_NOTSAFEPOINT
     return 0;
 }
 
-JL_DLLEXPORT int jl_set_task_threadpoolid(jl_task_t *task, int8_t tpid) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_set_task_threadpoolid(jl_task_t *task, int8_t tpid)
 {
     if (tpid < -1 || tpid >= jl_n_threadpools)
         return 0;
@@ -164,7 +164,7 @@ JL_DLLEXPORT int jl_running_under_rr(int recheck)
 
 
 //  sleep_check_after_threshold() -- if sleep_threshold ns have passed, return 1
-static int sleep_check_after_threshold(uint64_t *start_cycles) JL_NOTSAFEPOINT
+static int sleep_check_after_threshold(uint64_t *start_cycles)
 {
     JULIA_DEBUG_SLEEPWAKE( return 1 ); // hammer on the sleep/wake logic much harder
     /**
@@ -187,7 +187,7 @@ static int sleep_check_after_threshold(uint64_t *start_cycles) JL_NOTSAFEPOINT
     return 0;
 }
 
-void surprise_wakeup(jl_ptls_t ptls) JL_NOTSAFEPOINT
+void surprise_wakeup(jl_ptls_t ptls)
 {
     // equivalent to wake_thread, without the assert on wasrunning
     int8_t state = jl_atomic_load_relaxed(&ptls->sleep_check_state);
@@ -202,7 +202,7 @@ void surprise_wakeup(jl_ptls_t ptls) JL_NOTSAFEPOINT
 }
 
 
-static int set_not_sleeping(jl_ptls_t ptls) JL_NOTSAFEPOINT
+static int set_not_sleeping(jl_ptls_t ptls)
 {
     if (jl_atomic_load_relaxed(&ptls->sleep_check_state) != not_sleeping) {
         if (jl_atomic_exchange_relaxed(&ptls->sleep_check_state, not_sleeping) != not_sleeping) {
@@ -214,7 +214,7 @@ static int set_not_sleeping(jl_ptls_t ptls) JL_NOTSAFEPOINT
     return 0;
 }
 
-static int wake_thread(int16_t tid) JL_NOTSAFEPOINT
+static int wake_thread(int16_t tid)
 {
     jl_ptls_t ptls2 = jl_atomic_load_relaxed(&jl_all_tls_states)[tid];
 
@@ -234,7 +234,7 @@ static int wake_thread(int16_t tid) JL_NOTSAFEPOINT
 }
 
 
-static void wake_libuv(void) JL_NOTSAFEPOINT
+static void wake_libuv(void)
 {
     JULIA_DEBUG_SLEEPWAKE( io_wakeup_enter = cycleclock() );
     jl_wake_libuv();
@@ -243,7 +243,7 @@ static void wake_libuv(void) JL_NOTSAFEPOINT
 
 // Returns 1 if a sleeping thread was transitioned to running (i.e. the wake
 // added a running thread), 0 if the target was already awake or is the caller.
-static int wakeup_thread(jl_task_t *ct, int16_t tid) JL_NOTSAFEPOINT { // Pass in ptls when we have it already available to save a lookup
+static int wakeup_thread(jl_task_t *ct, int16_t tid) { // Pass in ptls when we have it already available to save a lookup
     int woke = 0;
     int16_t self = jl_atomic_load_relaxed(&ct->tid);
     if (tid != self)
@@ -426,7 +426,7 @@ void jl_task_wait_empty(void)
     }
 }
 
-static int may_sleep(jl_ptls_t ptls) JL_NOTSAFEPOINT
+static int may_sleep(jl_ptls_t ptls)
 {
     // sleep_check_state is only transitioned from not_sleeping to sleeping
     // by the thread itself. As a result, if this returns false, it will
@@ -627,7 +627,7 @@ JL_DLLEXPORT jl_task_t *jl_task_get_next(jl_value_t *trypoptask, jl_value_t *q, 
     }
 }
 
-void scheduler_delete_thread(jl_ptls_t ptls) JL_NOTSAFEPOINT
+void scheduler_delete_thread(jl_ptls_t ptls)
 {
     int notsleeping = jl_atomic_exchange_relaxed(&ptls->sleep_check_state, sleeping_like_the_dead) == not_sleeping;
     jl_fence();

@@ -27,8 +27,8 @@ typedef struct {
 extern "C" {
 #endif
 
-void jl_init_timing(void) JL_NOTSAFEPOINT;
-void jl_destroy_timing(void) JL_NOTSAFEPOINT;
+void jl_init_timing(void);
+void jl_destroy_timing(void);
 
 // Update the enable bit-mask to enable/disable tracing events for
 // the subsystem in `jl_timing_subsystems` matching the provided string.
@@ -368,7 +368,7 @@ struct _jl_timing_block_t { // typedef in julia.h
     uint8_t is_running;
 };
 
-STATIC_INLINE int _jl_timing_enabled(int subsystem) JL_NOTSAFEPOINT {
+STATIC_INLINE int _jl_timing_enabled(int subsystem) {
     return (jl_atomic_load_relaxed(jl_timing_disable_mask + subsystem / (sizeof(uint64_t) * CHAR_BIT)) & (1 << (subsystem % (sizeof(uint64_t) * CHAR_BIT)))) == 0;
 }
 
@@ -376,14 +376,14 @@ typedef struct _jl_timing_suspend_t {
     jl_task_t *ct;
 } jl_timing_suspend_t;
 
-STATIC_INLINE void _jl_timing_suspend_ctor(jl_timing_suspend_t *suspend, const char *subsystem, jl_task_t *ct) JL_NOTSAFEPOINT {
+STATIC_INLINE void _jl_timing_suspend_ctor(jl_timing_suspend_t *suspend, const char *subsystem, jl_task_t *ct) {
     suspend->ct = ct;
 #ifdef USE_TRACY
     TracyCFiberEnter(subsystem);
 #endif
 }
 
-STATIC_INLINE void _jl_timing_suspend_destroy(jl_timing_suspend_t *suspend) JL_NOTSAFEPOINT {
+STATIC_INLINE void _jl_timing_suspend_destroy(jl_timing_suspend_t *suspend) {
 #ifdef USE_TRACY
     TracyCFiberEnter(suspend->ct->name);
 #endif
@@ -431,7 +431,7 @@ typedef struct {
 
 JL_DLLEXPORT extern jl_timing_counter_t jl_timing_counters[JL_TIMING_COUNTER_LAST];
 
-static inline void jl_timing_counter_inc(int counter, uint64_t val) JL_NOTSAFEPOINT {
+static inline void jl_timing_counter_inc(int counter, uint64_t val) {
 #ifdef USE_ITTAPI
     __itt_counter_inc_delta(jl_timing_counters[counter].ittapi_counter, val);
 #endif
@@ -445,7 +445,7 @@ static inline void jl_timing_counter_inc(int counter, uint64_t val) JL_NOTSAFEPO
 #endif
 }
 
-static inline void jl_timing_counter_dec(int counter, uint64_t val) JL_NOTSAFEPOINT {
+static inline void jl_timing_counter_dec(int counter, uint64_t val) {
 #ifdef USE_ITTAPI
     __itt_counter_dec_delta(jl_timing_counters[counter].ittapi_counter, val);
 #endif

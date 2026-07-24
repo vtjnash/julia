@@ -25,7 +25,7 @@ static uv_cond_t engine_wait; // but it may be waiting a while in this state
 // vector of which threads are blocked and which lease they need
 static arraylist_t awaiting; // (this could be merged into ptls also)
 
-static htable_t *reservation_map_for_owner(jl_value_t *owner) JL_NOTSAFEPOINT
+static htable_t *reservation_map_for_owner(jl_value_t *owner)
 {
     if (owner == jl_nothing)
         return &native_reservations;
@@ -35,19 +35,19 @@ static htable_t *reservation_map_for_owner(jl_value_t *owner) JL_NOTSAFEPOINT
     return *reservations;
 }
 
-static reservation_info_t *get_reservation(jl_method_instance_t *mi, jl_value_t *owner) JL_NOTSAFEPOINT
+static reservation_info_t *get_reservation(jl_method_instance_t *mi, jl_value_t *owner)
 {
     htable_t *reservations = reservation_map_for_owner(owner);
     return (reservation_info_t *)ptrhash_get(reservations, mi);
 }
 
-static void remove_reservation(jl_method_instance_t *mi, jl_value_t *owner) JL_NOTSAFEPOINT
+static void remove_reservation(jl_method_instance_t *mi, jl_value_t *owner)
 {
     htable_t *reservations = reservation_map_for_owner(owner);
     ptrhash_remove(reservations, mi);
 }
 
-static reservation_info_t *try_insert_reservation(infer_key_t key, reservation_info_t to_insert, int *inserted) JL_NOTSAFEPOINT
+static reservation_info_t *try_insert_reservation(infer_key_t key, reservation_info_t to_insert, int *inserted)
 {
     htable_t *reservations = reservation_map_for_owner(key.owner);
     reservation_info_t **record = (reservation_info_t **)ptrhash_bp(reservations, key.mi);
@@ -138,12 +138,12 @@ int jl_engine_hasreserved(jl_method_instance_t *mi, jl_value_t *owner)
     return found;
 }
 
-STATIC_INLINE int gc_marked(uintptr_t bits) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_marked(uintptr_t bits)
 {
     return (bits & GC_MARKED) != 0;
 }
 
-static int sweep_reservations(htable_t *h, jl_ptls_t *gc_all_tls_states) JL_NOTSAFEPOINT
+static int sweep_reservations(htable_t *h, jl_ptls_t *gc_all_tls_states)
 {
     int any = 0;
     for (size_t i = 0; i < h->size; i += 2) {

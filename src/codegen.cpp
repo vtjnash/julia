@@ -3025,7 +3025,7 @@ static jl_cgval_t convert_julia_type_to_union(jl_codectx_t &ctx, const jl_cgval_
 
 std::unique_ptr<Module> jl_create_llvm_module(StringRef name, LLVMContext &context,
                                               const DataLayout &DL, const Triple &triple,
-                                              Module *source) JL_NOTSAFEPOINT
+                                              Module *source)
 {
     ++ModulesCreated;
     auto m = std::make_unique<Module>(name, context);
@@ -3068,7 +3068,7 @@ std::unique_ptr<Module> jl_create_llvm_module(StringRef name, LLVMContext &conte
     return m;
 }
 
-static void jl_name_jlfunc_args(jl_codegen_output_t &out, Function *F) JL_NOTSAFEPOINT
+static void jl_name_jlfunc_args(jl_codegen_output_t &out, Function *F)
 {
     assert(F->arg_size() == 3);
     F->getArg(0)->setName("function::Core.Function");
@@ -3076,7 +3076,7 @@ static void jl_name_jlfunc_args(jl_codegen_output_t &out, Function *F) JL_NOTSAF
     F->getArg(2)->setName("nargs::UInt32");
 }
 
-static void jl_name_jlfuncparams_args(jl_codegen_output_t &out, Function *F) JL_NOTSAFEPOINT
+static void jl_name_jlfuncparams_args(jl_codegen_output_t &out, Function *F)
 {
     assert(F->arg_size() == 4);
     F->getArg(0)->setName("function::Core.Function");
@@ -3085,7 +3085,7 @@ static void jl_name_jlfuncparams_args(jl_codegen_output_t &out, Function *F) JL_
     F->getArg(3)->setName("sparams::Any");
 }
 
-void jl_init_function(Function *F, const jl_codegen_output_t &params) JL_NOTSAFEPOINT
+void jl_init_function(Function *F, const jl_codegen_output_t &params)
 {
     auto &TT = params.TargetTriple;
     // set any attributes that *must* be set on all functions
@@ -7103,7 +7103,7 @@ JL_GCC_IGNORE_STOP
 // --- generate function bodies ---
 
 // gc frame emission
-static void allocate_gc_frame(jl_codectx_t &ctx, BasicBlock *b0, bool or_new=false) JL_NOTSAFEPOINT
+static void allocate_gc_frame(jl_codectx_t &ctx, BasicBlock *b0, bool or_new=false)
 {
     // allocate a placeholder gc instruction
     // this will require the runtime, but it gets deleted later if unused
@@ -10651,7 +10651,7 @@ char jl_using_perf_jitevents = 0;
 // overcommit, so malloc fails while physical memory is still available) or an
 // absurdly-sized request. Allocation just failed: this must not allocate, and
 // it must not return.
-static void jl_report_llvm_bad_alloc(void *user_data, const char *reason, bool gen_crash_diag) JL_NOTSAFEPOINT
+static void jl_report_llvm_bad_alloc(void *user_data, const char *reason, bool gen_crash_diag)
 {
     (void)user_data; (void)gen_crash_diag;
     jl_safe_printf("LLVM ERROR: out of memory\n%s\n", reason);
@@ -10856,7 +10856,7 @@ extern "C" JL_DLLEXPORT_CODEGEN void jl_init_codegen_impl(void)
     init_jit_functions();
 }
 
-extern "C" JL_DLLEXPORT_CODEGEN void jl_teardown_codegen_impl() JL_NOTSAFEPOINT
+extern "C" JL_DLLEXPORT_CODEGEN void jl_teardown_codegen_impl()
 {
     if (jl_ExecutionEngine) {
         jl_ExecutionEngine->shutdown();
@@ -10936,7 +10936,7 @@ extern "C" JL_DLLEXPORT_CODEGEN void jl_write_bitcode_module(void *M, char *fnam
 
 #include <llvm-c/Core.h>
 
-extern "C" JL_DLLEXPORT_CODEGEN jl_value_t *jl_get_libllvm_impl(void) JL_NOTSAFEPOINT
+extern "C" JL_DLLEXPORT_CODEGEN jl_value_t *jl_get_libllvm_impl(void)
 {
 #if defined(_OS_WINDOWS_)
     HMODULE mod;

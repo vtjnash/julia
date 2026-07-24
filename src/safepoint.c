@@ -47,7 +47,7 @@ uv_mutex_t safepoint_lock;
 uv_cond_t safepoint_cond_begin;
 uv_cond_t safepoint_cond_end;
 
-static void jl_safepoint_enable(int idx) JL_NOTSAFEPOINT
+static void jl_safepoint_enable(int idx)
 {
     // safepoint_lock should be held
     assert(0 <= idx && idx <= 3);
@@ -69,7 +69,7 @@ static void jl_safepoint_enable(int idx) JL_NOTSAFEPOINT
 #endif
 }
 
-static void jl_safepoint_disable(int idx) JL_NOTSAFEPOINT
+static void jl_safepoint_disable(int idx)
 {
     // safepoint_lock should be held
     assert(0 <= idx && idx <= 3);
@@ -246,7 +246,7 @@ void jl_set_gc_and_wait(jl_task_t *ct)
 }
 
 // this is the core of jl_set_gc_and_wait
-void jl_safepoint_wait_gc(jl_task_t *ct) JL_NOTSAFEPOINT
+void jl_safepoint_wait_gc(jl_task_t *ct)
 {
     if (ct) {
         JL_TIMING_SUSPEND_TASK(GC_SAFEPOINT, ct);
@@ -366,7 +366,7 @@ int jl_safepoint_suspend_thread(int tid, int waitstate)
 
 // return old suspend count on success, 0 on failure
 // n.b. threads often do not resume until after all suspended threads have been resumed!
-int jl_safepoint_resume_thread(int tid) JL_NOTSAFEPOINT
+int jl_safepoint_resume_thread(int tid)
 {
     if (0 > tid || tid >= jl_atomic_load_acquire(&jl_n_threads))
         return 0;

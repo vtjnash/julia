@@ -238,7 +238,7 @@ typedef uint32_t uint_t;
 typedef int32_t int_t;
 #endif
 
-STATIC_INLINE unsigned int next_power_of_two(unsigned int val) JL_NOTSAFEPOINT
+STATIC_INLINE unsigned int next_power_of_two(unsigned int val)
 {
     /* this function taken from libuv src/unix/core.c */
     val -= 1;
@@ -313,28 +313,28 @@ typedef enum { T_INT8, T_UINT8, T_INT16, T_UINT16, T_INT32, T_UINT32,
 #define JL_UNUSED
 #endif
 
-STATIC_INLINE double jl_load_unaligned_f64(const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE double jl_load_unaligned_f64(const void *ptr)
 {
     double val;
     memcpy(&val, ptr, sizeof(double));
     return val;
 }
 
-STATIC_INLINE uint64_t jl_load_unaligned_i64(const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE uint64_t jl_load_unaligned_i64(const void *ptr)
 {
     uint64_t val;
     memcpy(&val, ptr, sizeof(uint64_t));
     return val;
 }
 
-STATIC_INLINE double jl_load_ptraligned_f64(const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE double jl_load_ptraligned_f64(const void *ptr)
 {
     double val;
     memcpy(&val, jl_assume_aligned(ptr, sizeof(void*)), sizeof(double));
     return val;
 }
 
-STATIC_INLINE uint64_t jl_load_ptraligned_i64(const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE uint64_t jl_load_ptraligned_i64(const void *ptr)
 {
     uint64_t val;
     memcpy(&val, jl_assume_aligned(ptr, sizeof(void*)), sizeof(uint64_t));
@@ -342,33 +342,33 @@ STATIC_INLINE uint64_t jl_load_ptraligned_i64(const void *ptr) JL_NOTSAFEPOINT
 }
 
 
-STATIC_INLINE uint32_t jl_load_unaligned_i32(const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE uint32_t jl_load_unaligned_i32(const void *ptr)
 {
     uint32_t val;
     memcpy(&val, ptr, 4);
     return val;
 }
-STATIC_INLINE uint16_t jl_load_unaligned_i16(const void *ptr) JL_NOTSAFEPOINT
+STATIC_INLINE uint16_t jl_load_unaligned_i16(const void *ptr)
 {
     uint16_t val;
     memcpy(&val, ptr, 2);
     return val;
 }
 
-STATIC_INLINE void jl_store_unaligned_i64(void *ptr, uint64_t val) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_store_unaligned_i64(void *ptr, uint64_t val)
 {
     memcpy(ptr, &val, 8);
 }
-STATIC_INLINE void jl_store_unaligned_i32(void *ptr, uint32_t val) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_store_unaligned_i32(void *ptr, uint32_t val)
 {
     memcpy(ptr, &val, 4);
 }
-STATIC_INLINE void jl_store_unaligned_i16(void *ptr, uint16_t val) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_store_unaligned_i16(void *ptr, uint16_t val)
 {
     memcpy(ptr, &val, 2);
 }
 
-STATIC_INLINE void *calloc_s(size_t sz) JL_NOTSAFEPOINT {
+STATIC_INLINE void *calloc_s(size_t sz) {
     int last_errno = errno;
 #ifdef _OS_WINDOWS_
     DWORD last_error = GetLastError();
@@ -385,7 +385,7 @@ STATIC_INLINE void *calloc_s(size_t sz) JL_NOTSAFEPOINT {
     return p;
 }
 
-STATIC_INLINE void *malloc_s(size_t sz) JL_NOTSAFEPOINT {
+STATIC_INLINE void *malloc_s(size_t sz) {
     int last_errno = errno;
 #ifdef _OS_WINDOWS_
     DWORD last_error = GetLastError();
@@ -402,7 +402,7 @@ STATIC_INLINE void *malloc_s(size_t sz) JL_NOTSAFEPOINT {
     return p;
 }
 
-STATIC_INLINE void *realloc_s(void *p, size_t sz) JL_NOTSAFEPOINT {
+STATIC_INLINE void *realloc_s(void *p, size_t sz) {
     int last_errno = errno;
 #ifdef _OS_WINDOWS_
     DWORD last_error = GetLastError();

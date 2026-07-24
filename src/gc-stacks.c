@@ -25,7 +25,7 @@ static _Atomic(uint32_t) num_stack_mappings = 0;
 
 #ifdef _OS_WINDOWS_
 #define MAP_FAILED NULL
-static void *malloc_stack(size_t bufsz) JL_NOTSAFEPOINT
+static void *malloc_stack(size_t bufsz)
 {
     void *stk = VirtualAlloc(NULL, bufsz, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (stk == NULL)
@@ -43,7 +43,7 @@ static void *malloc_stack(size_t bufsz) JL_NOTSAFEPOINT
 }
 
 
-void free_stack(void *stkbuf, size_t bufsz) JL_NOTSAFEPOINT
+void free_stack(void *stkbuf, size_t bufsz)
 {
     VirtualFree(stkbuf, 0, MEM_RELEASE);
     jl_atomic_fetch_add_relaxed(&num_stack_mappings, -1);
@@ -51,7 +51,7 @@ void free_stack(void *stkbuf, size_t bufsz) JL_NOTSAFEPOINT
 
 #else
 
-static void *malloc_stack(size_t bufsz) JL_NOTSAFEPOINT
+static void *malloc_stack(size_t bufsz)
 {
 # ifdef _OS_OPENBSD_
     // we don't set up a guard page to detect stack overflow: on OpenBSD, any
@@ -78,14 +78,14 @@ static void *malloc_stack(size_t bufsz) JL_NOTSAFEPOINT
     return stk;
 }
 
-void free_stack(void *stkbuf, size_t bufsz) JL_NOTSAFEPOINT
+void free_stack(void *stkbuf, size_t bufsz)
 {
     munmap(stkbuf, bufsz);
     jl_atomic_fetch_add_relaxed(&num_stack_mappings, -1);
 }
 #endif
 
-JL_DLLEXPORT uint32_t jl_get_num_stack_mappings(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT uint32_t jl_get_num_stack_mappings(void)
 {
     return jl_atomic_load_relaxed(&num_stack_mappings);
 }
@@ -111,7 +111,7 @@ const unsigned pool_sizes[] = {
 
 static_assert(sizeof(pool_sizes) == JL_N_STACK_POOLS * sizeof(pool_sizes[0]), "JL_N_STACK_POOLS size mismatch");
 
-static unsigned select_pool(size_t nb) JL_NOTSAFEPOINT
+static unsigned select_pool(size_t nb)
 {
     unsigned pool_id = 0;
     while (pool_sizes[pool_id] < nb)
@@ -120,7 +120,7 @@ static unsigned select_pool(size_t nb) JL_NOTSAFEPOINT
 }
 
 
-void _jl_free_stack(jl_ptls_t ptls, void *stkbuf, size_t bufsz) JL_NOTSAFEPOINT
+void _jl_free_stack(jl_ptls_t ptls, void *stkbuf, size_t bufsz)
 {
 #ifdef _COMPILER_ASAN_ENABLED_
     __asan_unpoison_stack_memory((uintptr_t)stkbuf, bufsz);
@@ -163,7 +163,7 @@ void jl_release_task_stack(jl_ptls_t ptls, jl_task_t *task)
 }
 
 
-JL_DLLEXPORT void *jl_malloc_stack(size_t *bufsz, jl_task_t *owner) JL_NOTSAFEPOINT
+JL_DLLEXPORT void *jl_malloc_stack(size_t *bufsz, jl_task_t *owner)
 {
     jl_task_t *ct = jl_current_task;
     jl_ptls_t ptls = ct->ptls;
@@ -200,7 +200,7 @@ JL_DLLEXPORT void *jl_malloc_stack(size_t *bufsz, jl_task_t *owner) JL_NOTSAFEPO
 }
 
 // Builds a list of the live tasks. Racy: `live_tasks` can expand at any time.
-arraylist_t *jl_get_all_tasks_arraylist(void) JL_NOTSAFEPOINT
+arraylist_t *jl_get_all_tasks_arraylist(void)
 {
     arraylist_t *tasks = (arraylist_t*)malloc_s(sizeof(arraylist_t));
     arraylist_new(tasks, 0);

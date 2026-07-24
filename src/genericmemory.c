@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 // genericmemory constructors ---------------------------------------------------------
-JL_DLLEXPORT char *jl_genericmemory_typetagdata(jl_genericmemory_t *m) JL_NOTSAFEPOINT
+JL_DLLEXPORT char *jl_genericmemory_typetagdata(jl_genericmemory_t *m)
 {
     const jl_datatype_layout_t *layout = ((jl_datatype_t*)jl_typetagof(m))->layout;
     assert(layout->flags.arrayelem_isunion);
@@ -222,7 +222,7 @@ JL_DLLEXPORT jl_genericmemory_t *jl_alloc_memory_any(size_t n)
 
 JL_DLLEXPORT void jl_genericmemory_copyto(jl_genericmemory_t *dest, char* destdata,
                                           jl_genericmemory_t *src, char* srcdata,
-                                          size_t n) JL_NOTSAFEPOINT
+                                          size_t n)
 {
     jl_datatype_t *dt = (jl_datatype_t*)jl_typetagof(dest);
     if (dt != (jl_datatype_t*)jl_typetagof(src))
@@ -298,7 +298,7 @@ JL_DLLEXPORT jl_genericmemory_t *jl_genericmemory_copy(jl_genericmemory_t *mem)
     return jl_genericmemory_copy_slice(mem, layout->flags.arrayelem_isunion || layout->size == 0 ? (void*)0 : mem->ptr, mem->length);
 }
 
-JL_DLLEXPORT jl_value_t *(jl_genericmemory_data_owner)(jl_genericmemory_t *m) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *(jl_genericmemory_data_owner)(jl_genericmemory_t *m)
 {
     return jl_genericmemory_data_owner_field(m);
 }
@@ -327,7 +327,7 @@ JL_DLLEXPORT jl_genericmemoryref_t jl_memoryrefindex(jl_genericmemoryref_t m JL_
     return m;
 }
 
-static jl_value_t *jl_ptrmemrefget(jl_genericmemoryref_t m JL_PROPAGATES_ROOT, int isatomic) JL_NOTSAFEPOINT
+static jl_value_t *jl_ptrmemrefget(jl_genericmemoryref_t m JL_PROPAGATES_ROOT, int isatomic)
 {
     assert((char*)m.ptr_or_offset - (char*)m.mem->ptr < sizeof(jl_value_t*) * m.mem->length);
     assert(((jl_datatype_t*)jl_typetagof(m.mem))->layout->flags.arrayelem_isboxed);
@@ -619,7 +619,7 @@ JL_DLLEXPORT jl_value_t *jl_memoryrefsetonce(jl_genericmemoryref_t m, jl_value_t
     return success ? jl_true : jl_false;
 }
 
-JL_DLLEXPORT jl_value_t *ijl_genericmemory_owner(jl_genericmemory_t *m JL_PROPAGATES_ROOT) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_value_t *ijl_genericmemory_owner(jl_genericmemory_t *m JL_PROPAGATES_ROOT)
 {
     return jl_genericmemory_owner(m);
 }

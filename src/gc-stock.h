@@ -158,14 +158,14 @@ extern jl_gc_page_stack_t global_page_pool_freed;
  * without requiring ABA prevention.
  */
 
-STATIC_INLINE void push_lf_back_nosync(jl_gc_page_stack_t *pool, jl_gc_pagemeta_t *elt) JL_NOTSAFEPOINT
+STATIC_INLINE void push_lf_back_nosync(jl_gc_page_stack_t *pool, jl_gc_pagemeta_t *elt)
 {
     jl_gc_pagemeta_t *old_back = jl_atomic_load_relaxed(&pool->bottom);
     elt->next = old_back;
     jl_atomic_store_relaxed(&pool->bottom, elt);
 }
 
-STATIC_INLINE void push_lf_back(jl_gc_page_stack_t *pool, jl_gc_pagemeta_t *elt) JL_NOTSAFEPOINT
+STATIC_INLINE void push_lf_back(jl_gc_page_stack_t *pool, jl_gc_pagemeta_t *elt)
 {
     while (1) {
         jl_gc_pagemeta_t *old_back = jl_atomic_load_relaxed(&pool->bottom);
@@ -177,7 +177,7 @@ STATIC_INLINE void push_lf_back(jl_gc_page_stack_t *pool, jl_gc_pagemeta_t *elt)
     }
 }
 
-STATIC_INLINE jl_gc_pagemeta_t *try_pop_lf_back(jl_gc_page_stack_t *pool) JL_NOTSAFEPOINT
+STATIC_INLINE jl_gc_pagemeta_t *try_pop_lf_back(jl_gc_page_stack_t *pool)
 {
     for (int i = 0; i < (1 << 10); i++) {
         jl_gc_pagemeta_t *old_back = jl_atomic_load_relaxed(&pool->bottom);
@@ -192,7 +192,7 @@ STATIC_INLINE jl_gc_pagemeta_t *try_pop_lf_back(jl_gc_page_stack_t *pool) JL_NOT
     return NULL;
 }
 
-STATIC_INLINE jl_gc_pagemeta_t *pop_lf_back_nosync(jl_gc_page_stack_t *pool) JL_NOTSAFEPOINT
+STATIC_INLINE jl_gc_pagemeta_t *pop_lf_back_nosync(jl_gc_page_stack_t *pool)
 {
     jl_gc_pagemeta_t *old_back = jl_atomic_load_relaxed(&pool->bottom);
     if (old_back == NULL) {
@@ -203,7 +203,7 @@ STATIC_INLINE jl_gc_pagemeta_t *pop_lf_back_nosync(jl_gc_page_stack_t *pool) JL_
 }
 
 
-STATIC_INLINE jl_gc_pagemeta_t *pop_lf_back(jl_gc_page_stack_t *pool) JL_NOTSAFEPOINT
+STATIC_INLINE jl_gc_pagemeta_t *pop_lf_back(jl_gc_page_stack_t *pool)
 {
     while (1) {
         jl_gc_pagemeta_t *old_back = jl_atomic_load_relaxed(&pool->bottom);
@@ -325,7 +325,7 @@ typedef struct {
 
 extern pagetable_t alloc_map;
 
-STATIC_INLINE uint8_t gc_alloc_map_is_set(char *_data) JL_NOTSAFEPOINT
+STATIC_INLINE uint8_t gc_alloc_map_is_set(char *_data)
 {
     uintptr_t data = ((uintptr_t)_data);
     unsigned i;
@@ -341,7 +341,7 @@ STATIC_INLINE uint8_t gc_alloc_map_is_set(char *_data) JL_NOTSAFEPOINT
     return (r0->meta[i] == GC_PAGE_ALLOCATED);
 }
 
-STATIC_INLINE void gc_alloc_map_set(char *_data, uint8_t v) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_alloc_map_set(char *_data, uint8_t v)
 {
     uintptr_t data = ((uintptr_t)_data);
     unsigned i;
@@ -355,7 +355,7 @@ STATIC_INLINE void gc_alloc_map_set(char *_data, uint8_t v) JL_NOTSAFEPOINT
     r0->meta[i] = v;
 }
 
-STATIC_INLINE void gc_alloc_map_maybe_create(char *_data) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_alloc_map_maybe_create(char *_data)
 {
     uintptr_t data = ((uintptr_t)_data);
     unsigned i;
@@ -415,17 +415,17 @@ STATIC_INLINE void gc_alloc_map_maybe_create(char *_data) JL_NOTSAFEPOINT
  *   +----------------------+ <- page end
  */
 
-STATIC_INLINE char *gc_page_data(void *x) JL_NOTSAFEPOINT
+STATIC_INLINE char *gc_page_data(void *x)
 {
     return (char*)(((uintptr_t)x >> GC_PAGE_LG2) << GC_PAGE_LG2);
 }
 
-STATIC_INLINE jl_gc_pagemeta_t *page_metadata_unsafe(void *_data) JL_NOTSAFEPOINT
+STATIC_INLINE jl_gc_pagemeta_t *page_metadata_unsafe(void *_data)
 {
     return *(jl_gc_pagemeta_t**)(gc_page_data(_data));
 }
 
-STATIC_INLINE jl_gc_pagemeta_t *page_metadata(void *_data) JL_NOTSAFEPOINT
+STATIC_INLINE jl_gc_pagemeta_t *page_metadata(void *_data)
 {
     if (!gc_alloc_map_is_set((char*)_data)) {
         return NULL;
@@ -433,18 +433,18 @@ STATIC_INLINE jl_gc_pagemeta_t *page_metadata(void *_data) JL_NOTSAFEPOINT
     return page_metadata_unsafe(_data);
 }
 
-STATIC_INLINE void set_page_metadata(jl_gc_pagemeta_t *pg) JL_NOTSAFEPOINT
+STATIC_INLINE void set_page_metadata(jl_gc_pagemeta_t *pg)
 {
     *(jl_gc_pagemeta_t**)(pg->data) = pg;
 }
 
-STATIC_INLINE void push_page_metadata_back(jl_gc_pagemeta_t **ppg, jl_gc_pagemeta_t *elt) JL_NOTSAFEPOINT
+STATIC_INLINE void push_page_metadata_back(jl_gc_pagemeta_t **ppg, jl_gc_pagemeta_t *elt)
 {
     elt->next = *ppg;
     *ppg = elt;
 }
 
-STATIC_INLINE jl_gc_pagemeta_t *pop_page_metadata_back(jl_gc_pagemeta_t **ppg) JL_NOTSAFEPOINT
+STATIC_INLINE jl_gc_pagemeta_t *pop_page_metadata_back(jl_gc_pagemeta_t **ppg)
 {
     jl_gc_pagemeta_t *v = *ppg;
     if (*ppg != NULL) {
@@ -453,19 +453,19 @@ STATIC_INLINE jl_gc_pagemeta_t *pop_page_metadata_back(jl_gc_pagemeta_t **ppg) J
     return v;
 }
 
-STATIC_INLINE jl_taggedvalue_t *page_pfl_beg(jl_gc_pagemeta_t *p) JL_NOTSAFEPOINT
+STATIC_INLINE jl_taggedvalue_t *page_pfl_beg(jl_gc_pagemeta_t *p)
 {
     return (jl_taggedvalue_t*)(p->data + p->fl_begin_offset);
 }
 
-STATIC_INLINE jl_taggedvalue_t *page_pfl_end(jl_gc_pagemeta_t *p) JL_NOTSAFEPOINT
+STATIC_INLINE jl_taggedvalue_t *page_pfl_end(jl_gc_pagemeta_t *p)
 {
     return (jl_taggedvalue_t*)(p->data + p->fl_end_offset);
 }
 
 extern int gc_first_tid;
 
-STATIC_INLINE int gc_first_parallel_collector_thread_id(void) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_first_parallel_collector_thread_id(void)
 {
     if (jl_n_markthreads == 0) {
         return 0;
@@ -473,7 +473,7 @@ STATIC_INLINE int gc_first_parallel_collector_thread_id(void) JL_NOTSAFEPOINT
     return gc_first_tid;
 }
 
-STATIC_INLINE int gc_last_parallel_collector_thread_id(void) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_last_parallel_collector_thread_id(void)
 {
     if (jl_n_markthreads == 0) {
         return -1;
@@ -481,18 +481,18 @@ STATIC_INLINE int gc_last_parallel_collector_thread_id(void) JL_NOTSAFEPOINT
     return gc_first_tid + jl_n_markthreads - 1;
 }
 
-STATIC_INLINE int gc_ith_parallel_collector_thread_id(int i) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_ith_parallel_collector_thread_id(int i)
 {
     assert(i >= 0 && i < jl_n_markthreads);
     return gc_first_tid + i;
 }
 
-STATIC_INLINE int gc_is_parallel_collector_thread(int tid) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_is_parallel_collector_thread(int tid)
 {
     return tid >= gc_first_tid && tid <= gc_last_parallel_collector_thread_id();
 }
 
-STATIC_INLINE int gc_is_concurrent_collector_thread(int tid) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_is_concurrent_collector_thread(int tid)
 {
     if (jl_n_sweepthreads == 0) {
         return 0;
@@ -502,7 +502,7 @@ STATIC_INLINE int gc_is_concurrent_collector_thread(int tid) JL_NOTSAFEPOINT
     return tid == concurrent_collector_thread_id;
 }
 
-STATIC_INLINE int gc_random_parallel_collector_thread_id(jl_ptls_t ptls) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_random_parallel_collector_thread_id(jl_ptls_t ptls)
 {
     assert(jl_n_markthreads > 0);
     int v = gc_first_tid + (int)cong(jl_n_markthreads, &ptls->rngseed); // cong is [0, n)
@@ -510,12 +510,12 @@ STATIC_INLINE int gc_random_parallel_collector_thread_id(jl_ptls_t ptls) JL_NOTS
     return v;
 }
 
-STATIC_INLINE int gc_parallel_collector_threads_enabled(void) JL_NOTSAFEPOINT
+STATIC_INLINE int gc_parallel_collector_threads_enabled(void)
 {
     return jl_n_markthreads > 0;
 }
 
-STATIC_INLINE void gc_check_ptls_of_parallel_collector_thread(jl_ptls_t ptls) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_check_ptls_of_parallel_collector_thread(jl_ptls_t ptls)
 {
     (void)ptls;
     assert(gc_parallel_collector_threads_enabled());
@@ -526,12 +526,12 @@ STATIC_INLINE void gc_check_ptls_of_parallel_collector_thread(jl_ptls_t ptls) JL
 extern uintptr_t gc_bigval_sentinel_tag;
 extern bigval_t *oldest_generation_of_bigvals;
 
-STATIC_INLINE bigval_t *bigval_header(jl_taggedvalue_t *o) JL_NOTSAFEPOINT
+STATIC_INLINE bigval_t *bigval_header(jl_taggedvalue_t *o)
 {
     return container_of(o, bigval_t, header);
 }
 
-FORCE_INLINE void gc_big_object_unlink(const bigval_t *node) JL_NOTSAFEPOINT
+FORCE_INLINE void gc_big_object_unlink(const bigval_t *node)
 {
     assert(node != oldest_generation_of_bigvals);
     assert(node->header != gc_bigval_sentinel_tag);
@@ -542,7 +542,7 @@ FORCE_INLINE void gc_big_object_unlink(const bigval_t *node) JL_NOTSAFEPOINT
     node->prev->next = node->next;
 }
 
-FORCE_INLINE void gc_big_object_link(bigval_t *sentinel_node, bigval_t *node) JL_NOTSAFEPOINT
+FORCE_INLINE void gc_big_object_link(bigval_t *sentinel_node, bigval_t *node)
 {
     assert(sentinel_node != NULL);
     assert(sentinel_node->header == gc_bigval_sentinel_tag);
@@ -566,25 +566,25 @@ FORCE_INLINE void gc_big_object_link(bigval_t *sentinel_node, bigval_t *node) JL
 #define FULL_SWEEP_NUM_REASONS (5)
 
 extern JL_DLLEXPORT uint64_t jl_full_sweep_reasons[FULL_SWEEP_NUM_REASONS];
-STATIC_INLINE void gc_record_full_sweep_reason(int reason) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_record_full_sweep_reason(int reason)
 {
     assert(reason >= 0 && reason < FULL_SWEEP_NUM_REASONS);
     jl_full_sweep_reasons[reason]++;
 }
 
-void gc_mark_finlist(jl_gc_markqueue_t *mq, arraylist_t *list, size_t start) JL_NOTSAFEPOINT;
-void gc_collect_neighbors(jl_ptls_t ptls, jl_gc_markqueue_t *mq) JL_NOTSAFEPOINT;
+void gc_mark_finlist(jl_gc_markqueue_t *mq, arraylist_t *list, size_t start);
+void gc_collect_neighbors(jl_ptls_t ptls, jl_gc_markqueue_t *mq);
 void gc_mark_queue_all_roots(jl_ptls_t ptls, jl_gc_markqueue_t *mq);
-void jl_gc_debug_init(void) JL_NOTSAFEPOINT;
+void jl_gc_debug_init(void);
 
 // GC permanent allocation
 extern uv_mutex_t gc_perm_lock;
 
 // GC pages
 extern uv_mutex_t gc_pages_lock;
-void jl_gc_init_page(void) JL_NOTSAFEPOINT;
-NOINLINE jl_gc_pagemeta_t *jl_gc_alloc_page(void) JL_NOTSAFEPOINT;
-NOINLINE void jl_gc_free_page(jl_gc_pagemeta_t *p) JL_NOTSAFEPOINT;
+void jl_gc_init_page(void);
+NOINLINE jl_gc_pagemeta_t *jl_gc_alloc_page(void);
+NOINLINE void jl_gc_free_page(jl_gc_pagemeta_t *p);
 
 // GC debug
 #if defined(GC_TIME) || defined(GC_FINAL_STATS)
@@ -604,16 +604,16 @@ void gc_final_pause_end(int64_t t0, int64_t tend);
 #endif
 
 #ifdef GC_TIME
-void gc_time_pool_start(void) JL_NOTSAFEPOINT;
-void gc_time_count_page(int freedall, int pg_skpd) JL_NOTSAFEPOINT;
-void gc_time_pool_end(int sweep_full) JL_NOTSAFEPOINT;
-void gc_time_big_start(void) JL_NOTSAFEPOINT;
-void gc_time_count_big(int old_bits, int bits) JL_NOTSAFEPOINT;
-void gc_time_big_end(void) JL_NOTSAFEPOINT;
+void gc_time_pool_start(void);
+void gc_time_count_page(int freedall, int pg_skpd);
+void gc_time_pool_end(int sweep_full);
+void gc_time_big_start(void);
+void gc_time_count_big(int old_bits, int bits);
+void gc_time_big_end(void);
 
-void gc_time_mallocd_memory_start(void) JL_NOTSAFEPOINT;
-void gc_time_count_mallocd_memory(int bits) JL_NOTSAFEPOINT;
-void gc_time_mallocd_memory_end(void) JL_NOTSAFEPOINT;
+void gc_time_mallocd_memory_start(void);
+void gc_time_count_mallocd_memory(int bits);
+void gc_time_mallocd_memory_end(void);
 
 void gc_time_mark_pause(int64_t t0, int64_t scanned_bytes,
                         int64_t perm_scanned_bytes);
@@ -633,21 +633,21 @@ void gc_heuristics_summary(
         uint64_t current_heap, uint64_t target_heap);
 #else
 #define gc_time_pool_start()
-STATIC_INLINE void gc_time_count_page(int freedall, int pg_skpd) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_time_count_page(int freedall, int pg_skpd)
 {
     (void)freedall;
     (void)pg_skpd;
 }
 #define gc_time_pool_end(sweep_full) (void)(sweep_full)
 #define gc_time_big_start()
-STATIC_INLINE void gc_time_count_big(int old_bits, int bits) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_time_count_big(int old_bits, int bits)
 {
     (void)old_bits;
     (void)bits;
 }
 #define gc_time_big_end()
 #define gc_time_mallocd_memory_start()
-STATIC_INLINE void gc_time_count_mallocd_memory(int bits) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_time_count_mallocd_memory(int bits)
 {
     (void)bits;
 }
@@ -667,9 +667,9 @@ STATIC_INLINE void gc_time_count_mallocd_memory(int bits) JL_NOTSAFEPOINT
 #endif
 
 #ifdef MEMFENCE
-void gc_verify_tags(void) JL_NOTSAFEPOINT;
+void gc_verify_tags(void);
 #else
-static inline void gc_verify_tags(void) JL_NOTSAFEPOINT
+static inline void gc_verify_tags(void)
 {
 }
 #endif
@@ -718,21 +718,21 @@ extern int gc_verifying;
 JL_DLLEXPORT extern jl_gc_debug_env_t jl_gc_debug_env;
 int jl_gc_debug_check_other(void);
 void jl_gc_debug_print(void);
-void gc_scrub_record_task(jl_task_t *ta) JL_NOTSAFEPOINT;
+void gc_scrub_record_task(jl_task_t *ta);
 void gc_scrub(void);
 #else
-STATIC_INLINE int jl_gc_debug_check_other(void) JL_NOTSAFEPOINT
+STATIC_INLINE int jl_gc_debug_check_other(void)
 {
     return 0;
 }
-STATIC_INLINE void jl_gc_debug_print(void) JL_NOTSAFEPOINT
+STATIC_INLINE void jl_gc_debug_print(void)
 {
 }
-STATIC_INLINE void gc_scrub_record_task(jl_task_t *ta) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_scrub_record_task(jl_task_t *ta)
 {
     (void)ta;
 }
-STATIC_INLINE void gc_scrub(void) JL_NOTSAFEPOINT
+STATIC_INLINE void gc_scrub(void)
 {
 }
 #endif

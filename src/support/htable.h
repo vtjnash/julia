@@ -34,28 +34,28 @@ typedef struct {
 
 // initialize hash table, reserving space for `size` expected number of
 // elements. (Expect `h->size > size` for efficient occupancy factor.)
-htable_t *htable_new(htable_t *h, size_t size) JL_NOTSAFEPOINT;
-void htable_free(htable_t *h) JL_NOTSAFEPOINT;
+htable_t *htable_new(htable_t *h, size_t size);
+void htable_free(htable_t *h);
 
 // clear and (possibly) change size
-void htable_reset(htable_t *h, size_t sz) JL_NOTSAFEPOINT;
+void htable_reset(htable_t *h, size_t sz);
 
 // Lookup and mutation. See htable.inc for detail.
 #define HTPROT(HTNAME)                                                  \
-void *HTNAME##_get(htable_t *h, void *key) JL_NOTSAFEPOINT;             \
-void HTNAME##_put(htable_t *h, void *key, void *val) JL_NOTSAFEPOINT;   \
-void HTNAME##_adjoin(htable_t *h, void *key, void *val) JL_NOTSAFEPOINT;\
-int HTNAME##_has(htable_t *h, void *key) JL_NOTSAFEPOINT;               \
-int HTNAME##_remove(htable_t *h, void *key) JL_NOTSAFEPOINT;            \
-void **HTNAME##_bp(htable_t *h, void *key) JL_NOTSAFEPOINT;
+void *HTNAME##_get(htable_t *h, void *key);             \
+void HTNAME##_put(htable_t *h, void *key, void *val);   \
+void HTNAME##_adjoin(htable_t *h, void *key, void *val);\
+int HTNAME##_has(htable_t *h, void *key);               \
+int HTNAME##_remove(htable_t *h, void *key);            \
+void **HTNAME##_bp(htable_t *h, void *key);
 
 #define HTPROT_R(HTNAME, _STATIC)                                                               \
-_STATIC void *HTNAME##_get_r(htable_t *h, void *key, void *ctx) JL_NOTSAFEPOINT;                \
-_STATIC void HTNAME##_put_r(htable_t *h, void *key, void *val, void *ctx) JL_NOTSAFEPOINT;      \
-_STATIC void HTNAME##_adjoin_r(htable_t *h, void *key, void *val, void *ctx) JL_NOTSAFEPOINT;   \
-_STATIC int HTNAME##_has_r(htable_t *h, void *key, void *ctx) JL_NOTSAFEPOINT;                  \
-_STATIC int HTNAME##_remove_r(htable_t *h, void *key, void *ctx) JL_NOTSAFEPOINT;               \
-_STATIC void **HTNAME##_bp_r(htable_t *h, void *key, void *ctx) JL_NOTSAFEPOINT;
+_STATIC void *HTNAME##_get_r(htable_t *h, void *key, void *ctx);                \
+_STATIC void HTNAME##_put_r(htable_t *h, void *key, void *val, void *ctx);      \
+_STATIC void HTNAME##_adjoin_r(htable_t *h, void *key, void *val, void *ctx);   \
+_STATIC int HTNAME##_has_r(htable_t *h, void *key, void *ctx);                  \
+_STATIC int HTNAME##_remove_r(htable_t *h, void *key, void *ctx);               \
+_STATIC void **HTNAME##_bp_r(htable_t *h, void *key, void *ctx);
 
 #ifdef __cplusplus
 }

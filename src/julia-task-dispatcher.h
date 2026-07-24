@@ -10,12 +10,12 @@ template <typename U> struct future_value_storage {
   // Explicit ctor / dtor is necessary to avoid older clang analyzer versions making mistakes about the union being initialized.
   union _value_storage {
     U value_;
-    _value_storage() JL_NOTSAFEPOINT {}
-    ~_value_storage() JL_NOTSAFEPOINT {}
+    _value_storage() {}
+    ~_value_storage() {}
   } storage;
 
-  future_value_storage() JL_NOTSAFEPOINT {}
-  ~future_value_storage() JL_NOTSAFEPOINT {}
+  future_value_storage() {}
+  ~future_value_storage() {}
 };
 
 template <> struct future_value_storage<void> {
@@ -75,14 +75,14 @@ class future_base {
 public:
   /// Check if the future is now ready with a value (precondition: get_promise()
   /// must have been called)
-  bool ready() const JL_NOTSAFEPOINT {
+  bool ready() const {
     if (!valid())
       report_fatal_error("ready() called before get_promise()");
     return state_->status_.load(std::memory_order_acquire) == FutureStatus::Ready;
   }
 
   /// Check if the future is in a valid state (not moved-from and get_promise() called)
-  bool valid() const JL_NOTSAFEPOINT { return state_ != nullptr; }
+  bool valid() const { return state_ != nullptr; }
 
   /// Wait for the future to be ready, helping with task dispatch
   void wait(JuliaTaskDispatcher &D) JL_CANSAFEPOINT {
@@ -97,26 +97,26 @@ public:
 
 protected:
   struct state_base {
-    state_base() JL_NOTSAFEPOINT = default;
-    ~state_base() JL_NOTSAFEPOINT = default;
+    state_base() = default;
+    ~state_base() = default;
     std::atomic<FutureStatus> status_{FutureStatus::NotReady};
   };
 
-  future_base(state_base *state) JL_NOTSAFEPOINT : state_(state) {}
-  future_base() JL_NOTSAFEPOINT = default;
+  future_base(state_base *state) : state_(state) {}
+  future_base() = default;
 
   /// Only allow deleting the future once it is invalid
-  ~future_base() JL_NOTSAFEPOINT {
+  ~future_base() {
     if (state_)
       report_fatal_error("get() must be called before future destruction (ensuring promise::set_value memory is valid)");
   }
 
   // Move constructor and assignment
-  future_base(future_base &&other) noexcept JL_NOTSAFEPOINT : state_(other.state_) {
+  future_base(future_base &&other) noexcept : state_(other.state_) {
     other.state_ = nullptr;
   }
 
-  future_base &operator=(future_base &&other) noexcept JL_NOTSAFEPOINT {
+  future_base &operator=(future_base &&other) noexcept {
     if (this != &other) {
       this->~future_base();
       state_ = other.state_;
@@ -165,11 +165,11 @@ protected:
 
 template <typename T> class future : public future_base {
 public:
-  future() JL_NOTSAFEPOINT : future_base(nullptr) {}
+  future() : future_base(nullptr) {}
   future(const future &) = delete;
   future &operator=(const future &) = delete;
-  future(future &&) JL_NOTSAFEPOINT = default;
-  future &operator=(future &&) JL_NOTSAFEPOINT = default;
+  future(future &&) = default;
+  future &operator=(future &&) = default;
 
   /// Get the value, helping with task dispatch while waiting.
   /// This will destroy the underlying value, so this must be called exactly
@@ -184,7 +184,7 @@ public:
   }
 
   /// Get the associated promise (must only be called once)
-  promise<T> get_promise() JL_NOTSAFEPOINT {
+  promise<T> get_promise() {
     if (valid())
       report_fatal_error("get_promise() can only be called once");
     auto state_ = new state();
@@ -199,12 +199,12 @@ private:
   // overhead for the value. The declaration of future_value_storage is far
   // above here since GCC doesn't implement it properly when nested.
   struct state : future_base::state_base, future_value_storage<T> {
-    state() JL_NOTSAFEPOINT = default;
-    ~state() JL_NOTSAFEPOINT = default;
+    state() = default;
+    ~state() = default;
   };
 
   template <typename U = T>
-  typename std::enable_if<!std::is_void<U>::value, U>::type take_value(state *state_) JL_NOTSAFEPOINT {
+  typename std::enable_if<!std::is_void<U>::value, U>::type take_value(state *state_) {
     T result = std::move(state_->storage.value_);
     state_->storage.value_.~T();
     delete state_;
@@ -267,9 +267,9 @@ template <typename T> class promise {
   friend class future<T>;
 
 public:
-  promise() JL_NOTSAFEPOINT : state_(nullptr) {}
+  promise() : state_(nullptr) {}
 
-  ~promise() JL_NOTSAFEPOINT {
+  ~promise() {
     // Assert proper promise lifecycle: ensure set_value was called if promise was valid.
     // This can catch deadlocks where a promise is created but set_value() is
     // never called, though only if the promise is moved from instead of
@@ -280,12 +280,12 @@ public:
   promise(const promise &) = delete;
   promise &operator=(const promise &) = delete;
 
-  promise(promise &&other) noexcept JL_NOTSAFEPOINT
+  promise(promise &&other) noexcept
       : state_(other.state_) {
     other.state_ = nullptr;
   }
 
-  promise &operator=(promise &&other) noexcept JL_NOTSAFEPOINT {
+  promise &operator=(promise &&other) noexcept {
     if (this != &other) {
       this->~promise();
       state_ = other.state_;
@@ -303,7 +303,7 @@ public:
   template <typename U = T>
   void
   set_value(const typename std::conditional<std::is_void<T>::value,
-                                            std::nullopt_t, T>::type &value) const JL_NOTSAFEPOINT {
+                                            std::nullopt_t, T>::type &value) const {
     assert(state_ && "set_value() can only be called once");
     new (&state_->storage.value_) T(value);
     state_->status_.store(FutureStatus::Ready, std::memory_order_release);
@@ -312,7 +312,7 @@ public:
 
   template <typename U = T>
   void set_value(typename std::conditional<std::is_void<T>::value,
-                                           std::nullopt_t, T>::type &&value) const JL_NOTSAFEPOINT {
+                                           std::nullopt_t, T>::type &&value) const {
     assert(state_ && "set_value() can only be called once");
     new (&state_->storage.value_) T(std::move(value));
     state_->status_.store(FutureStatus::Ready, std::memory_order_release);
@@ -328,20 +328,20 @@ public:
   set_value(std::nullopt_t &&value) = delete;
 
   template <typename U = T>
-  typename std::enable_if<std::is_void<U>::value, void>::type set_value() const JL_NOTSAFEPOINT {
+  typename std::enable_if<std::is_void<U>::value, void>::type set_value() const {
     assert(state_ && "set_value() can only be called once");
     state_->status_.store(FutureStatus::Ready, std::memory_order_release);
     state_ = nullptr;
   }
 
   /// Swap with another promise
-  void swap(promise &other) noexcept JL_NOTSAFEPOINT {
+  void swap(promise &other) noexcept {
     using std::swap;
     swap(state_, other.state_);
   }
 
 private:
-  explicit promise(typename future<T>::state *state) JL_NOTSAFEPOINT
+  explicit promise(typename future<T>::state *state)
       : state_(state) {}
 
   mutable typename future<T>::state *state_;
@@ -353,11 +353,11 @@ private:
 // safepoint instead of raising an InterruptException inside it.
 struct dispatcher_sigdefer_guard {
   jl_ptls_t ptls;
-  dispatcher_sigdefer_guard() JL_NOTSAFEPOINT : ptls(jl_current_task->ptls) {
+  dispatcher_sigdefer_guard() : ptls(jl_current_task->ptls) {
     ptls->defer_signal++;
     jl_signal_fence();
   }
-  ~dispatcher_sigdefer_guard() JL_NOTSAFEPOINT {
+  ~dispatcher_sigdefer_guard() {
     jl_signal_fence();
     ptls->defer_signal--;
   }

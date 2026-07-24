@@ -134,7 +134,7 @@ static size_t _jl_aligned_msize(void *p)
 #undef SAVED_PTR
 #endif
 
-size_t memory_block_usable_size(void *p, int isaligned) JL_NOTSAFEPOINT
+size_t memory_block_usable_size(void *p, int isaligned)
 {
 #if defined(_OS_WINDOWS_)
     if (isaligned)
@@ -157,7 +157,7 @@ arraylist_t finalizer_list_marked;
 arraylist_t to_finalize;
 JL_DLLEXPORT _Atomic(int) jl_gc_have_pending_finalizers = 0;
 
-void schedule_finalization(void *o, void *f) JL_NOTSAFEPOINT
+void schedule_finalization(void *o, void *f)
 {
     arraylist_push(&to_finalize, o);
     arraylist_push(&to_finalize, f);
@@ -191,7 +191,7 @@ void run_finalizer(jl_task_t *ct, void *o, void *ff)
 // if `need_sync` is true, the `list` is the `finalizers` list of another
 // thread and we need additional synchronizations
 static void finalize_object(arraylist_t *list, jl_value_t *o,
-                            arraylist_t *copied_list, int need_sync) JL_NOTSAFEPOINT
+                            arraylist_t *copied_list, int need_sync)
 {
     // The acquire load makes sure that the first `len` objects are valid.
     // If `need_sync` is true, all mutations of the content should be limited
@@ -242,7 +242,7 @@ static void finalize_object(arraylist_t *list, jl_value_t *o,
 
 // The first two entries are assumed to be empty and the rest are assumed to
 // be pointers to `jl_value_t` objects
-static void jl_gc_push_arraylist(jl_task_t *ct, arraylist_t *list) JL_NOTSAFEPOINT
+static void jl_gc_push_arraylist(jl_task_t *ct, arraylist_t *list)
 {
     void **items = list->items;
     items[0] = (void*)JL_GC_ENCODE_PUSHARGS(list->len - 2);
@@ -385,7 +385,7 @@ JL_DLLEXPORT int8_t jl_gc_is_in_finalizer(void)
     return jl_current_task->ptls->in_finalizer;
 }
 
-static void schedule_all_finalizers(arraylist_t *flist) JL_NOTSAFEPOINT
+static void schedule_all_finalizers(arraylist_t *flist)
 {
     void **items = flist->items;
     size_t len = flist->len;
@@ -419,7 +419,7 @@ void jl_gc_run_all_finalizers(jl_task_t *ct)
     run_finalizers(ct, 1);
 }
 
-void jl_gc_add_finalizer_(jl_ptls_t ptls, void *v, void *f) JL_NOTSAFEPOINT
+void jl_gc_add_finalizer_(jl_ptls_t ptls, void *v, void *f)
 {
     assert(jl_atomic_load_relaxed(&ptls->gc_state) == JL_GC_STATE_UNSAFE);
     arraylist_t *a = &ptls->finalizers;
@@ -447,19 +447,19 @@ void jl_gc_add_finalizer_(jl_ptls_t ptls, void *v, void *f) JL_NOTSAFEPOINT
     jl_atomic_store_release((_Atomic(size_t)*)&a->len, oldlen + 2);
 }
 
-JL_DLLEXPORT void jl_gc_add_ptr_finalizer(jl_ptls_t ptls, jl_value_t *v, void *f) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_add_ptr_finalizer(jl_ptls_t ptls, jl_value_t *v, void *f)
 {
     jl_gc_add_finalizer_(ptls, (void*)(((uintptr_t)v) | 1), f);
 }
 
 // schedule f(v) to call at the next quiescent interval (aka after the next safepoint/region on all threads)
-JL_DLLEXPORT void jl_gc_add_quiescent(jl_ptls_t ptls, void **v, void *f) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_add_quiescent(jl_ptls_t ptls, void **v, void *f)
 {
     assert(!gc_ptr_tag(v, 3));
     jl_gc_add_finalizer_(ptls, (void*)(((uintptr_t)v) | 3), f);
 }
 
-JL_DLLEXPORT void jl_gc_add_finalizer_th(jl_ptls_t ptls, jl_value_t *v, jl_value_t *f) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gc_add_finalizer_th(jl_ptls_t ptls, jl_value_t *v, jl_value_t *f)
 {
     if (__unlikely(jl_typetagis(f, jl_voidpointer_type))) {
         jl_gc_add_ptr_finalizer(ptls, v, jl_unbox_voidpointer(f));
@@ -575,7 +575,7 @@ JL_DLLEXPORT void *jl_realloc(void *p, size_t sz) JL_CANSAFEPOINT
 // Generic Memory
 // =========================================================================== //
 
-size_t jl_genericmemory_nbytes(jl_genericmemory_t *m) JL_NOTSAFEPOINT
+size_t jl_genericmemory_nbytes(jl_genericmemory_t *m)
 {
     const jl_datatype_layout_t *layout = ((jl_datatype_t*)jl_typetagof(m))->layout;
     size_t sz = layout->size * m->length;
@@ -596,7 +596,7 @@ void jl_gc_track_malloced_genericmemory(jl_ptls_t ptls, jl_genericmemory_t *m, i
 // GC Debug
 // =========================================================================== //
 
-int gc_slot_to_fieldidx(void *obj, void *slot, jl_datatype_t *vt) JL_NOTSAFEPOINT
+int gc_slot_to_fieldidx(void *obj, void *slot, jl_datatype_t *vt)
 {
     int nf = (int)jl_datatype_nfields(vt);
     for (int i = 1; i < nf; i++) {
@@ -606,7 +606,7 @@ int gc_slot_to_fieldidx(void *obj, void *slot, jl_datatype_t *vt) JL_NOTSAFEPOIN
     return nf - 1;
 }
 
-int gc_slot_to_arrayidx(void *obj, void *_slot) JL_NOTSAFEPOINT
+int gc_slot_to_arrayidx(void *obj, void *_slot)
 {
     char *slot = (char*)_slot;
     jl_datatype_t *vt = (jl_datatype_t*)jl_typeof(obj);
@@ -693,7 +693,7 @@ JL_DLLEXPORT jl_weakref_t *jl_gc_new_weakref(jl_value_t *value)
 }
 
 const uint64_t _jl_buff_tag[3] = {0x4eadc0004eadc000ull, 0x4eadc0004eadc000ull, 0x4eadc0004eadc000ull}; // aka 0xHEADER00
-JL_DLLEXPORT uintptr_t jl_get_buff_tag(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT uintptr_t jl_get_buff_tag(void)
 {
     return jl_buff_tag;
 }
@@ -707,7 +707,7 @@ JL_DLLEXPORT void jl_throw_out_of_memory_error(void)
 // Sweeping mtarraylist_buffers:
 // These buffers are made unreachable via `mtarraylist_resizeto` from mtarraylist.c
 // and are freed at the end of GC via jl_gc_sweep_stack_pools_and_mtarraylist_buffers
-void sweep_mtarraylist_buffers(void) JL_NOTSAFEPOINT
+void sweep_mtarraylist_buffers(void)
 {
     for (int i = 0; i < gc_n_threads; i++) {
         jl_ptls_t ptls = gc_all_tls_states[i];

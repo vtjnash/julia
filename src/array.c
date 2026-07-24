@@ -50,7 +50,7 @@ static inline int is_ntuple_long(jl_value_t *v)
 
 #define jl_array_elsize(a) (((jl_datatype_t*)jl_typetagof((a)->ref.mem))->layout->size)
 
-static char *jl_array_typetagdata(jl_array_t *a) JL_NOTSAFEPOINT
+static char *jl_array_typetagdata(jl_array_t *a)
 {
     assert(jl_genericmemory_isbitsunion(a->ref.mem));
     return jl_genericmemory_typetagdata(a->ref.mem) + (uintptr_t)a->ref.ptr_or_offset;

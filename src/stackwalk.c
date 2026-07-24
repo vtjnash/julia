@@ -28,10 +28,10 @@ int jl_unw_get(void *context) { return -1; }
 extern "C" {
 #endif
 
-static int jl_unw_init(bt_cursor_t *cursor, bt_context_t *context, int from_signal_handler) JL_NOTSAFEPOINT;
-static int jl_unw_step(bt_cursor_t *cursor, int from_signal_handler, uintptr_t *ip, uintptr_t *sp) JL_NOTSAFEPOINT;
+static int jl_unw_init(bt_cursor_t *cursor, bt_context_t *context, int from_signal_handler);
+static int jl_unw_step(bt_cursor_t *cursor, int from_signal_handler, uintptr_t *ip, uintptr_t *sp);
 
-static jl_gcframe_t *is_enter_interpreter_frame(jl_gcframe_t **ppgcstack, uintptr_t sp) JL_NOTSAFEPOINT
+static jl_gcframe_t *is_enter_interpreter_frame(jl_gcframe_t **ppgcstack, uintptr_t sp)
 {
     jl_gcframe_t *pgcstack = *ppgcstack;
     while (pgcstack != NULL) {
@@ -71,7 +71,7 @@ static jl_gcframe_t *is_enter_interpreter_frame(jl_gcframe_t **ppgcstack, uintpt
 // elements written to bt_data (and sp if non-NULL) are returned in bt_size.
 static int jl_unw_stepn(bt_cursor_t *cursor, jl_bt_element_t *bt_data, size_t *bt_size,
                         uintptr_t *sp, size_t maxsize, int skip, jl_gcframe_t **ppgcstack,
-                        int from_signal_handler) JL_NOTSAFEPOINT
+                        int from_signal_handler)
 {
     volatile size_t n = 0;
     volatile int need_more_space = 0;
@@ -201,7 +201,7 @@ static int jl_unw_stepn(bt_cursor_t *cursor, jl_bt_element_t *bt_data, size_t *b
 }
 
 NOINLINE size_t rec_backtrace_ctx(jl_bt_element_t *bt_data, size_t maxsize,
-                                  bt_context_t *context, jl_gcframe_t *pgcstack) JL_NOTSAFEPOINT
+                                  bt_context_t *context, jl_gcframe_t *pgcstack)
 {
     bt_cursor_t cursor;
     if (!jl_unw_init(&cursor, context, 1))
@@ -216,7 +216,7 @@ NOINLINE size_t rec_backtrace_ctx(jl_bt_element_t *bt_data, size_t maxsize,
 //
 // The first `skip` frames are omitted, in addition to omitting the frame from
 // `rec_backtrace` itself.
-NOINLINE size_t rec_backtrace(jl_bt_element_t *bt_data, size_t maxsize, int skip) JL_NOTSAFEPOINT
+NOINLINE size_t rec_backtrace(jl_bt_element_t *bt_data, size_t maxsize, int skip)
 {
     bt_context_t context;
     memset(&context, 0, sizeof(context));
@@ -232,7 +232,7 @@ NOINLINE size_t rec_backtrace(jl_bt_element_t *bt_data, size_t maxsize, int skip
     return bt_size;
 }
 
-JL_DLLEXPORT NOINLINE int failed_to_sample_task_fun(jl_bt_element_t *bt_data, size_t maxsize, int skip) JL_NOTSAFEPOINT
+JL_DLLEXPORT NOINLINE int failed_to_sample_task_fun(jl_bt_element_t *bt_data, size_t maxsize, int skip)
 {
     if (maxsize < 1) {
         return 0;
@@ -241,7 +241,7 @@ JL_DLLEXPORT NOINLINE int failed_to_sample_task_fun(jl_bt_element_t *bt_data, si
     return 1;
 }
 
-JL_DLLEXPORT NOINLINE int failed_to_stop_thread_fun(jl_bt_element_t *bt_data, size_t maxsize, int skip) JL_NOTSAFEPOINT
+JL_DLLEXPORT NOINLINE int failed_to_stop_thread_fun(jl_bt_element_t *bt_data, size_t maxsize, int skip)
 {
     if (maxsize < 1) {
         return 0;
@@ -516,7 +516,7 @@ NTSTATUS NTAPI LdrRegisterDllNotification(ULONG Flags, PLDR_DLL_NOTIFICATION_FUN
 NTSTATUS NTAPI LdrUnregisterDllNotification(PVOID Cookie);
 
 // caller should hold jl_in_stackwalk and jl_dll_notify_lock locks
-void jl_profile_process_dll_events(void) JL_NOTSAFEPOINT
+void jl_profile_process_dll_events(void)
 {
     dll_notification_event_t *event = dll_notify_queue;
     while (event) {
@@ -624,7 +624,7 @@ void jl_fin_stackwalk(void)
 
 // Set the abort_profile_ptr in TLS
 #ifdef _CPU_X86_64_
-JL_DLLEXPORT void jl_set_profile_abort_ptr(_Atomic(int) *abort_ptr) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_set_profile_abort_ptr(_Atomic(int) *abort_ptr)
 {
     abort_profile_ptr = abort_ptr;
 }
@@ -826,7 +826,7 @@ JL_DLLEXPORT jl_value_t *jl_lookup_code_address(void *ip, int skipC) JL_CANSAFEP
 }
 
 static void jl_safe_fprint_codeloc(ios_t *s, const char* func_name, const char* file_name,
-                                   int line, int col, int pc, int inlined) JL_NOTSAFEPOINT
+                                   int line, int col, int pc, int inlined)
 {
     const char *inlined_str = inlined ? " [inlined]" : "";
     if (col == -1) {
@@ -847,7 +847,7 @@ static void jl_safe_fprint_codeloc(ios_t *s, const char* func_name, const char* 
 // Print function, file and line containing native instruction pointer `ip` by
 // looking up debug info. Prints multiple such frames when `ip` points to
 // inlined code.
-void jl_fprint_native_codeloc(ios_t *s, uintptr_t ip) JL_NOTSAFEPOINT
+void jl_fprint_native_codeloc(ios_t *s, uintptr_t ip)
 {
     // This function is not allowed to reference any TLS variables since
     // it can be called from an unmanaged thread on OSX.
@@ -901,7 +901,7 @@ const char *jl_debuginfo_name(jl_value_t *func)
 
 // func == module : top-level
 // func == NULL : macro expansion
-static void jl_fprint_debugloc(ios_t *s, jl_debuginfo_t *debuginfo, jl_value_t *func, size_t ip, int inlined) JL_NOTSAFEPOINT
+static void jl_fprint_debugloc(ios_t *s, jl_debuginfo_t *debuginfo, jl_value_t *func, size_t ip, int inlined)
 {
     if (!jl_is_symbol(debuginfo->def)) // this is a path or
         func = debuginfo->def; // this is inlined code
@@ -927,7 +927,7 @@ static void jl_fprint_debugloc(ios_t *s, jl_debuginfo_t *debuginfo, jl_value_t *
 }
 
 // Print code location for backtrace buffer entry at *bt_entry
-void jl_fprint_bt_entry_codeloc(ios_t *s, jl_bt_element_t *bt_entry) JL_NOTSAFEPOINT
+void jl_fprint_bt_entry_codeloc(ios_t *s, jl_bt_element_t *bt_entry)
 {
     if (jl_bt_is_native(bt_entry)) {
         jl_fprint_native_codeloc(s, bt_entry[0].uintptr);
@@ -988,7 +988,7 @@ static void JuliaInitializeLongjmpXorKey(void)
 }
 #endif
 
-JL_UNUSED static uintptr_t ptr_demangle(uintptr_t p) JL_NOTSAFEPOINT
+JL_UNUSED static uintptr_t ptr_demangle(uintptr_t p)
 {
 #if defined(__GLIBC__)
 #if defined(_CPU_X86_)
@@ -1055,7 +1055,7 @@ _os_tsd_get_direct(unsigned long slot)
 // Unconditionally defined ptrauth_strip (instead of using the ptrauth.h header)
 // since libsystem will likely be compiled with -mbranch-protection, and we currently are not.
 // code from https://github.com/llvm/llvm-project/blob/7714e0317520207572168388f22012dd9e152e9e/compiler-rt/lib/sanitizer_common/sanitizer_ptrauth.h
-static inline uint64_t ptrauth_strip(uint64_t __value, unsigned int __key) JL_NOTSAFEPOINT {
+static inline uint64_t ptrauth_strip(uint64_t __value, unsigned int __key) {
   // On the stack the link register is protected with Pointer
   // Authentication Code when compiled with -mbranch-protection.
   // Let's strip the PAC unconditionally because xpaclri is in the NOP space,
@@ -1073,7 +1073,7 @@ static inline uint64_t ptrauth_strip(uint64_t __value, unsigned int __key) JL_NO
 
 __attribute__((always_inline, pure))
 static __inline__ void**
-_os_tsd_get_base(void) JL_NOTSAFEPOINT
+_os_tsd_get_base(void)
 {
 #if defined(__arm__)
     uintptr_t tsd;
@@ -1095,7 +1095,7 @@ _os_tsd_get_base(void) JL_NOTSAFEPOINT
 #ifdef _os_tsd_get_base
 __attribute__((always_inline))
 static __inline__ void*
-_os_tsd_get_direct(unsigned long slot) JL_NOTSAFEPOINT
+_os_tsd_get_direct(unsigned long slot)
 {
     return _os_tsd_get_base()[slot];
 }
@@ -1103,14 +1103,14 @@ _os_tsd_get_direct(unsigned long slot) JL_NOTSAFEPOINT
 
 __attribute__((always_inline, pure))
 static __inline__ uintptr_t
-_os_ptr_munge_token(void) JL_NOTSAFEPOINT
+_os_ptr_munge_token(void)
 {
     return (uintptr_t)_os_tsd_get_direct(__TSD_PTR_MUNGE);
 }
 
 __attribute__((always_inline, pure))
 JL_UNUSED static __inline__ uintptr_t
-_os_ptr_munge(uintptr_t ptr) JL_NOTSAFEPOINT
+_os_ptr_munge(uintptr_t ptr)
 {
     return ptr ^ _os_ptr_munge_token();
 }
@@ -1127,7 +1127,7 @@ _os_ptr_munge(uintptr_t ptr) JL_NOTSAFEPOINT
 // support shadow stacks, so if those are in use, you might need to use a direct
 // jl_longjmp instead to leave the signal frame instead of relying on simulating
 // it and attempting to return normally.
-int jl_simulate_longjmp(jl_jmp_buf mctx, bt_context_t *c) JL_NOTSAFEPOINT
+int jl_simulate_longjmp(jl_jmp_buf mctx, bt_context_t *c)
 {
 #if (defined(_COMPILER_ASAN_ENABLED_) || defined(_COMPILER_TSAN_ENABLED_))
     // https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/hwasan/hwasan_interceptors.cpp
@@ -1445,7 +1445,7 @@ JL_DLLEXPORT size_t jl_try_record_thread_backtrace(jl_ptls_t ptls2, jl_bt_elemen
     return bt_size;
 }
 
-static size_t rec_backtrace_task(jl_task_t *t, bt_context_t *c, int use_ctx,  jl_bt_element_t *bt_data, size_t max_bt_size, int all_tasks_profiler) JL_NOTSAFEPOINT
+static size_t rec_backtrace_task(jl_task_t *t, bt_context_t *c, int use_ctx,  jl_bt_element_t *bt_data, size_t max_bt_size, int all_tasks_profiler)
 {
     if (!use_ctx && !t->ctx.copy_stack && t->ctx.started && t->ctx.ctx != NULL) {
         // need to read the context from the task stored state
@@ -1469,7 +1469,7 @@ static size_t rec_backtrace_task(jl_task_t *t, bt_context_t *c, int use_ctx,  jl
     return 0;
 }
 
-JL_DLLEXPORT jl_record_backtrace_result_t jl_record_backtrace(jl_task_t *t, jl_bt_element_t *bt_data, size_t max_bt_size, int all_tasks_profiler) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_record_backtrace_result_t jl_record_backtrace(jl_task_t *t, jl_bt_element_t *bt_data, size_t max_bt_size, int all_tasks_profiler)
 {
     jl_record_backtrace_result_t result = {0, -1};
     int16_t tid = INT16_MAX; // assign invalid id to non-native tasks
@@ -1529,13 +1529,13 @@ JL_DLLEXPORT jl_record_backtrace_result_t jl_record_backtrace(jl_task_t *t, jl_b
 //--------------------------------------------------
 // Tools for interactive debugging in gdb
 
-JL_DLLEXPORT void jl_gdblookup(void* ip) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_gdblookup(void* ip)
 {
     jl_fprint_native_codeloc(ios_safe_stderr, (uintptr_t)ip);
 }
 
 // Print backtrace for current exception in catch block
-JL_DLLEXPORT void jl_fprint_backtrace(ios_t *s) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_fprint_backtrace(ios_t *s)
 {
     jl_task_t *ct = jl_current_task;
     if (ct->ptls == NULL)
@@ -1550,18 +1550,18 @@ JL_DLLEXPORT void jl_fprint_backtrace(ios_t *s) JL_NOTSAFEPOINT
     }
 }
 
-JL_DLLEXPORT void jlbacktrace(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jlbacktrace(void)
 {
     jl_fprint_backtrace(ios_safe_stderr);
 }
 
-JL_DLLEXPORT void jl_print_backtrace(void) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_print_backtrace(void)
 {
     jl_fprint_backtrace(ios_safe_stderr);
 }
 
 // Print backtrace for specified task to `s`
-JL_DLLEXPORT void jl_fprint_backtracet(ios_t *s, jl_task_t *t) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_fprint_backtracet(ios_t *s, jl_task_t *t)
 {
     jl_bt_element_t *bt_data;
     jl_task_t *ct = jl_get_current_task();
@@ -1586,13 +1586,13 @@ JL_DLLEXPORT void jl_fprint_backtracet(ios_t *s, jl_task_t *t) JL_NOTSAFEPOINT
         jl_safe_fprintf(s, "      no backtrace recorded\n");
 }
 
-JL_DLLEXPORT void jlbacktracet(jl_task_t *t) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jlbacktracet(jl_task_t *t)
 {
     jl_fprint_backtracet(ios_safe_stderr, t);
 }
 
 // Print backtraces for all live tasks, for all threads, to jl_safe_printf stderr
-JL_DLLEXPORT void jl_fprint_task_backtraces(ios_t *s, int show_done) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_fprint_task_backtraces(ios_t *s, int show_done)
 {
     size_t nthreads = jl_atomic_load_acquire(&jl_n_threads);
     jl_ptls_t *allstates = jl_atomic_load_relaxed(&jl_all_tls_states);
@@ -1645,7 +1645,7 @@ JL_DLLEXPORT void jl_fprint_task_backtraces(ios_t *s, int show_done) JL_NOTSAFEP
 }
 
 // Print backtraces for all live tasks, for all threads, to jl_safe_printf stderr
-JL_DLLEXPORT void jl_print_task_backtraces(int show_done) JL_NOTSAFEPOINT
+JL_DLLEXPORT void jl_print_task_backtraces(int show_done)
 {
     jl_fprint_task_backtraces(ios_safe_stderr, show_done);
 }

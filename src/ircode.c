@@ -948,7 +948,7 @@ static jl_value_t *jl_decode_value(jl_ircode_state *s)
 
 typedef jl_value_t jl_string_t; // for local expressibility
 
-static size_t codelocs_parseheader(jl_string_t *cl, int *loc_offset, int *loc_bytes, int *to_bytes) JL_NOTSAFEPOINT
+static size_t codelocs_parseheader(jl_string_t *cl, int *loc_offset, int *loc_bytes, int *to_bytes)
 {
     if (jl_string_len(cl) == 0) {
         *loc_offset = *loc_bytes = *to_bytes = 0;
@@ -975,7 +975,7 @@ static size_t codelocs_parseheader(jl_string_t *cl, int *loc_offset, int *loc_by
     return (jl_string_len(cl) - sizeof(header) - *loc_bytes) / (*loc_bytes + *to_bytes * 2); // compute nstmts
 }
 #ifndef NDEBUG
-static int codelocs_nstmts(jl_string_t *cl) JL_NOTSAFEPOINT
+static int codelocs_nstmts(jl_string_t *cl)
 {
     int loc_offset, loc_bytes, to_bytes;
     return codelocs_parseheader(cl, &loc_offset, &loc_bytes, &to_bytes);
@@ -1369,7 +1369,7 @@ JL_DLLEXPORT jl_value_t *jl_uncompress_argname_n(jl_value_t *syms, size_t i)
     return jl_nothing;
 }
 
-static inline uint32_t _take_u32(const char **ptr, int n_bytes) JL_NOTSAFEPOINT
+static inline uint32_t _take_u32(const char **ptr, int n_bytes)
 {
     uint8_t int8;
     uint16_t int16;
@@ -1401,7 +1401,7 @@ static inline uint32_t _take_u32(const char **ptr, int n_bytes) JL_NOTSAFEPOINT
 // The input vector is a NTuple{3,UInt32} (struct jl_codeloc_t)
 // The vector is scanned for min and max of the values for each element
 // The output is then allocated to hold (min-line, max-line, max-at) first, then line - min (in the smallest space), then the remainder (in the smallest space)
-static inline struct jl_codeloc_t unpack_codeloc(jl_string_t *cl, size_t pc, int loc_offset, int loc_bytes, int to_bytes) JL_NOTSAFEPOINT
+static inline struct jl_codeloc_t unpack_codeloc(jl_string_t *cl, size_t pc, int loc_offset, int loc_bytes, int to_bytes)
 {
     const char *ptr = jl_string_data(cl) + sizeof(int32_t[3]);
     if (pc == 0)
@@ -1421,7 +1421,7 @@ static inline struct jl_codeloc_t unpack_codeloc(jl_string_t *cl, size_t pc, int
 
 static const struct jl_codeloc_t badloc = {-1, 0, 0};
 
-JL_DLLEXPORT struct jl_codeloc_t jl_uncompress1_codeloc(jl_debuginfo_t *di, size_t pc) JL_NOTSAFEPOINT
+JL_DLLEXPORT struct jl_codeloc_t jl_uncompress1_codeloc(jl_debuginfo_t *di, size_t pc)
 {
     jl_string_t *cl = di->codelocs;
     assert(jl_is_string(cl));
@@ -1432,7 +1432,7 @@ JL_DLLEXPORT struct jl_codeloc_t jl_uncompress1_codeloc(jl_debuginfo_t *di, size
     return unpack_codeloc(cl, pc, loc_offset, loc_bytes, to_bytes);
 }
 
-static const char *sbt_parseheader(jl_string_t *str, jl_sourcebytetable_header_t *h) JL_NOTSAFEPOINT
+static const char *sbt_parseheader(jl_string_t *str, jl_sourcebytetable_header_t *h)
 {
     assert(jl_is_string(str));
     const char *ptr = jl_string_data(str);
@@ -1448,7 +1448,7 @@ static const char *sbt_parseheader(jl_string_t *str, jl_sourcebytetable_header_t
 
 /* traverse `di.linetable` (towards line/byte information, ignoring edges),
  * returning new debuginfo in `p_di` and optionally pc in `p_pc`. */
-static void cdi_deref(jl_debuginfo_t **p_di, int32_t *p_pc, int recursive) JL_NOTSAFEPOINT
+static void cdi_deref(jl_debuginfo_t **p_di, int32_t *p_pc, int recursive)
 {
     assert(jl_is_debuginfo(*p_di));
     jl_debuginfo_t *di = *p_di;
@@ -1467,7 +1467,7 @@ static void cdi_deref(jl_debuginfo_t **p_di, int32_t *p_pc, int recursive) JL_NO
     }
 }
 
-JL_DLLEXPORT jl_locspan_t jl_cdi_bytespan(jl_debuginfo_t *di, int32_t pc) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_locspan_t jl_cdi_bytespan(jl_debuginfo_t *di, int32_t pc)
 {
     cdi_deref(&di, &pc, 1);
     pc = jl_uncompress1_codeloc(di, pc).loc;
@@ -1484,7 +1484,7 @@ JL_DLLEXPORT jl_locspan_t jl_cdi_bytespan(jl_debuginfo_t *di, int32_t pc) JL_NOT
 }
 
 /* O(line_starts); could binary search instead */
-JL_DLLEXPORT jl_locspan_t jl_cdi_byte_to_xy(jl_debuginfo_t *di, int32_t b) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_locspan_t jl_cdi_byte_to_xy(jl_debuginfo_t *di, int32_t b)
 {
     cdi_deref(&di, NULL, 1);
     jl_sourcebytetable_header_t h;
@@ -1508,7 +1508,7 @@ JL_DLLEXPORT jl_locspan_t jl_cdi_byte_to_xy(jl_debuginfo_t *di, int32_t b) JL_NO
 }
 
 /* First (line, col) at the given pc, where col=-1 if unavailable */
-JL_DLLEXPORT jl_locspan_t jl_cdi_firstxy(jl_debuginfo_t *di, int32_t pc) JL_NOTSAFEPOINT
+JL_DLLEXPORT jl_locspan_t jl_cdi_firstxy(jl_debuginfo_t *di, int32_t pc)
 {
     assert(pc > 0);
     cdi_deref(&di, &pc, 1);
@@ -1526,7 +1526,7 @@ JL_DLLEXPORT jl_locspan_t jl_cdi_firstxy(jl_debuginfo_t *di, int32_t pc) JL_NOTS
  * jl_compress_codelocs).  Coverage uses this.  -1 if not present.  Ideally the
  * >-1 case will be deprecated, since this implementation doesn't allow a
  * linetable to be shared between multiple owners */
-JL_DLLEXPORT int32_t jl_cdi_external_firstline(jl_debuginfo_t *di) JL_NOTSAFEPOINT
+JL_DLLEXPORT int32_t jl_cdi_external_firstline(jl_debuginfo_t *di)
 {
     int32_t pc = 0;
     cdi_deref(&di, &pc, 1);
@@ -1539,7 +1539,7 @@ JL_DLLEXPORT int32_t jl_cdi_external_firstline(jl_debuginfo_t *di) JL_NOTSAFEPOI
     jl_unreachable();
 }
 
-JL_DLLEXPORT int32_t jl_cdi_firstline_all(jl_debuginfo_t *di) JL_NOTSAFEPOINT
+JL_DLLEXPORT int32_t jl_cdi_firstline_all(jl_debuginfo_t *di)
 {
     int32_t out = jl_cdi_external_firstline(di);
     if (out == -1) {
@@ -1550,7 +1550,7 @@ JL_DLLEXPORT int32_t jl_cdi_firstline_all(jl_debuginfo_t *di) JL_NOTSAFEPOINT
     return out;
 }
 
-JL_DLLEXPORT const char *jl_cdi_file(jl_debuginfo_t *di) JL_NOTSAFEPOINT
+JL_DLLEXPORT const char *jl_cdi_file(jl_debuginfo_t *di)
 {
     cdi_deref(&di, NULL, 1);
     if (jl_is_symbol(di->def)) {
@@ -1566,7 +1566,7 @@ JL_DLLEXPORT const char *jl_cdi_file(jl_debuginfo_t *di) JL_NOTSAFEPOINT
     }
 }
 
-static int allzero(jl_value_t *codelocs) JL_NOTSAFEPOINT
+static int allzero(jl_value_t *codelocs)
 {
     int32_t *p = jl_array_data(codelocs,int32_t);
     int32_t *pend = p + jl_array_nrows(codelocs);

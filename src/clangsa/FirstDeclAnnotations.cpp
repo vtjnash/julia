@@ -2,7 +2,7 @@
 
 // FirstDeclAnnotations: a clang-tidy check that enforces that every Julia
 // attribute that callers must see -- the `JL_*` macros that expand to
-// `__attribute__((annotate("julia_...")))`, e.g. JL_NOTSAFEPOINT,
+// `__attribute__((annotate("julia_...")))`, e.g.,
 // JL_PROPAGATES_ROOT, JL_GLOBALLY_ROOTED, JL_ROOTED_BY_ARG(n), as well as the
 // visibility/linkage macros JL_DLLEXPORT, JL_DLLIMPORT and JL_HIDDEN (which
 // expand to `__attribute__((visibility(...)))` or `__declspec(dllexport/
@@ -24,7 +24,7 @@
 //
 //   * A block-scope prototype (a local extern declaration written inside a
 //   function body) may add an annotation that is valid only for that one
-//   caller -- e.g. jl_read_codeinst_invoke is redeclared JL_NOTSAFEPOINT
+//   caller -- e.g. jl_read_codeinst_invoke is redeclared
 //   inside a caller that passes waitcompile = 0. That narrower annotation
 //   deliberately does not belong on the global first declaration, so such
 //   declarations are not flagged. This applies only when the function also has
@@ -38,7 +38,7 @@
 //   and the later declaration is not flagged.
 //
 // Each diagnostic carries a fix-it that moves the attribute: it copies the
-// original macro spelling (e.g. JL_NOTSAFEPOINT, JL_ROOTED_BY_ARG(1),
+// original macro spelling (e.g., JL_ROOTED_BY_ARG(1),
 // JL_DLLEXPORT) onto the first declaration and removes the misplaced copy from
 // the later declaration. The fix is only offered when the attribute is written
 // through such a macro -- a raw `__attribute__((...))` is still diagnosed but
@@ -54,11 +54,11 @@
 // requires. The annotations on a function-pointer type are written on the
 // typedef, e.g.
 //
-//   typedef void (*jl_gc_cb_pre_gc_t)(int full) JL_NOTSAFEPOINT;
+//   typedef void (*jl_gc_cb_pre_gc_t)(int full);
 //
 // and the analyzer assumes that any call made through such a pointer carries
 // that annotation (here, that the callback does not hit a safepoint). If a
-// function that is *not* JL_NOTSAFEPOINT is assigned to such a pointer, callers
+// function that is *not* is assigned to such a pointer, callers
 // through the pointer would be analyzed unsoundly. So the converted function
 // must have a superset of the target's annotations -- the declaration must
 // "have more than the target". A function with fewer annotations than the
@@ -74,7 +74,7 @@
 // an overriding method must carry at least the Julia analyzer annotations of
 // every method it overrides -- it must be "stronger than" the original. The
 // analyzer assumes a virtual call made through a base-class reference carries
-// the overridden method's annotations (e.g. that an overridden JL_NOTSAFEPOINT
+// the overridden method's annotations (e.g. that an overridden
 // method does not hit a safepoint); if an override drops that annotation, calls
 // dispatched dynamically to it would be analyzed unsoundly. So an override that
 // provides fewer annotations than a method it overrides is diagnosed (without a
@@ -206,7 +206,7 @@ public:
         // A block-scope redeclaration (a prototype written inside a function
         // body, i.e. a local extern declaration) is intentionally allowed to
         // add an annotation that holds only for that specific caller -- e.g.
-        // jl_read_codeinst_invoke is redeclared JL_NOTSAFEPOINT inside a caller
+        // jl_read_codeinst_invoke is redeclared inside a caller
         // that passes waitcompile = 0. Such a narrower annotation must NOT be
         // hoisted onto the global first declaration, so do not flag it.
         // This exemption only applies when the function also has a global
@@ -218,7 +218,7 @@ public:
 
         const LangOptions &LO = getLangOpts();
 
-        // Function-level annotations (e.g. JL_NOTSAFEPOINT) are written after
+        // Function-level annotations (e.g.) are written after
         // the parameter list and any trailing qualifiers, so the fix inserts
         // them just after the first declaration's declarator suffix.
         checkDecl(FD, First, FD, /*ParamIndex=*/-1,
@@ -734,8 +734,8 @@ private:
     // annotation must follow: cv-/ref-qualifiers and the exception specification
     // (carried by the FunctionTypeLoc), and the `override`/`final` virt
     // specifiers (carried as attributes). A member function `f() const` thus
-    // gets its annotation after `const` (`f() const JL_NOTSAFEPOINT`) rather
-    // than the ill-formed `f() JL_NOTSAFEPOINT const`. Reading this from the AST
+    // gets its annotation after `const` (`f() const`) rather
+    // than the ill-formed `f() const`. Reading this from the AST
     // avoids re-lexing the source, which could be confused by macros.
     static SourceLocation declaratorSuffixEnd(const FunctionDecl *FD,
                                               SourceManager &SM) {

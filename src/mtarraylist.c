@@ -21,7 +21,7 @@ typedef struct {
 } small_mtarraylist_t;
 
 // change capacity to at least newlen
-static void mtarraylist_resizeto(small_mtarraylist_t *a, size_t len, size_t newlen) JL_NOTSAFEPOINT
+static void mtarraylist_resizeto(small_mtarraylist_t *a, size_t len, size_t newlen)
 {
     size_t max = a->max;
     if (newlen > max) {

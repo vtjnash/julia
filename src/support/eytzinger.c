@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-static int ptr_cmp(const void *l, const void *r) JL_NOTSAFEPOINT
+static int ptr_cmp(const void *l, const void *r)
 {
     uintptr_t left = *(const uintptr_t*)l;
     uintptr_t right = *(const uintptr_t*)r;
@@ -13,7 +13,7 @@ static int ptr_cmp(const void *l, const void *r) JL_NOTSAFEPOINT
 
 // Build an eytzinger tree from a sorted array
 static int eytzinger(uintptr_t *src, uintptr_t *dest,
-                     size_t i, size_t k, size_t n) JL_NOTSAFEPOINT
+                     size_t i, size_t k, size_t n)
 {
     if (k <= n) {
         i = eytzinger(src, dest, i, 2 * k, n);
@@ -25,7 +25,7 @@ static int eytzinger(uintptr_t *src, uintptr_t *dest,
 }
 
 // Rebuild the tree from the current ranges. Caller must hold wrlock.
-static void rebuild_tree(eyt_tree_t *t) JL_NOTSAFEPOINT
+static void rebuild_tree(eyt_tree_t *t)
 {
     size_t nranges = t->nranges;
     size_t end = 2 * nranges;
@@ -90,7 +90,7 @@ static void rebuild_tree(eyt_tree_t *t) JL_NOTSAFEPOINT
     t->n = end;
 }
 
-JL_DLLEXPORT void eyt_tree_init(eyt_tree_t *t) JL_NOTSAFEPOINT
+JL_DLLEXPORT void eyt_tree_init(eyt_tree_t *t)
 {
     memset(t, 0, sizeof(*t));
     arraylist_new(&t->tree, 0);
@@ -105,7 +105,7 @@ JL_DLLEXPORT void eyt_tree_init(eyt_tree_t *t) JL_NOTSAFEPOINT
     arraylist_push(&t->idxs, EYT_NOTFOUND);
 }
 
-JL_DLLEXPORT void eyt_tree_add_range(eyt_tree_t *t, uintptr_t start, uintptr_t end, void *data) JL_NOTSAFEPOINT
+JL_DLLEXPORT void eyt_tree_add_range(eyt_tree_t *t, uintptr_t start, uintptr_t end, void *data)
 {
     assert(start % 4 == 0 && "Range start not 4-byte aligned");
     assert(end % 4 == 0 && "Range end not 4-byte aligned");

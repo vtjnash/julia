@@ -178,7 +178,7 @@ because distinct symbolic index expressions can alias in the analyzer.
 Usage Example:
 ```c
 jl_value_t *jl_svecref(jl_svec_t *t JL_PROPAGATES_ROOT, size_t i)
-    JL_PROPAGATES_ROOT_INDEXED(0, 1) JL_NOTSAFEPOINT;
+    JL_PROPAGATES_ROOT_INDEXED(0, 1);
 
 size_t example(jl_svec_t *svec) {
   jl_value_t *val = jl_svecref(svec, 1)
@@ -208,7 +208,7 @@ function declaration.
 
 Usage Example:
 ```c
-void jl_svecset(void *t, size_t i, void *x JL_ROOTED_BY_ARG_INDEXED(0, 1)) JL_NOTSAFEPOINT;
+void jl_svecset(void *t, size_t i, void *x JL_ROOTED_BY_ARG_INDEXED(0, 1));
 jl_svec_t *jl_svec1(void *a JL_ROOTED_BY_RETURN);
 
 

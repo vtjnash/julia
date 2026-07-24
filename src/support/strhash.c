@@ -31,8 +31,8 @@ static uint_t strhash_eq(void *key1, void *key2, void *ctx)
 
 #include "htable.inc"
 
-static void *strhash_keyalloc(void *key, void *ctx) JL_NOTSAFEPOINT { (void)ctx; return strdup((const char *)key); }
-static void strhash_keyfree(void *key, void *ctx) JL_NOTSAFEPOINT { (void)ctx; free(key); }
+static void *strhash_keyalloc(void *key, void *ctx) { (void)ctx; return strdup((const char *)key); }
+static void strhash_keyfree(void *key, void *ctx) { (void)ctx; free(key); }
 _HTIMPL_EX(strhash, strhash_hash, strhash_eq, strhash_keyalloc, strhash_keyfree, )
 
 void  strhash_put(htable_t *h, void *key, void *val) { strhash_put_r(h, key, val, NULL); }

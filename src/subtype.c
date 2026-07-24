@@ -203,7 +203,7 @@ typedef struct jl_stenv_t {
 // state manipulation utilities
 
 // look up a type variable in an environment
-static int binding_has_innervar(jl_varbinding_t *b, jl_tvar_t *v) JL_NOTSAFEPOINT
+static int binding_has_innervar(jl_varbinding_t *b, jl_tvar_t *v)
 {
     if (b->innervars == NULL)
         return 0;
@@ -225,7 +225,7 @@ static void push_innervar(jl_varbinding_t *b, jl_value_t *v) JL_CANSAFEPOINT
 }
 
 #ifndef __clang_gcanalyzer__
-static jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innervar) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT
+static jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innervar) JL_GLOBALLY_ROOTED
 {
     jl_varbinding_t *b = e->vars;
     while (b != NULL) {
@@ -250,18 +250,18 @@ static jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innerva
     return NULL;
 }
 #else
-extern jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innervar) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT;
+extern jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innervar) JL_GLOBALLY_ROOTED;
 #endif
-jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innervar) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT;
+jl_varbinding_t *lookup_binding(jl_stenv_t *e, jl_tvar_t *v, int *innervar) JL_GLOBALLY_ROOTED;
 
-static jl_varbinding_t *lookup(jl_stenv_t *e, jl_tvar_t *v) JL_GLOBALLY_ROOTED JL_NOTSAFEPOINT
+static jl_varbinding_t *lookup(jl_stenv_t *e, jl_tvar_t *v) JL_GLOBALLY_ROOTED
 {
     return lookup_binding(e, v, NULL);
 }
 
 // union-stack tools
 
-static int statestack_get(jl_unionstate_t *st, int i) JL_NOTSAFEPOINT
+static int statestack_get(jl_unionstate_t *st, int i)
 {
     assert(i >= 0 && i < 32767); // limited by the depth bit.
     // get the `i`th bit in an array of 32-bit words
@@ -275,7 +275,7 @@ static int statestack_get(jl_unionstate_t *st, int i) JL_NOTSAFEPOINT
     return (stack->data[i>>5] & (1u<<(i&31))) != 0;
 }
 
-static void statestack_set(jl_unionstate_t *st, int i, int val) JL_NOTSAFEPOINT
+static void statestack_set(jl_unionstate_t *st, int i, int val)
 {
     assert(i >= 0 && i < 32767); // limited by the depth bit.
     jl_bits_stack_t *stack = &st->stack;
@@ -295,7 +295,7 @@ static void statestack_set(jl_unionstate_t *st, int i, int val) JL_NOTSAFEPOINT
 
 #define has_next_union_state(e, R) ((((R) ? &(e)->Runions : &(e)->Lunions)->more) != 0)
 
-static int next_union_state(jl_stenv_t *e, int8_t R) JL_NOTSAFEPOINT
+static int next_union_state(jl_stenv_t *e, int8_t R)
 {
     jl_unionstate_t *state = R ? &e->Runions : &e->Lunions;
     if (state->more == 0)
@@ -306,7 +306,7 @@ static int next_union_state(jl_stenv_t *e, int8_t R) JL_NOTSAFEPOINT
     return 1;
 }
 
-static int pick_union_decision(jl_stenv_t *e, int8_t R) JL_NOTSAFEPOINT
+static int pick_union_decision(jl_stenv_t *e, int8_t R)
 {
     jl_unionstate_t *state = R ? &e->Runions : &e->Lunions;
     if (state->depth >= state->used) {
@@ -320,7 +320,7 @@ static int pick_union_decision(jl_stenv_t *e, int8_t R) JL_NOTSAFEPOINT
     return ui;
 }
 
-static jl_value_t *pick_union_element(jl_value_t *u JL_PROPAGATES_ROOT, jl_stenv_t *e, int8_t R) JL_NOTSAFEPOINT
+static jl_value_t *pick_union_element(jl_value_t *u JL_PROPAGATES_ROOT, jl_stenv_t *e, int8_t R)
 {
     do {
         if (pick_union_decision(e, R))
@@ -385,7 +385,7 @@ static int current_env_length(jl_stenv_t *e)
 // counter for the current consistency-check scope and the largest count
 // observed in any already-closed scope. A variable is diagonal iff
 // `cov_count(vb) > 1`.
-static inline int8_t cov_count(const jl_varbinding_t *vb) JL_NOTSAFEPOINT
+static inline int8_t cov_count(const jl_varbinding_t *vb)
 {
     return vb->occurs_cov > vb->cov_diag ? vb->occurs_cov : vb->cov_diag;
 }
@@ -484,7 +484,7 @@ static void save_env(jl_stenv_t *e, jl_savedenv_t *se, int root) JL_CANSAFEPOINT
     re_save_env(e, se, root);
 }
 
-static void free_env(jl_savedenv_t *se) JL_NOTSAFEPOINT
+static void free_env(jl_savedenv_t *se)
 {
     if (se->gcframe.nroots) {
         assert(jl_current_task->gcstack == &se->gcframe);
@@ -495,7 +495,7 @@ static void free_env(jl_savedenv_t *se) JL_NOTSAFEPOINT
     se->buf = NULL;
 }
 
-static void free_stenv(jl_stenv_t *e) JL_NOTSAFEPOINT
+static void free_stenv(jl_stenv_t *e)
 {
     for (int R = 0; R < 2; R++) {
         jl_bits_stack_t *temp = R ? e->Runions.stack.next : e->Lunions.stack.next;
@@ -507,7 +507,7 @@ static void free_stenv(jl_stenv_t *e) JL_NOTSAFEPOINT
     }
 }
 
-static void restore_env(jl_stenv_t *e, jl_savedenv_t *se, int root) JL_NOTSAFEPOINT
+static void restore_env(jl_stenv_t *e, jl_savedenv_t *se, int root)
 {
     jl_value_t *JL_NONNULL *roots = NULL;
     int nroots = 0;
@@ -550,7 +550,7 @@ static void restore_env(jl_stenv_t *e, jl_savedenv_t *se, int root) JL_NOTSAFEPO
 
 // type utilities
 
-static int is_typeofbottom_typealias(jl_value_t *t) JL_NOTSAFEPOINT
+static int is_typeofbottom_typealias(jl_value_t *t)
 {
     if (t == NULL)
         return 0;
@@ -560,13 +560,13 @@ static int is_typeofbottom_typealias(jl_value_t *t) JL_NOTSAFEPOINT
            (jl_is_typeeq(t) && jl_typeeq_T(t) == jl_bottom_type);
 }
 
-static jl_value_t *normalize_typeofbottom_typealias(jl_value_t *t) JL_NOTSAFEPOINT
+static jl_value_t *normalize_typeofbottom_typealias(jl_value_t *t)
 {
     return is_typeofbottom_typealias(t) ? (jl_value_t*)jl_typeofbottom_type : t;
 }
 
 // quickly test that two types are identical (egal, `===`)
-static int obviously_egal(jl_value_t *a, jl_value_t *b) JL_NOTSAFEPOINT
+static int obviously_egal(jl_value_t *a, jl_value_t *b)
 {
     if (a == b) return 1;
     // NB: do NOT normalize the `Type{Union{}}`/`TypeofBottom` typealias here.
@@ -609,7 +609,7 @@ static int obviously_egal(jl_value_t *a, jl_value_t *b) JL_NOTSAFEPOINT
     return !jl_is_type(a) && jl_egal(a,b);
 }
 
-static int obviously_unequal(jl_value_t *a, jl_value_t *b) JL_NOTSAFEPOINT
+static int obviously_unequal(jl_value_t *a, jl_value_t *b)
 {
     if (a == b)
         return 0;
@@ -687,7 +687,7 @@ int jl_obviously_unequal(jl_value_t *a, jl_value_t *b)
     return obviously_unequal(a, b);
 }
 
-static int in_union(jl_value_t *u, jl_value_t *x) JL_NOTSAFEPOINT
+static int in_union(jl_value_t *u, jl_value_t *x)
 {
     if (u == x) return 1;
     if (!jl_is_uniontype(u)) return 0;
@@ -718,12 +718,12 @@ static int obviously_in_union(jl_value_t *u, jl_value_t *x)
 
 // the types whose instances are all themselves types: the concrete kinds plus the
 // abstract kind `AnyType` (`== Type`, though not `===`)
-STATIC_INLINE int is_kind_or_anytype(jl_value_t *t) JL_NOTSAFEPOINT
+STATIC_INLINE int is_kind_or_anytype(jl_value_t *t)
 {
     return jl_is_kind(t) || t == (jl_value_t*)jl_anytype_type;
 }
 
-int obviously_disjoint(jl_value_t *a, jl_value_t *b, int specificity) JL_NOTSAFEPOINT
+int obviously_disjoint(jl_value_t *a, jl_value_t *b, int specificity)
 {
     if (a == b || a == (jl_value_t*)jl_any_type || b == (jl_value_t*)jl_any_type)
         return 0;
@@ -899,10 +899,10 @@ static int subtype(jl_value_t *x, jl_value_t *y, jl_stenv_t *e, jl_param_pos_t p
 
 static int local_forall_exists_subtype(jl_value_t *x, jl_value_t *y, jl_stenv_t *e, jl_param_pos_t param, int limit_slow) JL_CANSAFEPOINT;
 
-static int is_leaf_typevar(jl_tvar_t *v) JL_NOTSAFEPOINT;
+static int is_leaf_typevar(jl_tvar_t *v);
 
 // Check whether env (variable bounds & diagonality) changed compared to saved env.
-static int env_unchanged(jl_stenv_t *e, jl_savedenv_t *se) JL_NOTSAFEPOINT
+static int env_unchanged(jl_stenv_t *e, jl_savedenv_t *se)
 {
     jl_value_t **roots = NULL;
     if (se->gcframe.nroots == JL_GC_ENCODE_PUSHARGS(1)) {
@@ -935,8 +935,8 @@ static int env_unchanged(jl_stenv_t *e, jl_savedenv_t *se) JL_NOTSAFEPOINT
     return 1;
 }
 
-static int push_consistency_scope(jl_stenv_t *e, int8_t *saved) JL_NOTSAFEPOINT;
-static void pop_consistency_scope(jl_stenv_t *e, const int8_t *saved, int nsaved) JL_NOTSAFEPOINT;
+static int push_consistency_scope(jl_stenv_t *e, int8_t *saved);
+static void pop_consistency_scope(jl_stenv_t *e, const int8_t *saved, int nsaved);
 
 // subtype for variable bounds consistency check. needs its own forall/exists environment.
 static int subtype_ccheck(jl_value_t *x, jl_value_t *y, jl_stenv_t *e) JL_CANSAFEPOINT
@@ -1011,7 +1011,7 @@ static int subtype_left_var(jl_value_t *x, jl_value_t *y, jl_stenv_t *e, jl_para
 
 // use the current context to record where a variable occurred, for the purpose
 // of determining whether the variable is concrete.
-static void record_var_occurrence(jl_varbinding_t *vb, jl_stenv_t *e, jl_param_pos_t param) JL_NOTSAFEPOINT
+static void record_var_occurrence(jl_varbinding_t *vb, jl_stenv_t *e, jl_param_pos_t param)
 {
     if (vb != NULL && param != PARAM_NONE) {
         // saturate counters at 2; we don't need values bigger than that
@@ -1042,7 +1042,7 @@ static void record_var_occurrence(jl_varbinding_t *vb, jl_stenv_t *e, jl_param_p
 // variable is diagonal iff it occurred >= 2 times in some single scope (the
 // outer scope or any consistency check), rather than summed across all
 // consistency checks.
-static int push_consistency_scope(jl_stenv_t *e, int8_t *saved) JL_NOTSAFEPOINT
+static int push_consistency_scope(jl_stenv_t *e, int8_t *saved)
 {
     jl_varbinding_t *v = e->vars;
     int i = 0;
@@ -1054,7 +1054,7 @@ static int push_consistency_scope(jl_stenv_t *e, int8_t *saved) JL_NOTSAFEPOINT
     return i;
 }
 
-static void pop_consistency_scope(jl_stenv_t *e, const int8_t *saved, int nsaved) JL_NOTSAFEPOINT
+static void pop_consistency_scope(jl_stenv_t *e, const int8_t *saved, int nsaved)
 {
     jl_varbinding_t *v = e->vars;
     int i = 0;
@@ -1074,7 +1074,7 @@ static void pop_consistency_scope(jl_stenv_t *e, const int8_t *saved, int nsaved
 // into `cov_diag` afterward, while exists-side vars continue accumulating in
 // the current scope (their occurrences in the call's right-hand structure are
 // still part of the surrounding pattern).
-static int push_forall_bound_scope(jl_stenv_t *e, int8_t *saved) JL_NOTSAFEPOINT
+static int push_forall_bound_scope(jl_stenv_t *e, int8_t *saved)
 {
     jl_varbinding_t *v = e->vars;
     int i = 0;
@@ -1087,7 +1087,7 @@ static int push_forall_bound_scope(jl_stenv_t *e, int8_t *saved) JL_NOTSAFEPOINT
     return i;
 }
 
-static void pop_forall_bound_scope(jl_stenv_t *e, const int8_t *saved, int nsaved) JL_NOTSAFEPOINT
+static void pop_forall_bound_scope(jl_stenv_t *e, const int8_t *saved, int nsaved)
 {
     jl_varbinding_t *v = e->vars;
     int i = 0;
@@ -1118,7 +1118,7 @@ static jl_value_t *intersect_aside(jl_value_t *x, jl_value_t *y, jl_stenv_t *e, 
 
 static int reachable_var(jl_value_t *x, jl_tvar_t *y, jl_stenv_t *e);
 
-static int singleton_typevar_subtype(jl_tvar_t *v, jl_value_t *a) JL_NOTSAFEPOINT
+static int singleton_typevar_subtype(jl_tvar_t *v, jl_value_t *a)
 {
     if (a == (jl_value_t*)v || a == (jl_value_t*)jl_any_type)
         return 1;
@@ -1128,7 +1128,7 @@ static int singleton_typevar_subtype(jl_tvar_t *v, jl_value_t *a) JL_NOTSAFEPOIN
     return 0;
 }
 
-static int subtype_singleton_typevar(jl_value_t *a, jl_tvar_t *v) JL_NOTSAFEPOINT
+static int subtype_singleton_typevar(jl_value_t *a, jl_tvar_t *v)
 {
     if (a == (jl_value_t*)v || a == jl_bottom_type)
         return 1;
@@ -1277,7 +1277,7 @@ static int subtype_var(jl_tvar_t *b, jl_value_t *a, jl_stenv_t *e, int R, jl_par
 // check that a type is concrete or quasi-concrete (Type{T}).
 // this is used to check concrete typevars:
 // issubtype is false if the lower bound of a concrete type var is not concrete.
-int is_leaf_bound(jl_value_t *v) JL_NOTSAFEPOINT
+int is_leaf_bound(jl_value_t *v)
 {
     if (v == jl_bottom_type)
         return 1;
@@ -1294,7 +1294,7 @@ int is_leaf_bound(jl_value_t *v) JL_NOTSAFEPOINT
     return !jl_is_type(v) && !jl_is_typevar(v);
 }
 
-static int is_leaf_typevar(jl_tvar_t *v) JL_NOTSAFEPOINT
+static int is_leaf_typevar(jl_tvar_t *v)
 {
     return is_leaf_bound(v->lb);
 }
@@ -1305,7 +1305,7 @@ typedef struct _typeeq_varctx_t {
     struct _typeeq_varctx_t *prev;
 } typeeq_varctx_t;
 
-static typeeq_varctx_t *typeeq_lookup_var(typeeq_varctx_t *env, jl_tvar_t *v) JL_NOTSAFEPOINT
+static typeeq_varctx_t *typeeq_lookup_var(typeeq_varctx_t *env, jl_tvar_t *v)
 {
     while (env != NULL) {
         if (env->var == v)
@@ -1315,16 +1315,16 @@ static typeeq_varctx_t *typeeq_lookup_var(typeeq_varctx_t *env, jl_tvar_t *v) JL
     return NULL;
 }
 
-static int typeeq_vars_bound_in_env(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_t *wenv) JL_NOTSAFEPOINT;
-static int typeeq_kind_mask(jl_value_t *t) JL_NOTSAFEPOINT;
-static int typeeq_mask_le(int mask, jl_value_t *y) JL_NOTSAFEPOINT;
+static int typeeq_vars_bound_in_env(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_t *wenv);
+static int typeeq_kind_mask(jl_value_t *t);
+static int typeeq_mask_le(int mask, jl_value_t *y);
 
 // The concrete tag containing `t` when `t` pins one object: `typeof(T)` for a
 // `TypeEgal{T}` (sole member `T`), for `Type{Union{}}` (`== TypeofBottom`),
 // and for a dangling-var dispatch key (see `typeeq_vars_bound_in_env`). Any
 // other `Type{T}` has members of several tags and no concrete supertype, so
 // there is nothing to widen to (#33136).
-static jl_value_t *widen_pinned_Type(jl_value_t *t JL_PROPAGATES_ROOT, jl_stenv_t *e, typeeq_varctx_t *wenv) JL_NOTSAFEPOINT
+static jl_value_t *widen_pinned_Type(jl_value_t *t JL_PROPAGATES_ROOT, jl_stenv_t *e, typeeq_varctx_t *wenv)
 {
     if (jl_is_typeegal(t))
         return jl_typeof(jl_typeegal_T(t));
@@ -1345,7 +1345,7 @@ static jl_value_t *widen_pinned_Type(jl_value_t *t JL_PROPAGATES_ROOT, jl_stenv_
 // existential (intersection) direction the tag instead selects the (nonempty)
 // tag-homogeneous slice of the members as the witness for the diagonal
 // variable, so the unconditional tag is a valid choice there.
-static jl_value_t *widen_Type_if_concrete(jl_value_t *t JL_PROPAGATES_ROOT, jl_stenv_t *e, typeeq_varctx_t *wenv, int existential) JL_NOTSAFEPOINT
+static jl_value_t *widen_Type_if_concrete(jl_value_t *t JL_PROPAGATES_ROOT, jl_stenv_t *e, typeeq_varctx_t *wenv, int existential)
 {
     jl_value_t *w = widen_pinned_Type(t, e, wenv);
     if (w == NULL && jl_is_typeeq(t) && !jl_is_typevar(jl_typeeq_T(t))) {
@@ -1416,7 +1416,7 @@ static jl_value_t *widen_Type_to_union(jl_value_t *t, jl_value_t *bound, jl_sten
     return t;
 }
 
-static int var_occurs_inside(jl_value_t *v, jl_tvar_t *var, int inside, int want_inv) JL_NOTSAFEPOINT;
+static int var_occurs_inside(jl_value_t *v, jl_tvar_t *var, int inside, int want_inv);
 
 // wrap a TypeVar env entry as svec(tvar, constrained): preserves TypeVar
 // identity while carrying the "constrained by any concrete subtype" bit.
@@ -1427,7 +1427,7 @@ static jl_value_t *wrap_tvar_env(jl_value_t *tvar, int constrained) JL_CANSAFEPO
     return (jl_value_t*)jl_svec2(tvar, constrained ? jl_true : jl_false);
 }
 
-static int unionall_is_Type_range(jl_unionall_t *ua) JL_NOTSAFEPOINT
+static int unionall_is_Type_range(jl_unionall_t *ua)
 {
     return jl_is_some_Type(ua->body) && jl_some_Type_T(ua->body) == (jl_value_t*)ua->var;
 }
@@ -1436,7 +1436,7 @@ static int unionall_is_Type_range(jl_unionall_t *ua) JL_NOTSAFEPOINT
 // to be pinned by any concrete leaftype subtype of `typ`? Conservative: a
 // false return is always safe. Used only on fast paths where we don't have
 // dynamic varbinding state to draw from.
-static int constrains_param_static(jl_tvar_t *var, jl_value_t *typ, int covariant) JL_NOTSAFEPOINT
+static int constrains_param_static(jl_tvar_t *var, jl_value_t *typ, int covariant)
 {
     if (typ == (jl_value_t*)var)
         return 1;
@@ -1498,7 +1498,7 @@ static int constrains_param_static(jl_tvar_t *var, jl_value_t *typ, int covarian
     return 0;
 }
 
-static void mark_required_tuple_element(jl_stenv_t *e, jl_value_t *rhs) JL_NOTSAFEPOINT
+static void mark_required_tuple_element(jl_stenv_t *e, jl_value_t *rhs)
 {
     if (e->ignore_lb_required)
         return;
@@ -1511,7 +1511,7 @@ static void mark_required_tuple_element(jl_stenv_t *e, jl_value_t *rhs) JL_NOTSA
 
 typedef int (*tvar_callback)(void*, int8_t, jl_stenv_t *, int);
 
-static int var_occurs_invariant(jl_value_t *v, jl_tvar_t *var) JL_NOTSAFEPOINT
+static int var_occurs_invariant(jl_value_t *v, jl_tvar_t *var)
 {
     return var_occurs_inside(v, var, 0, 1);
 }
@@ -1546,7 +1546,7 @@ static jl_unionall_t *unalias_unionall(jl_unionall_t *u, jl_stenv_t *e) JL_CANSA
     return u;
 }
 
-static int has_existential_typevar(jl_value_t *x, jl_stenv_t *e) JL_NOTSAFEPOINT
+static int has_existential_typevar(jl_value_t *x, jl_stenv_t *e)
 {
     jl_typeenv_t *env = NULL;
     jl_varbinding_t *v = e->vars;
@@ -1563,7 +1563,7 @@ static int has_existential_typevar(jl_value_t *x, jl_stenv_t *e) JL_NOTSAFEPOINT
     return env != NULL && jl_has_bound_typevars(x, env);
 }
 
-static int has_universal_typevar(jl_value_t *x, jl_stenv_t *e) JL_NOTSAFEPOINT
+static int has_universal_typevar(jl_value_t *x, jl_stenv_t *e)
 {
     jl_typeenv_t *env = NULL;
     jl_varbinding_t *v = e->vars;
@@ -1596,7 +1596,7 @@ static int has_universal_typevar(jl_value_t *x, jl_stenv_t *e) JL_NOTSAFEPOINT
 // Vararg element types. An occurrence under a non-Tuple datatype parameter,
 // in a Vararg length, or anywhere inside an inner UnionAll (bounds or body)
 // is not covariant. Returns 1 if `var` does not occur at all.
-static int var_occurs_covariant_only(jl_value_t *t, jl_tvar_t *var, int covariant) JL_NOTSAFEPOINT
+static int var_occurs_covariant_only(jl_value_t *t, jl_tvar_t *var, int covariant)
 {
     if (t == (jl_value_t*)var)
         return covariant;
@@ -2294,14 +2294,14 @@ static int try_subtype_by_bounds(jl_value_t *a, jl_value_t *b, jl_stenv_t *e);
 #define TYPEEQ_KIND_TYPEEGAL 32
 #define TYPEEQ_KIND_ALL      63
 
-static int count_occurs(jl_value_t *t, jl_tvar_t *v) JL_NOTSAFEPOINT;
+static int count_occurs(jl_value_t *t, jl_tvar_t *v);
 
 // typevars bound by unionalls inside the parameter itself, as opposed to free
 // typevars from the outer environment (which range over instantiations)
 // may a value of covariant position `p` be `==` to a union of multiple
 // incomparable components, so that a `Tuple` around it splits into a `Union`
 // (`Tuple{Union{Int,String}} == Union{Tuple{Int},Tuple{String}}`)?
-static int typeeq_splittable(jl_value_t *p, typeeq_varctx_t *env) JL_NOTSAFEPOINT
+static int typeeq_splittable(jl_value_t *p, typeeq_varctx_t *env)
 {
     if (jl_is_uniontype(p))
         return 1;
@@ -2344,7 +2344,7 @@ static int typeeq_splittable(jl_value_t *p, typeeq_varctx_t *env) JL_NOTSAFEPOIN
 // the outer environment can cause this: a `Union{}` instantiation of a
 // parameter-local existential var contributes an empty piece to a fixed type
 // rather than changing which type it is.
-static int typeeq_bottomable(jl_value_t *p, typeeq_varctx_t *env) JL_NOTSAFEPOINT
+static int typeeq_bottomable(jl_value_t *p, typeeq_varctx_t *env)
 {
     if (p == jl_bottom_type)
         return 1;
@@ -2381,7 +2381,7 @@ static int typeeq_bottomable(jl_value_t *p, typeeq_varctx_t *env) JL_NOTSAFEPOIN
 // or unionall component absorbs differently per instantiation, making the
 // class of the union too unstable to bound (e.g. `Union{Int,String,T}` is
 // `==` to the DataType `Any` when `T == Any`).
-static int typeeq_union_arms_stable(jl_value_t *t) JL_NOTSAFEPOINT
+static int typeeq_union_arms_stable(jl_value_t *t)
 {
     if (jl_is_uniontype(t))
         return typeeq_union_arms_stable(((jl_uniontype_t*)t)->a) &&
@@ -2392,7 +2392,7 @@ static int typeeq_union_arms_stable(jl_value_t *t) JL_NOTSAFEPOINT
 // do all components of `t` (a union) unwrap to `Tuple` datatypes? Unions of
 // tuples may refold into a single `Tuple` DataType representative
 // (`Union{Tuple{Int},Tuple{String}} == Tuple{Union{Int,String}}`).
-static int typeeq_all_tuplish(jl_value_t *t) JL_NOTSAFEPOINT
+static int typeeq_all_tuplish(jl_value_t *t)
 {
     while (jl_is_unionall(t))
         t = ((jl_unionall_t*)t)->body;
@@ -2402,7 +2402,7 @@ static int typeeq_all_tuplish(jl_value_t *t) JL_NOTSAFEPOINT
     return jl_is_datatype(t) && ((jl_datatype_t*)t)->name == jl_tuple_typename;
 }
 
-static int typeeq_kind_mask1(jl_value_t *t, typeeq_varctx_t *env) JL_NOTSAFEPOINT
+static int typeeq_kind_mask1(jl_value_t *t, typeeq_varctx_t *env)
 {
     if (t == jl_bottom_type)
         return TYPEEQ_KIND_BOTTOM;
@@ -2532,7 +2532,7 @@ static int typeeq_kind_mask1(jl_value_t *t, typeeq_varctx_t *env) JL_NOTSAFEPOIN
 // superset of the type tags (kinds) of the members of the `==`-class of `t`,
 // the parameter of a `Type{t}`; free typevars of `t` range over their
 // instantiations, but `t` itself must not be a bare typevar
-static int typeeq_kind_mask(jl_value_t *t) JL_NOTSAFEPOINT
+static int typeeq_kind_mask(jl_value_t *t)
 {
     if (t == jl_bottom_type)
         return TYPEEQ_KIND_BOTTOM; // the bottom object is unique (see above)
@@ -2541,7 +2541,7 @@ static int typeeq_kind_mask(jl_value_t *t) JL_NOTSAFEPOINT
 
 // is the kind datatype `k` (whose supertype chain is `k <: AnyType <: Any` and
 // which has no parameters or subtypes) a subtype of the datatype `y`?
-static int typeeq_kind_le(jl_datatype_t *k, jl_value_t *y) JL_NOTSAFEPOINT
+static int typeeq_kind_le(jl_datatype_t *k, jl_value_t *y)
 {
     if (!jl_is_datatype(y))
         return 0;
@@ -2559,7 +2559,7 @@ static const int typeeq_kind_bits[6] = {
     TYPEEQ_KIND_UNIONALL, TYPEEQ_KIND_TYPEEQ, TYPEEQ_KIND_TYPEEGAL
 };
 
-static jl_datatype_t *typeeq_kind_datatype(int bit) JL_NOTSAFEPOINT
+static jl_datatype_t *typeeq_kind_datatype(int bit)
 {
     switch (bit) {
     case TYPEEQ_KIND_BOTTOM:   return jl_typeofbottom_type;
@@ -2595,7 +2595,7 @@ static jl_value_t *typeeq_unpin_tvar(jl_value_t *tp0 JL_PROPAGATES_ROOT) JL_CANS
 }
 
 // do all kinds in `mask` lie in the datatype `y`? (the `Type{T} <: y` rule)
-static int typeeq_mask_le(int mask, jl_value_t *y) JL_NOTSAFEPOINT
+static int typeeq_mask_le(int mask, jl_value_t *y)
 {
     int i;
     for (i = 0; i < 6; i++) {
@@ -2607,7 +2607,7 @@ static int typeeq_mask_le(int mask, jl_value_t *y) JL_NOTSAFEPOINT
 }
 
 // does some kind in `mask` lie in `y`? (`Type{T} ∩ y` nonemptiness)
-static int typeeq_mask_meets(int mask, jl_value_t *y) JL_NOTSAFEPOINT
+static int typeeq_mask_meets(int mask, jl_value_t *y)
 {
     int i;
     for (i = 0; i < 6; i++) {
@@ -2620,7 +2620,7 @@ static int typeeq_mask_meets(int mask, jl_value_t *y) JL_NOTSAFEPOINT
 
 // collect the components of the union `y` that have no free typevars;
 // components beyond `cap` are dropped (making the caller's check conservative)
-static void typeeq_collect_closed_components(jl_value_t *y, jl_value_t **out, size_t *n, size_t cap) JL_NOTSAFEPOINT
+static void typeeq_collect_closed_components(jl_value_t *y, jl_value_t **out, size_t *n, size_t cap)
 {
     if (jl_is_uniontype(y)) {
         typeeq_collect_closed_components(((jl_uniontype_t*)y)->a, out, n, cap);
@@ -2664,7 +2664,7 @@ static int typeeq_subtype_kind_cover(jl_value_t *tp0, jl_value_t *y) JL_CANSAFEP
 
 // quick scan: does the union `y` contain a kind (or `AnyType`) component, so
 // that the kind-cover check above can possibly succeed?
-static int union_has_kind_component(jl_value_t *y) JL_NOTSAFEPOINT
+static int union_has_kind_component(jl_value_t *y)
 {
     if (jl_is_uniontype(y))
         return union_has_kind_component(((jl_uniontype_t*)y)->a) ||
@@ -2680,7 +2680,7 @@ static int union_has_kind_component(jl_value_t *y) JL_NOTSAFEPOINT
 // like that value: pinned to its type tag, `==`-compared as a `Type` (the same
 // hybrid `typekeyvalue_eq` uses). Method signatures always bind their vars, so
 // they still get the sound `==`-class semantics.
-static int typeeq_vars_bound_in_env(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_t *wenv) JL_NOTSAFEPOINT
+static int typeeq_vars_bound_in_env(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_t *wenv)
 {
     if (jl_is_typevar(t)) {
         int inner = 0;
@@ -2717,7 +2717,7 @@ static int typeeq_vars_bound_in_env(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_
 
 // is `t` an internal single-object dispatch key: an open type whose free
 // typevars are all dangling in this query (see `typeeq_vars_bound_in_env`)?
-static int typeeq_is_dangling_key(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_t *wenv) JL_NOTSAFEPOINT
+static int typeeq_is_dangling_key(jl_value_t *t, jl_stenv_t *e, typeeq_varctx_t *wenv)
 {
     return jl_has_free_typevars(t) && !typeeq_vars_bound_in_env(t, e, wenv);
 }
@@ -3393,7 +3393,7 @@ static int concrete_min(jl_value_t *t)
     return 1; // a non-Type is also considered concrete
 }
 
-static jl_value_t *find_var_body(jl_value_t *t, jl_tvar_t *v) JL_NOTSAFEPOINT
+static jl_value_t *find_var_body(jl_value_t *t, jl_tvar_t *v)
 {
     if (jl_is_unionall(t)) {
         if (((jl_unionall_t*)t)->var == v)
@@ -4235,7 +4235,7 @@ static jl_value_t *bound_var_below(jl_tvar_t *tv, jl_varbinding_t *bb, jl_stenv_
     return (jl_value_t*)tv;
 }
 
-static int subtype_by_bounds(jl_value_t *x, jl_value_t *y, jl_stenv_t *e) JL_NOTSAFEPOINT;
+static int subtype_by_bounds(jl_value_t *x, jl_value_t *y, jl_stenv_t *e);
 
 // similar to `subtype_by_bounds`, used to avoid stack-overflow caused by circular constraints.
 static int try_subtype_by_bounds(jl_value_t *a, jl_value_t *b, jl_stenv_t *e)
@@ -4273,7 +4273,7 @@ static int try_subtype_in_env(jl_value_t *a, jl_value_t *b, jl_stenv_t *e)
     return ret;
 }
 
-static void set_bound(jl_value_t **bound, jl_value_t *val, jl_tvar_t *v, jl_stenv_t *e) JL_NOTSAFEPOINT
+static void set_bound(jl_value_t **bound, jl_value_t *val, jl_tvar_t *v, jl_stenv_t *e)
 {
     if (in_union(val, (jl_value_t*)v))
         return;
@@ -4341,7 +4341,7 @@ static int reachable_var(jl_value_t *x, jl_tvar_t *y, jl_stenv_t *e)
 }
 
 // check whether setting v == t implies v == SomeType{v}, which is unsatisfiable.
-static int check_unsat_bound(jl_value_t *t, jl_tvar_t *v, jl_stenv_t *e) JL_NOTSAFEPOINT
+static int check_unsat_bound(jl_value_t *t, jl_tvar_t *v, jl_stenv_t *e)
 {
     if (var_occurs_inside(t, v, 0, 0))
         return 1;
@@ -4492,7 +4492,7 @@ static jl_value_t *intersect_var(jl_tvar_t *b, jl_value_t *a, jl_stenv_t *e, int
 // test whether `var` occurs inside constructors. `want_inv` tests only inside
 // invariant constructors. `inside` means we are currently inside a constructor of the
 // requested kind.
-static int var_occurs_inside(jl_value_t *v, jl_tvar_t *var, int inside, int want_inv) JL_NOTSAFEPOINT
+static int var_occurs_inside(jl_value_t *v, jl_tvar_t *var, int inside, int want_inv)
 {
     if (v == (jl_value_t*)var) {
         return inside;
@@ -4586,7 +4586,7 @@ static jl_value_t *omit_bad_union(jl_value_t *u, jl_tvar_t *t) JL_CANSAFEPOINT
 }
 
 // TODO: fuse with reachable_var?
-static int has_typevar_via_flatten_env(jl_value_t *x, jl_tvar_t *t, jl_ivarbinding_t *allvars, int8_t *checked) JL_NOTSAFEPOINT
+static int has_typevar_via_flatten_env(jl_value_t *x, jl_tvar_t *t, jl_ivarbinding_t *allvars, int8_t *checked)
 {
     if (jl_is_unionall(x)) {
         jl_tvar_t *var = ((jl_unionall_t *)x)->var;
@@ -5060,7 +5060,7 @@ static jl_value_t *intersect_unionall_(jl_value_t *t, jl_unionall_t *u, jl_stenv
     return res;
 }
 
-static int always_occurs_cov(jl_value_t *v, jl_tvar_t *var, jl_param_pos_t param) JL_NOTSAFEPOINT
+static int always_occurs_cov(jl_value_t *v, jl_tvar_t *var, jl_param_pos_t param)
 {
     if (param == PARAM_INVARIANT) {
         return 0;
@@ -5532,7 +5532,7 @@ static jl_value_t *intersect_type_type(jl_value_t *x, jl_value_t *y, jl_stenv_t 
 
 // cmp <= 0: is x already <= y in this environment
 // cmp >= 0: is x already >= y in this environment
-static int compareto_var(jl_value_t *x, jl_tvar_t *y, jl_stenv_t *e, int cmp) JL_NOTSAFEPOINT
+static int compareto_var(jl_value_t *x, jl_tvar_t *y, jl_stenv_t *e, int cmp)
 {
     if (x == (jl_value_t*)y)
         return 1;
@@ -5553,7 +5553,7 @@ static int compareto_var(jl_value_t *x, jl_tvar_t *y, jl_stenv_t *e, int cmp) JL
 // Check whether the environment already asserts x <: y via recorded bounds.
 // This is used to avoid adding redundant constraints that lead to cycles.
 // Note this is a semi-predicate: 1 => is a subtype, 0 => unknown
-static int subtype_by_bounds(jl_value_t *x, jl_value_t *y, jl_stenv_t *e) JL_NOTSAFEPOINT
+static int subtype_by_bounds(jl_value_t *x, jl_value_t *y, jl_stenv_t *e)
 {
     if (!jl_is_typevar(x) || !jl_is_typevar(y))
         return 0;
@@ -6251,7 +6251,7 @@ static jl_value_t *switch_union_tuple(jl_value_t *a, jl_value_t *b) JL_CANSAFEPO
 // `a` might have a non-empty intersection with some concrete type b even if !(a<:b) and !(b<:a)
 // For example a=`Tuple{Type{<:Vector}}` and b=`Tuple{DataType}`
 // TODO: this query is partly available memoized as jl_type_equality_is_identity
-static int might_intersect_concrete(jl_value_t *a) JL_NOTSAFEPOINT
+static int might_intersect_concrete(jl_value_t *a)
 {
     if (jl_is_unionall(a))
         a = jl_unwrap_unionall(a);
@@ -6878,7 +6878,7 @@ static int type_morespecific_(jl_value_t *a, jl_value_t *b, jl_value_t *a0, jl_v
 
 static int num_occurs(jl_tvar_t *v, jl_typeenv_t *env);
 
-static jl_value_t *nth_tuple_elt(jl_datatype_t *t JL_PROPAGATES_ROOT, size_t i) JL_NOTSAFEPOINT
+static jl_value_t *nth_tuple_elt(jl_datatype_t *t JL_PROPAGATES_ROOT, size_t i)
 {
     size_t len = jl_nparams(t);
     if (len == 0)
@@ -7016,7 +7016,7 @@ static int args_morespecific_fix1(jl_value_t *a, jl_value_t *b, jl_value_t *a0, 
     return ret;
 }
 
-static int count_occurs(jl_value_t *t, jl_tvar_t *v) JL_NOTSAFEPOINT
+static int count_occurs(jl_value_t *t, jl_tvar_t *v)
 {
     if (t == (jl_value_t*)v)
         return 1;

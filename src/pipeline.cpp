@@ -107,7 +107,7 @@ using namespace llvm;
 namespace {
     //Shamelessly stolen from Clang's approach to sanitizers
     //TODO do we want to enable other sanitizers?
-    static void addSanitizerPasses(ModulePassManager &MPM, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+    static void addSanitizerPasses(ModulePassManager &MPM, OptimizationLevel O, const OptimizationOptions &options) {
         // Coverage sanitizer
         // if (CodeGenOpts.hasSanitizeCoverage()) {
         //   auto SancovOpts = getSancovOptsFromCGOpts(CodeGenOpts);
@@ -117,7 +117,7 @@ namespace {
         // }
 
         if (options.sanitize_memory) {
-            auto MSanPass = [&](/*SanitizerMask Mask, */bool CompileKernel) JL_NOTSAFEPOINT {
+            auto MSanPass = [&](/*SanitizerMask Mask, */bool CompileKernel) {
                 // if (LangOpts.Sanitize.has(Mask)) {
                 // int TrackOrigins = CodeGenOpts.SanitizeMemoryTrackOrigins;
                 // bool Recover = CodeGenOpts.SanitizeRecover.has(Mask);
@@ -152,7 +152,7 @@ namespace {
         }
 
         if (options.sanitize_address) {
-            auto ASanPass = [&](/*SanitizerMask Mask, */bool CompileKernel) JL_NOTSAFEPOINT {
+            auto ASanPass = [&](/*SanitizerMask Mask, */bool CompileKernel) {
                 //   if (LangOpts.Sanitize.has(Mask)) {
                 // bool UseGlobalGC = asanUseGlobalsGC(TargetTriple, CodeGenOpts);
                 // bool UseOdrIndicator = CodeGenOpts.SanitizeAddressUseOdrIndicator;
@@ -191,7 +191,7 @@ namespace {
     }
 
 #ifdef JL_VERIFY_PASSES
-    static inline void addVerificationPasses(ModulePassManager &MPM, bool llvm_only) JL_NOTSAFEPOINT {
+    static inline void addVerificationPasses(ModulePassManager &MPM, bool llvm_only) {
         if (!llvm_only){
             MPM.addPass(llvm::createModuleToFunctionPassAdaptor(GCInvariantVerifierPass(true)));
         }
@@ -199,14 +199,14 @@ namespace {
     }
 #endif
 
-    auto basicSimplifyCFGOptions() JL_NOTSAFEPOINT {
+    auto basicSimplifyCFGOptions() {
         return SimplifyCFGOptions()
             .convertSwitchRangeToICmp(true)
             .convertSwitchToLookupTable(true)
             .forwardSwitchCondToPhi(true);
     }
 
-    auto aggressiveSimplifyCFGOptions() JL_NOTSAFEPOINT {
+    auto aggressiveSimplifyCFGOptions() {
         return SimplifyCFGOptions()
             .convertSwitchRangeToICmp(true)
             .convertSwitchToLookupTable(true)
@@ -230,26 +230,26 @@ namespace {
 
     // Version check for our patch to allow invoking pipeline callbacks
     // won't work if built with our LLVM but linked with system LLVM
-    template<typename PB> std::true_type hasInvokeCallbacks_helper(decltype(&PB::invokePipelineStartEPCallbacks)) JL_NOTSAFEPOINT;
-    std::false_type hasInvokeCallbacks_helper(...) JL_NOTSAFEPOINT;
+    template<typename PB> std::true_type hasInvokeCallbacks_helper(decltype(&PB::invokePipelineStartEPCallbacks));
+    std::false_type hasInvokeCallbacks_helper(...);
 
     // static constexpr bool hasInvokeCallbacks = decltype(hasInvokeCallbacks_helper<PassBuilder>(nullptr))::value;
 
     //If PB is a nullptr, don't invoke anything (this happens when running julia from opt)
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokePipelineStartCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokePipelineStartCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokePipelineStartEPCallbacks(MPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokePeepholeEPCallbacks(FunctionPassManager &FPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokePeepholeEPCallbacks(FunctionPassManager &FPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokePeepholeEPCallbacks(FPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeEarlySimplificationCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeEarlySimplificationCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
 #if JL_LLVM_VERSION >= 200000
@@ -259,13 +259,13 @@ namespace {
 #endif
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeCGSCCCallbacks(CGSCCPassManager &CGPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeCGSCCCallbacks(CGSCCPassManager &CGPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokeCGSCCOptimizerLateEPCallbacks(CGPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeOptimizerEarlyCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeOptimizerEarlyCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
 #if JL_LLVM_VERSION >= 200000
@@ -275,31 +275,31 @@ namespace {
 #endif
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeLateLoopOptimizationCallbacks(LoopPassManager &LPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeLateLoopOptimizationCallbacks(LoopPassManager &LPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokeLateLoopOptimizationsEPCallbacks(LPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeLoopOptimizerEndCallbacks(LoopPassManager &LPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeLoopOptimizerEndCallbacks(LoopPassManager &LPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokeLoopOptimizerEndEPCallbacks(LPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeScalarOptimizerCallbacks(FunctionPassManager &FPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeScalarOptimizerCallbacks(FunctionPassManager &FPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokeScalarOptimizerLateEPCallbacks(FPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeVectorizerCallbacks(FunctionPassManager &FPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeVectorizerCallbacks(FunctionPassManager &FPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
         PB->invokeVectorizerStartEPCallbacks(FPM, O);
     }
     template<typename PB_t>
-    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeOptimizerLastCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) JL_NOTSAFEPOINT {
+    std::enable_if_t<decltype(hasInvokeCallbacks_helper<PB_t>(nullptr))::value, void> invokeOptimizerLastCallbacks(ModulePassManager &MPM, PB_t *PB, OptimizationLevel O) {
         static_assert(std::is_same<PassBuilder, PB_t>::value, "Expected PassBuilder as second argument!");
         if (!PB) return;
 #if JL_LLVM_VERSION >= 200000
@@ -343,7 +343,7 @@ namespace {
 
 #define JULIA_PASS(ADD_PASS) if (!options.llvm_only) { ADD_PASS; } else do { } while (0)
 
-static void buildEarlySimplificationPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildEarlySimplificationPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     MPM.addPass(BeforeEarlySimplificationMarkerPass());
 #ifdef JL_VERIFY_PASSES
     addVerificationPasses(MPM, options.llvm_only);
@@ -384,7 +384,7 @@ static void buildEarlySimplificationPipeline(ModulePassManager &MPM, PassBuilder
     MPM.addPass(AfterEarlySimplificationMarkerPass());
 }
 
-static void buildEarlyOptimizerPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildEarlyOptimizerPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     MPM.addPass(BeforeEarlyOptimizationMarkerPass());
     if (options.enable_early_optimizations) {
       invokeOptimizerEarlyCallbacks(MPM, PB, O);
@@ -435,7 +435,7 @@ static void buildEarlyOptimizerPipeline(ModulePassManager &MPM, PassBuilder *PB,
     MPM.addPass(AfterEarlyOptimizationMarkerPass());
 }
 
-static void buildLoopOptimizerPipeline(FunctionPassManager &FPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildLoopOptimizerPipeline(FunctionPassManager &FPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     FPM.addPass(BeforeLoopOptimizationMarkerPass());
     if (options.enable_loop_optimizations) {
         {
@@ -484,7 +484,7 @@ static void buildLoopOptimizerPipeline(FunctionPassManager &FPM, PassBuilder *PB
     FPM.addPass(AfterLoopOptimizationMarkerPass());
 }
 
-static void buildScalarOptimizerPipeline(FunctionPassManager &FPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildScalarOptimizerPipeline(FunctionPassManager &FPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     FPM.addPass(BeforeScalarOptimizationMarkerPass());
     if (options.enable_scalar_optimizations) {
         if (O.getSpeedupLevel() >= 2) {
@@ -536,7 +536,7 @@ static void buildScalarOptimizerPipeline(FunctionPassManager &FPM, PassBuilder *
     FPM.addPass(AfterScalarOptimizationMarkerPass());
 }
 
-static void buildVectorPipeline(FunctionPassManager &FPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildVectorPipeline(FunctionPassManager &FPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     FPM.addPass(BeforeVectorizationMarkerPass());
     if (options.enable_vector_pipeline) {
         //TODO look into loop vectorize options
@@ -566,7 +566,7 @@ static void buildVectorPipeline(FunctionPassManager &FPM, PassBuilder *PB, Optim
     FPM.addPass(AfterVectorizationMarkerPass());
 }
 
-static void buildIntrinsicLoweringPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildIntrinsicLoweringPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     MPM.addPass(BeforeIntrinsicLoweringMarkerPass());
     if (options.lower_intrinsics) {
         //TODO barrier pass?
@@ -607,7 +607,7 @@ static void buildIntrinsicLoweringPipeline(ModulePassManager &MPM, PassBuilder *
     MPM.addPass(AfterIntrinsicLoweringMarkerPass());
 }
 
-static void buildCleanupPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildCleanupPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     MPM.addPass(BeforeCleanupMarkerPass());
     if (options.cleanup) {
         if (O.getSpeedupLevel() >= 2) {
@@ -630,7 +630,7 @@ static void buildCleanupPipeline(ModulePassManager &MPM, PassBuilder *PB, Optimi
     MPM.addPass(AfterCleanupMarkerPass());
 }
 
-static void buildPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) JL_NOTSAFEPOINT {
+static void buildPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationLevel O, const OptimizationOptions &options) {
     MPM.addPass(BeforeOptimizationMarkerPass());
     buildEarlySimplificationPipeline(MPM, PB, O, options);
     if (options.always_inline)
@@ -657,7 +657,7 @@ static void buildPipeline(ModulePassManager &MPM, PassBuilder *PB, OptimizationL
 
 namespace {
 
-    void adjustPIC(PassInstrumentationCallbacks &PIC) JL_NOTSAFEPOINT {
+    void adjustPIC(PassInstrumentationCallbacks &PIC) {
 //Borrowed from LLVM PassBuilder.cpp:386
 #define MODULE_PASS(NAME, CREATE_PASS)                                         \
 PIC.addClassToPassName(decltype(CREATE_PASS)::name(), NAME);
@@ -724,11 +724,11 @@ PIC.addClassToPassName(decltype(CREATE_PASS)::name(), NAME);
         PIC.addClassToPassName("AfterOptimizationMarkerPass", "AfterOptimization");
     }
 
-    FunctionAnalysisManager createFAM(OptimizationLevel O, TargetMachine &TM) JL_NOTSAFEPOINT {
+    FunctionAnalysisManager createFAM(OptimizationLevel O, TargetMachine &TM) {
 
         FunctionAnalysisManager FAM;
         // Register the AA manager first so that our version is the one used.
-        FAM.registerPass([&]() JL_NOTSAFEPOINT {
+        FAM.registerPass([&]() {
             AAManager AA;
             if (O.getSpeedupLevel() >= 2) {
                 AA.registerFunctionAnalysis<BasicAA>();
@@ -739,12 +739,12 @@ PIC.addClassToPassName(decltype(CREATE_PASS)::name(), NAME);
             return AA;
         });
         // Register our TargetLibraryInfoImpl.
-        FAM.registerPass([&]() JL_NOTSAFEPOINT { return llvm::TargetIRAnalysis(TM.getTargetIRAnalysis()); });
-        FAM.registerPass([&]() JL_NOTSAFEPOINT { return llvm::TargetLibraryAnalysis(llvm::TargetLibraryInfoImpl(TM.getTargetTriple())); });
+        FAM.registerPass([&]() { return llvm::TargetIRAnalysis(TM.getTargetIRAnalysis()); });
+        FAM.registerPass([&]() { return llvm::TargetLibraryAnalysis(llvm::TargetLibraryInfoImpl(TM.getTargetTriple())); });
         return FAM;
     }
 
-    ModulePassManager createMPM(PassBuilder &PB, OptimizationLevel O, OptimizationOptions options) JL_NOTSAFEPOINT {
+    ModulePassManager createMPM(PassBuilder &PB, OptimizationLevel O, OptimizationOptions options) {
         ModulePassManager MPM;
         buildPipeline(MPM, &PB, O, options);
         return MPM;
@@ -752,7 +752,7 @@ PIC.addClassToPassName(decltype(CREATE_PASS)::name(), NAME);
 }
 
 // Parse LLVM-style option string into PrintOptions using LLVM's tokenizer
-void parseLLVMOptions(const char *options, PrintOptions &out) JL_NOTSAFEPOINT {
+void parseLLVMOptions(const char *options, PrintOptions &out) {
     if (!options || options[0] == '\0')
         return;
 
@@ -766,7 +766,7 @@ void parseLLVMOptions(const char *options, PrintOptions &out) JL_NOTSAFEPOINT {
     // option should include trailing "=" (e.g., "-print-after=")
     // Returns the value if matched, empty StringRef if no match
     // Supports both "-option=value" and "-option value" syntax
-    auto getNextValue = [&](size_t &idx, StringRef Arg, StringRef option) JL_NOTSAFEPOINT -> StringRef {
+    auto getNextValue = [&](size_t &idx, StringRef Arg, StringRef option) -> StringRef {
         StringRef optionName = option.drop_back(); // remove trailing "="
         // Check for "-option=value" syntax
         if (Arg.starts_with(option)) {
@@ -784,7 +784,7 @@ void parseLLVMOptions(const char *options, PrintOptions &out) JL_NOTSAFEPOINT {
     };
 
     // Helper to split a comma-separated value and append to a vector
-    auto addCommaSeparated = [](SmallVector<std::string, 1> &vec, StringRef val) JL_NOTSAFEPOINT {
+    auto addCommaSeparated = [](SmallVector<std::string, 1> &vec, StringRef val) {
         SmallVector<StringRef, 4> parts;
         val.split(parts, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
         for (auto &part : parts) {
@@ -841,13 +841,13 @@ AnalysisManagers::~AnalysisManagers() = default;
 
 // Helper to unwrap IR from Any to a specific type
 template <typename IRType>
-static const IRType *unwrapIR(Any IR) JL_NOTSAFEPOINT {
+static const IRType *unwrapIR(Any IR) {
     const IRType *const *IRPtr = llvm::any_cast<const IRType *>(&IR);
     return IRPtr ? *IRPtr : nullptr;
 }
 
 // Helper to print IR from Any
-static void printIR(raw_ostream &OS, Any IR) JL_NOTSAFEPOINT {
+static void printIR(raw_ostream &OS, Any IR) {
     if (const auto *M = unwrapIR<Module>(IR)) {
         M->print(OS, nullptr);
     } else if (const auto *F = unwrapIR<Function>(IR)) {
@@ -888,7 +888,7 @@ void NewPM::run(Module &M) {
                         !print_options.print_before.empty() || !print_options.print_after.empty();
 
     // Helper to check if PassID matches any name in a list
-    auto matchesAny = [](StringRef PassID, const SmallVector<std::string, 1> &names) JL_NOTSAFEPOINT -> bool {
+    auto matchesAny = [](StringRef PassID, const SmallVector<std::string, 1> &names) -> bool {
         for (const auto &name : names) {
             if (PassID.contains(name))
                 return true;
@@ -1000,7 +1000,7 @@ void NewPM::printTimers() {
 // threads, which lack a Julia task/ptls.
 static thread_local SmallVector<TracyCZoneCtx, 8> tracy_pass_stack;
 
-static bool is_meta_pass(StringRef PassID) JL_NOTSAFEPOINT {
+static bool is_meta_pass(StringRef PassID) {
     // Pass managers and adaptors merely wrap other passes; skip them so the
     // zones reflect the actual transformation passes.
     return PassID.starts_with("PassManager") || PassID.ends_with("PassAdaptor");
@@ -1108,7 +1108,7 @@ static std::optional<std::pair<OptimizationLevel, OptimizationOptions>> parseJul
     return None;
 }
 
-bool verifyLLVMIR(const Module &M) JL_NOTSAFEPOINT {
+bool verifyLLVMIR(const Module &M) {
     JL_TIMING(VERIFY_IR, VERIFY_Module);
     if (verifyModule(M, &errs())) {
         errs() << "Failed to verify module '" << M.getModuleIdentifier() << "', dumping entire module!\n\n";
@@ -1118,7 +1118,7 @@ bool verifyLLVMIR(const Module &M) JL_NOTSAFEPOINT {
     return false;
 }
 
-bool verifyLLVMIR(const Function &F) JL_NOTSAFEPOINT {
+bool verifyLLVMIR(const Function &F) {
     JL_TIMING(VERIFY_IR, VERIFY_Function);
     if (verifyFunction(F, &errs())) {
         errs() << "Failed to verify function '" << F.getName() << "', dumping entire module!\n\n";
@@ -1128,7 +1128,7 @@ bool verifyLLVMIR(const Function &F) JL_NOTSAFEPOINT {
     return false;
 }
 
-bool verifyLLVMIR(const Loop &L) JL_NOTSAFEPOINT {
+bool verifyLLVMIR(const Loop &L) {
     JL_TIMING(VERIFY_IR, VERIFY_Loop);
     if (verifyFunction(*L.getHeader()->getParent(), &errs())) {
         errs() << "Failed to verify loop '" << L << "', dumping entire module!\n\n";
@@ -1143,7 +1143,7 @@ bool verifyLLVMIR(const Loop &L) JL_NOTSAFEPOINT {
 // NOTE: Instead of exporting all the constructors in passes.h we could
 // forward the callbacks to the respective passes. LLVM seems to prefer this,
 // and when we add the full pass builder having them directly will be helpful.
-static void registerCallbacks(PassBuilder &PB) JL_NOTSAFEPOINT {
+static void registerCallbacks(PassBuilder &PB) {
     auto PIC = PB.getPassInstrumentationCallbacks();
     if (PIC) {
         adjustPIC(*PIC);
@@ -1224,12 +1224,12 @@ static void registerCallbacks(PassBuilder &PB) JL_NOTSAFEPOINT {
 }
 
 extern "C" JL_DLLEXPORT_CODEGEN
-void jl_register_passbuilder_callbacks_impl(void *PB) JL_NOTSAFEPOINT {
+void jl_register_passbuilder_callbacks_impl(void *PB) {
     registerCallbacks(*static_cast<PassBuilder*>(PB));
 }
 
 extern "C" JL_DLLEXPORT_CODEGEN
-::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() JL_NOTSAFEPOINT {
+::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
       return {LLVM_PLUGIN_API_VERSION, "Julia", "1", registerCallbacks};
 }
 

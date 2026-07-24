@@ -484,7 +484,7 @@ static void body_attributes(jl_array_t *body, int *has_ccall, int *has_defs, int
     *forced_compile = jl_has_meta(body, jl_force_compile_sym);
 }
 
-int jl_is_toplevel_only_expr(jl_value_t *e) JL_NOTSAFEPOINT
+int jl_is_toplevel_only_expr(jl_value_t *e)
 {
     return jl_is_expr(e) &&
         (((jl_expr_t*)e)->head == jl_module_sym ||
@@ -496,7 +496,7 @@ int jl_is_toplevel_only_expr(jl_value_t *e) JL_NOTSAFEPOINT
          ((jl_expr_t*)e)->head == jl_incomplete_sym);
 }
 
-static int jl_needs_lowering(jl_value_t *e) JL_NOTSAFEPOINT
+static int jl_needs_lowering(jl_value_t *e)
 {
     if (!jl_is_expr(e))
         return 0;

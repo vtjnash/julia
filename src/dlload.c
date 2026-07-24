@@ -33,7 +33,7 @@ static char const *const extensions[] = { "", ".so" };
 #endif
 #define N_EXTENSIONS (sizeof(extensions) / sizeof(char*))
 
-static int endswith_extension(const char *path) JL_NOTSAFEPOINT
+static int endswith_extension(const char *path)
 {
     if (!path)
         return 0;
@@ -69,7 +69,7 @@ const char *jl_crtdll_name = CRTDLL_BASENAME ".dll";
 #endif
 
 #ifdef _OS_WINDOWS_
-void win32_formatmessage(DWORD code, char *reason, int len) JL_NOTSAFEPOINT
+void win32_formatmessage(DWORD code, char *reason, int len)
 {
     DWORD res;
     LPWSTR errmsg;
@@ -171,7 +171,7 @@ void *jl_dlopen(const char *filename, unsigned flags)
 
 #define JL_RTLD(flags, FLAG) (flags & JL_RTLD_ ## FLAG ? RTLD_ ## FLAG : 0)
 
-int jl_running_under_sanitizer(int recheck) JL_NOTSAFEPOINT
+int jl_running_under_sanitizer(int recheck)
 {
 #if defined(_COMPILER_ASAN_ENABLED_) || defined(_COMPILER_TSAN_ENABLED_) || defined(_COMPILER_MSAN_ENABLED_)
     return 1;
@@ -195,7 +195,7 @@ int jl_running_under_sanitizer(int recheck) JL_NOTSAFEPOINT
 #ifdef RTLD_DEEPBIND
 // RTLD_DEEPBIND is incompatible with the sanitizers' libc interposition
 // (c.f. https://github.com/google/sanitizers/issues/611)
-static int jl_use_rtld_deepbind(int recheck) JL_NOTSAFEPOINT
+static int jl_use_rtld_deepbind(int recheck)
 {
     static _Atomic(int) enabled_ = -1;
     int enabled = jl_atomic_load_relaxed(&enabled_);
@@ -313,7 +313,7 @@ int jl_dlclose(void *handle)
 #endif
 }
 
-void *jl_find_dynamic_library_by_addr(void *symbol, int throw_err, int close) JL_NOTSAFEPOINT
+void *jl_find_dynamic_library_by_addr(void *symbol, int throw_err, int close)
 {
     void *handle;
 #ifdef _OS_WINDOWS_
@@ -486,7 +486,7 @@ success:
  *
  * At time of writing, only Base.dlsym() uses search_deps = 1.
  */
-JL_DLLEXPORT int jl_dlsym(void *handle, const char *symbol, void ** value, int throw_err, int search_deps) JL_NOTSAFEPOINT
+JL_DLLEXPORT int jl_dlsym(void *handle, const char *symbol, void ** value, int throw_err, int search_deps)
 {
     int symbol_found = 0;
 
