@@ -2285,8 +2285,8 @@ const warn28789 = "Assignment to `s28789` in soft scope is ambiguous because a g
     end
 end
 
-# a typed assignment in soft scope produces the same ambiguity warning as an
-# untyped one
+# #62154: a typed assignment in soft scope produces the same ambiguity warning
+# as an untyped one
 const warn62335 = "Assignment to `t62335` in soft scope is ambiguous because a global variable by the same name exists: "*
     "`t62335` will be treated as a new local. Disambiguate by using `local t62335` to suppress this warning or "*
     "`global t62335` to assign to the existing global variable."
@@ -2814,7 +2814,11 @@ end
 @test Core.eval(Mod3, :(always_undef(x::Int) = x)) == invokelatest(getglobal, Mod3, :always_undef)
 @test Core.eval(Mod3, :(const always_undef = 3)) == invokelatest(getglobal, Mod3, :always_undef)
 @test_throws ErrorException("cannot declare Mod3.f constant; it was already declared as an import") Core.eval(Mod3, :(const f = 3))
-@test_throws ErrorException("cannot declare Mod.maybe_undef constant; it was already declared global") Core.eval(Mod, :(const maybe_undef = 3))
+# #62154: re-declaring an (assigned) global as a constant with a value is permitted
+# and behaves as a re-type plus an assignment of the constant's value
+@test Core.eval(Mod, :(const maybe_undef = 3)) == invokelatest(getglobal, Mod, :maybe_undef)
+@test invokelatest(getglobal, Mod, :maybe_undef) === 3
+@test isconst(Mod, :maybe_undef)
 
 z = 42
 import .z as also_z
@@ -3547,17 +3551,23 @@ end
         x::Float64 = 2.
     end
 
+    # #62154: value-carrying re-declarations of a typed global are now permitted
     m = Module()
-    @test_throws ErrorException @eval m begin
+    @eval m begin
         x::Int = 1
         x::Float64 = 2
     end
+    @test m.x === 2.0
+    @test Core.get_binding_type(m, :x) == Float64
 
+    # #62154: so is replacing a typed global by a constant with a value
     m = Module()
-    @test_throws ErrorException @eval m begin
+    @eval m begin
         x::Int = 1
         const x = 2
     end
+    @test m.x === 2
+    @test isconst(m, :x)
 
     m = Module()
     @test_throws ErrorException @eval m begin
@@ -3571,11 +3581,14 @@ end
         global x::Float64
     end
 
+    # #62154: a bare re-type is permitted when the current value conforms
     m = Module()
-    @test_throws ErrorException @eval m begin
+    @eval m begin
         x = 1
         global x::Int
     end
+    @test m.x === 1
+    @test Core.get_binding_type(m, :x) == Int
 
     m = Module()
     @eval m module Foo
@@ -3591,7 +3604,7 @@ end
     @test m.Foo.bar === 1
     @test Core.get_binding_type(m.Foo, :bar) == Any
 
-    # in `x::T = v` the declared type is evaluated exactly once, before
+    # #62154: in `x::T = v` the declared type is evaluated exactly once, before
     # the right-hand side, and the same result is used both for the conversion
     # and the declaration
     m = Module()
@@ -3641,7 +3654,7 @@ end
     @test Core.get_binding_type(m, :h) == Int
     @test !isdefined(m, :evaluated)
 
-    # an assignment inside the declared-type expression of a typed
+    # #62154: an assignment inside the declared-type expression of a typed
     # assignment must still be discovered by lowering (`y` is a local here,
     # not a global of the enclosing module)
     m = Module()
@@ -3660,6 +3673,18 @@ end
     end
     @test m.cap === 5
     @test Core.get_binding_type(m, :cap) == Int
+
+    # #62154: a programmatic typed assignment to a `GlobalRef` lhs takes the
+    # same atomic declare+assign path as `x::T = v`, so it can re-type an
+    # existing binding whose current value doesn't conform to the new type
+    m = Module()
+    Core.eval(m, :(global x::Int = 1))
+    Core.eval(m, Expr(:(=), Expr(:(::), GlobalRef(m, :x), Float64), 2.5))
+    @test m.x === 2.5
+    @test Core.get_binding_type(m, :x) == Float64
+    Core.eval(m, Expr(:global, Expr(:(=), Expr(:(::), GlobalRef(m, :x), String), "hi")))
+    @test m.x == "hi"
+    @test Core.get_binding_type(m, :x) == String
 end
 
 # issue 44723
